@@ -46,8 +46,10 @@ linters:
         - .+/parser\.Rule
         - .+/parser\.ParseError
         - .+/parser\.VectorSelector
+        - .+/parser/ast\..+
         - .+/promapi\.MetricTimeRange
         - github.com/prometheus/.+\..+
+        - github.com/VictoriaMetrics/metricsql\..+
         - github.com/urfave/cli/.+
         - gitlab.com/gitlab-org/api/.+
         - github.com/google/go-github/.+
