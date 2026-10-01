@@ -1,0 +1,151 @@
+check: promql/series
+cases:
+  - name: metric never existed
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'sum(rate(series_never_total[5m]))'
+    data:
+      step: 15s
+      series: []
+    vm:
+      - query: count(last_over_time(series_never_total[1w]))
+        result: empty
+    expect:
+      - rule: x
+        reporter: promql/series
+        severity: bug
+        summary: query on nonexistent series
+        lines: "2"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI didn''t have any series for the `series_never_total` metric in the last 1w.'
+            fragment: series_never_total
+            start: 9
+            end: 27
+            line: 2
+  - name: label value never existed
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'rate(series_label_total{job="web"}[5m])'
+    data:
+      step: 15s
+      series:
+        - metric: series_label_total{job="api"}
+          values: 0+10x40
+    vm:
+      - query: count(series_label_total{job="web"})
+        result: empty
+      - query: count(series_label_total)
+        result: '{} 1'
+    expect:
+      - rule: x
+        reporter: promql/series
+        severity: bug
+        summary: query on nonexistent series
+        lines: "2"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI has the `series_label_total` metric with the `job` label but there are no series matching `{job="web"}` in the last 1w.'
+            fragment: job="web"
+            start: 24
+            end: 33
+            line: 2
+  - name: one or filter branch never existed
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'rate(series_or_total{job="api" or job="web"}[5m])'
+    data:
+      step: 15s
+      series:
+        - metric: series_or_total{job="api"}
+          values: 0+10x40
+    vm:
+      - query: count(series_or_total{job="api" or job="web"}) by (job)
+        result: '{job="api"} 1'
+    expect:
+      - rule: x
+        reporter: promql/series
+        severity: bug
+        summary: query on nonexistent series
+        lines: "2"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI has the `series_or_total` metric with the `job` label but there are no series matching `{job="web"}` in the last 1w.'
+            fragment: job="web"
+            start: 34
+            end: 43
+            line: 2
+  - name: series present
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'rate(series_ok_total{job="api"}[5m])'
+    data:
+      step: 15s
+      series:
+        - metric: series_ok_total{job="api"}
+          values: 0+10x40
+    vm:
+      - query: count(series_ok_total{job="api"})
+        result: '{} 1'
+    expect: []
+  - name: every or filter branch present
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'sum(rate(series_or_ok_total{job="api" or job="web"}[5m])) by (job)'
+    data:
+      step: 15s
+      series:
+        - metric: series_or_ok_total{job="api"}
+          values: 0+10x40
+        - metric: series_or_ok_total{job="web"}
+          values: 0+5x40
+    vm:
+      - query: count(series_or_ok_total{job="api" or job="web"}) by (job)
+        result: |
+          {job="api"} 1
+          {job="web"} 1
+    expect: []
+  - name: series referenced through a WITH template
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'WITH (f = {job="api"}) rate(series_with_total{f}[5m])'
+    data:
+      step: 15s
+      series:
+        - metric: series_with_total{job="api"}
+          values: 0+10x40
+    vm:
+      - query: count(series_with_total{job="api"})
+        result: '{} 1'
+    expect: []
+  - name: series stopped 20 minutes ago
+    kind: boundary
+    comment: The series exists in the lookback window but not now.
+    rules: |
+      - record: x
+        expr: 'rate(series_gone_total{job="api"}[5m])'
+    data:
+      step: 15s
+      series:
+        - metric: series_gone_total{job="api"}
+          values: 0+10x40 _x80
+    vm:
+      - query: count(series_gone_total{job="api"})
+        result: empty
+      - query: count(last_over_time(series_gone_total{job="api"}[1h]))
+        result: '{} 1'
+    expect:
+      - rule: x
+        reporter: promql/series
+        severity: warning
+        summary: query on nonexistent series
+        lines: "2"
+        diagnostics:
+          - message: The `series_gone_total` metric is only sometimes present on `vm` Prometheus server at $URI with an average life span of 15m in the last 1w.
+            fragment: series_gone_total{job="api"}
+            start: 5
+            end: 33
+            line: 2

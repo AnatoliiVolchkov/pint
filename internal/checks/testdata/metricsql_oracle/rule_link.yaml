@@ -1,0 +1,36 @@
+check: rule/link
+cases:
+  - name: link that can't be fetched
+    kind: positive
+    comment: Port 9 on localhost refuses connections.
+    settings:
+      re: ^http://127\.0\.0\.1:9/.+$
+      timeout: 1s
+    rules: |
+      - alert: Down
+        expr: 'up{job="a" or job="b"} == 0'
+        annotations:
+          runbook: http://127.0.0.1:9/runbook
+    expect:
+      - rule: Down
+        reporter: rule/link
+        severity: bug
+        summary: link check failed
+        lines: "4"
+        diagnostics:
+          - message: 'GET request for http://127.0.0.1:9/runbook returned an error: Get "http://127.0.0.1:9/runbook": dial tcp 127.0.0.1:9: connect: connection refused.'
+            fragment: http://127.0.0.1:9/runbook
+            start: 0
+            end: 26
+            line: 4
+  - name: link not matching the pattern is ignored
+    kind: negative
+    settings:
+      re: ^http://127\.0\.0\.1:9/.+$
+      timeout: 1s
+    rules: |
+      - alert: Down
+        expr: 'up{job="a" or job="b"} == 0'
+        annotations:
+          runbook: https://example.com/runbook
+    expect: []

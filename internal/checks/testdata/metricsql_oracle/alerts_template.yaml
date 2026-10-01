@@ -1,0 +1,85 @@
+check: alerts/template
+cases:
+  - name: label removed by aggregation
+    kind: positive
+    rules: |
+      - alert: Down
+        expr: 'sum(up{job="a" or job="b"}) by (job) == 0'
+        annotations:
+          summary: '{{ $labels.instance }} is down'
+    expect:
+      - rule: Down
+        reporter: alerts/template
+        severity: bug
+        summary: template uses non-existent label
+        lines: 1-4
+        diagnostics:
+          - message: The template is using `instance` label but the query results won't have this label.
+            fragment: .instance
+            start: 10
+            end: 19
+            line: 4
+          - message: Query is using aggregation with `by(job)`, only labels included inside `by(...)` will be present on the results.
+            fragment: by
+            start: 28
+            end: 30
+            line: 2
+  - name: query value in labels
+    kind: positive
+    rules: |
+      - alert: High
+        expr: 'rate(errors_total[5m]) > 1'
+        labels:
+          value: '{{ $value }}'
+    expect:
+      - rule: High
+        reporter: alerts/template
+        severity: bug
+        summary: value used in labels
+        lines: "4"
+        diagnostics:
+          - message: Using `$value` in labels will generate a new alert on every value change, move it to annotations.
+            fragment: '{{ $value }}'
+            start: 0
+            end: 12
+            line: 4
+  - name: label kept by aggregation
+    kind: negative
+    rules: |
+      - alert: Down
+        expr: 'sum(up{job="a" or job="b"}) by (job, instance) == 0'
+        annotations:
+          summary: '{{ $labels.instance }} is down'
+    expect: []
+  - name: label removed inside a WITH template
+    kind: boundary
+    rules: |
+      - alert: Down
+        expr: 'WITH (s(x) = sum(x) by (job)) s(up) == 0'
+        annotations:
+          summary: '{{ $labels.instance }} is down'
+    expect:
+      - rule: Down
+        reporter: alerts/template
+        severity: bug
+        summary: template uses non-existent label
+        lines: 1-4
+        diagnostics:
+          - message: The template is using `instance` label but the query results won't have this label.
+            fragment: .instance
+            start: 10
+            end: 19
+            line: 4
+          - message: Query is using aggregation with `by(job)`, only labels included inside `by(...)` will be present on the results.
+            fragment: s(up)
+            start: 30
+            end: 35
+            line: 2
+  - name: label added by label_set
+    kind: negative
+    rules: |
+      - alert: Down
+        expr: 'label_set(sum(up) by (job), "instance", "x") == 0'
+        annotations:
+          summary: '{{ $labels.instance }} is down'
+    expect: []

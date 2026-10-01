@@ -1,0 +1,29 @@
+check: promql/features
+cases:
+  - name: MetricsQL functions need no feature flags
+    kind: negative
+    comment: VictoriaMetrics has no feature flags, every MetricsQL function is always available.
+    rules: |
+      - record: x
+        expr: 'histogram_quantile(0.9, sum(rate(features_bucket[5m])) by (le)) + rollup_rate(features_total) + limitk(1, features_total)'
+    data:
+      step: 15s
+      series:
+        - metric: features_bucket{le="1"}
+          values: 0+1x40
+        - metric: features_bucket{le="+Inf"}
+          values: 0+2x40
+        - metric: features_total{job="a"}
+          values: 0+5x40
+    expect: []
+  - name: PromQL experimental function name
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'sort_by_label(features_sort, "job")'
+    data:
+      step: 15s
+      series:
+        - metric: features_sort{job="a"}
+          values: 1x20
+    expect: []

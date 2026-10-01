@@ -1,0 +1,33 @@
+check: rule/for
+cases:
+  - name: for shorter than the minimum
+    kind: positive
+    settings:
+      key: for
+      min: 5m
+    rules: |
+      - alert: Errors
+        expr: 'rollup_rate(errors_total) > 0 keep_metric_names'
+        for: 1m
+    expect:
+      - rule: Errors
+        reporter: rule/for
+        severity: bug
+        summary: duration required
+        lines: "3"
+        diagnostics:
+          - message: This alert rule must have a `for` field with a minimum duration of 5m.
+            fragment: 1m
+            start: 0
+            end: 2
+            line: 3
+  - name: for long enough
+    kind: negative
+    settings:
+      key: for
+      min: 5m
+    rules: |
+      - alert: Errors
+        expr: 'rollup_rate(errors_total) > 0 keep_metric_names'
+        for: 10m
+    expect: []

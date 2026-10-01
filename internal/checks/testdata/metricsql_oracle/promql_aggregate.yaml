@@ -1,0 +1,116 @@
+check: promql/aggregate
+cases:
+  - name: without removes required label
+    kind: positive
+    settings:
+      keep: "true"
+      label: job
+    rules: |
+      - record: job:foo:sum
+        expr: 'sum(foo) without (job)'
+    expect:
+      - rule: job:foo:sum
+        reporter: promql/aggregate
+        severity: warning
+        summary: required label is being removed via aggregation
+        lines: "2"
+        diagnostics:
+          - message: '`job` label is required and should be preserved when aggregating all rules.'
+            fragment: job
+            start: 18
+            end: 21
+            line: 2
+          - message: Query is using aggregation with `without(job)`, all labels included inside `without(...)` will be removed from the results.
+            fragment: job
+            start: 18
+            end: 21
+            line: 2
+  - name: by drops required label
+    kind: positive
+    settings:
+      keep: "true"
+      label: job
+    rules: |
+      - record: job:foo:sum
+        expr: 'sum by (instance) (rate(foo[5m]))'
+    expect:
+      - rule: job:foo:sum
+        reporter: promql/aggregate
+        severity: warning
+        summary: required label is being removed via aggregation
+        lines: "2"
+        diagnostics:
+          - message: '`job` label is required and should be preserved when aggregating all rules.'
+            fragment: by
+            start: 4
+            end: 6
+            line: 2
+          - message: Query is using aggregation with `by(instance)`, only labels included inside `by(...)` will be present on the results.
+            fragment: by
+            start: 4
+            end: 6
+            line: 2
+  - name: by keeps required label
+    kind: negative
+    settings:
+      keep: "true"
+      label: job
+    rules: |
+      - record: job:foo:sum
+        expr: 'sum(rate(foo[5m])) by (job) limit 5'
+    expect: []
+  - name: aggregation hidden in a WITH template
+    kind: boundary
+    comment: The aggregation comes from the template, the diagnostic must point at its use-site.
+    settings:
+      keep: "true"
+      label: job
+    rules: |
+      - record: job:foo:sum
+        expr: 'WITH (s(x) = sum(x) by (instance)) s(foo)'
+    expect:
+      - rule: job:foo:sum
+        reporter: promql/aggregate
+        severity: warning
+        summary: required label is being removed via aggregation
+        lines: "2"
+        diagnostics:
+          - message: '`job` label is required and should be preserved when aggregating all rules.'
+            fragment: s(foo)
+            start: 35
+            end: 41
+            line: 2
+          - message: Query is using aggregation with `by(instance)`, only labels included inside `by(...)` will be present on the results.
+            fragment: s(foo)
+            start: 35
+            end: 41
+            line: 2
+  - name: label must be stripped and is
+    kind: negative
+    settings:
+      keep: "false"
+      label: instance
+    rules: |
+      - record: job:foo:sum
+        expr: 'sum(foo{a="1" or b="2"}) without (instance)'
+    expect: []
+  - name: label must be stripped but is kept
+    kind: positive
+    settings:
+      keep: "false"
+      label: instance
+    rules: |
+      - record: job:foo:sum
+        expr: 'sum(foo) by (job, instance)'
+    expect:
+      - rule: job:foo:sum
+        reporter: promql/aggregate
+        severity: warning
+        summary: label must be removed in aggregations
+        lines: "2"
+        diagnostics:
+          - message: '`instance` label should be removed when aggregating all rules.'
+            fragment: instance
+            start: 18
+            end: 26
+            line: 2

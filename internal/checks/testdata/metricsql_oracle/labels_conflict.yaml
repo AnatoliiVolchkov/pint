@@ -1,0 +1,69 @@
+check: labels/conflict
+cases:
+  - name: rule label conflicts with external label
+    kind: positive
+    settings:
+      externalLabels: cluster=demo
+    rules: |
+      - record: x
+        expr: 'sum(lc_up{job="a" or job="b"}) by (job)'
+        labels:
+          cluster: dev
+    data:
+      step: 15s
+      series:
+        - metric: lc_up{job="a"}
+          values: 1x20
+    expect:
+      - rule: x
+        reporter: labels/conflict
+        severity: warning
+        summary: conflicting labels
+        lines: "4"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI external_labels already has cluster="demo" label set, please choose a different name for this label to avoid any conflicts.'
+            fragment: cluster
+            start: 0
+            end: 7
+            line: 4
+  - name: no conflicting labels
+    kind: negative
+    settings:
+      externalLabels: cluster=demo
+    rules: |
+      - record: x
+        expr: 'sum(lc_ok_up) by (job)'
+        labels:
+          team: infra
+    data:
+      step: 15s
+      series:
+        - metric: lc_ok_up{job="a"}
+          values: 1x20
+    expect: []
+  - name: label with the same value as the external label
+    kind: boundary
+    settings:
+      externalLabels: cluster=demo
+    rules: |
+      - record: x
+        expr: 'sum(lc_same_up) by (job)'
+        labels:
+          cluster: demo
+    data:
+      step: 15s
+      series:
+        - metric: lc_same_up{job="a"}
+          values: 1x20
+    expect:
+      - rule: x
+        reporter: labels/conflict
+        severity: warning
+        summary: conflicting labels
+        lines: "4"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI external_labels already has cluster="demo" label set, please choose a different name for this label to avoid any conflicts.'
+            fragment: cluster
+            start: 0
+            end: 7
+            line: 4

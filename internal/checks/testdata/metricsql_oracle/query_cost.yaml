@@ -1,0 +1,73 @@
+check: query/cost
+cases:
+  - name: more series than allowed
+    kind: positive
+    settings:
+      maxSeries: "2"
+    rules: |
+      - record: x
+        expr: 'cost_many'
+    data:
+      step: 15s
+      series:
+        - metric: cost_many{i="1"}
+          values: 1x20
+        - metric: cost_many{i="2"}
+          values: 1x20
+        - metric: cost_many{i="3"}
+          values: 1x20
+    vm:
+      - query: count(cost_many)
+        result: '{} 3'
+    expect:
+      - rule: x
+        reporter: query/cost
+        severity: bug
+        summary: query is too expensive
+        lines: "2"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI returned 3 result(s), maximum allowed series is 2.'
+            fragment: cost_many
+            start: 0
+            end: 9
+            line: 2
+  - name: within series limit
+    kind: negative
+    settings:
+      maxSeries: "10"
+    rules: |
+      - record: x
+        expr: 'sum(cost_few) by (i)'
+    data:
+      step: 15s
+      series:
+        - metric: cost_few{i="1"}
+          values: 1x20
+        - metric: cost_few{i="2"}
+          values: 1x20
+    expect: []
+  - name: sample limits unsupported by VictoriaMetrics
+    kind: positive
+    comment: VictoriaMetrics doesn't report queried samples, the limit can't be enforced.
+    settings:
+      maxTotalSamples: "100"
+    rules: |
+      - record: x
+        expr: 'cost_samples'
+    data:
+      step: 15s
+      series:
+        - metric: cost_samples{i="1"}
+          values: 1x20
+    expect:
+      - rule: x
+        reporter: query/cost
+        severity: warning
+        summary: unsupported query cost limit
+        lines: "2"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI is a VictoriaMetrics server which doesn''t report the number of queried samples, `maxTotalSamples` and `maxPeakSamples` limits can''t be enforced.'
+            fragment: cost_samples
+            start: 0
+            end: 12
+            line: 2

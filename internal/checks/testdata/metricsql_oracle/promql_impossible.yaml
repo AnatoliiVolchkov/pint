@@ -1,0 +1,81 @@
+check: promql/impossible
+cases:
+  - name: unless against label-less aggregation
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'foo{job="bar"} unless sum(foo)'
+    expect:
+      - rule: x
+        reporter: promql/impossible
+        severity: warning
+        summary: dead code in query
+        lines: "2"
+        diagnostics:
+          - message: The right hand side will never be matched because it doesn't have the `job` label while the left hand side will. Query is using aggregation that removes all labels.
+            fragment: sum
+            start: 22
+            end: 25
+            line: 2
+  - name: label_replace on a label removed by aggregation
+    kind: negative
+    comment: The source label is gone so the regexp doesn't match, but series are still returned.
+    rules: |
+      - record: x
+        expr: 'label_replace(sum(foo), "a", "$1", "job", "(.+)")'
+    expect: []
+  - name: unless with matching labels
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'foo{job="bar"} unless sum(foo) by (job)'
+    expect: []
+  - name: MetricsQL if with matching labels
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'foo{job="bar"} if sum(foo) by (job) > 0'
+    expect: []
+  - name: job label only possible on the left
+    kind: boundary
+    comment: foo may not have a job label at all, so the right-hand side can still match.
+    rules: |
+      - record: x
+        expr: 'sum(foo) by (job) unless sum(foo)'
+    expect: []
+  - name: several labels missing on the right
+    kind: positive
+    comment: Both job and i are missing on the right, the first one in sorted order is reported on every run.
+    rules: |
+      - record: x
+        expr: 'foo{job="a", i="b"} unless sum(foo)'
+    expect:
+      - rule: x
+        reporter: promql/impossible
+        severity: warning
+        summary: dead code in query
+        lines: "2"
+        diagnostics:
+          - message: The right hand side will never be matched because it doesn't have the `i` label while the left hand side will. Query is using aggregation that removes all labels.
+            fragment: sum
+            start: 27
+            end: 30
+            line: 2
+  - name: repeated identical aggregations
+    kind: positive
+    comment: The diagnostic must point at the right-hand sum, not the identical left-hand one.
+    rules: |
+      - record: x
+        expr: 'sum(foo{job="a"}) by (job) unless sum(foo{job="a"})'
+    expect:
+      - rule: x
+        reporter: promql/impossible
+        severity: warning
+        summary: dead code in query
+        lines: "2"
+        diagnostics:
+          - message: The right hand side will never be matched because it doesn't have the `job` label while the left hand side will. Query is using aggregation that removes all labels.
+            fragment: sum
+            start: 34
+            end: 37
+            line: 2

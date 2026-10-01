@@ -1,0 +1,60 @@
+check: rule/reject
+cases:
+  - name: rejected label value
+    kind: positive
+    settings:
+      key: ^owner$
+      labels: "true"
+      value: ^unknown$
+    rules: |
+      - record: x
+        expr: 'WITH (f = {job="a"}) rollup_rate(foo{f})'
+        labels:
+          team: unknown
+    expect:
+      - rule: x
+        reporter: rule/reject
+        severity: bug
+        summary: value not allowed
+        lines: "4"
+        diagnostics:
+          - message: value is not allowed to match `^^unknown$$`.
+            fragment: unknown
+            start: 0
+            end: 7
+            line: 4
+  - name: allowed label value
+    kind: negative
+    settings:
+      key: ^owner$
+      labels: "true"
+      value: ^unknown$
+    rules: |
+      - record: x
+        expr: 'WITH (f = {job="a"}) rollup_rate(foo{f})'
+        labels:
+          team: infra
+    expect: []
+  - name: rejected label name
+    kind: positive
+    settings:
+      key: ^owner$
+      labels: "true"
+      value: ^unknown$
+    rules: |
+      - record: x
+        expr: 'WITH (f = {job="a"}) rollup_rate(foo{f})'
+        labels:
+          owner: infra
+    expect:
+      - rule: x
+        reporter: rule/reject
+        severity: bug
+        summary: key not allowed
+        lines: "4"
+        diagnostics:
+          - message: key is not allowed to match `^^owner$$`.
+            fragment: owner
+            start: 0
+            end: 5
+            line: 4

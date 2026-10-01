@@ -1,0 +1,56 @@
+check: promql/fragile
+cases:
+  - name: topk in alert
+    kind: positive
+    rules: |
+      - alert: Top
+        expr: 'topk(10, foo) > 5'
+    expect:
+      - rule: Top
+        reporter: promql/fragile
+        severity: warning
+        summary: fragile query
+        lines: "2"
+        diagnostics:
+          - message: Using `topk` to select time series might return different set of time series on every query, which would cause flapping alerts.
+            fragment: foo
+            start: 9
+            end: 12
+            line: 2
+  - name: limitk in alert
+    kind: negative
+    comment: VictoriaMetrics limitk returns the same set of series across calls, so it doesn't flap. Upstream pint lists "limit" instead of "limitk", so PromQL limitk isn't reported either.
+    rules: |
+      - alert: Limited
+        expr: 'limitk(3, foo) > 5'
+    expect: []
+  - name: sampling function in alert
+    kind: positive
+    rules: |
+      - alert: Sampled
+        expr: 'bottomk(2, rate(foo[5m])) > 1'
+    expect:
+      - rule: Sampled
+        reporter: promql/fragile
+        severity: warning
+        summary: fragile query
+        lines: "2"
+        diagnostics:
+          - message: Using `bottomk` to select time series might return different set of time series on every query, which would cause flapping alerts.
+            fragment: foo[5m]
+            start: 16
+            end: 23
+            line: 2
+  - name: plain comparison
+    kind: negative
+    rules: |
+      - alert: Plain
+        expr: 'sum(foo) by (job) > 5'
+    expect: []
+  - name: topk in recording rule
+    kind: boundary
+    comment: Recording rules don't flap, only alerts are reported.
+    rules: |
+      - record: top
+        expr: 'topk(10, foo)'
+    expect: []

@@ -1,0 +1,113 @@
+check: promql/vector_matching
+cases:
+  - name: different labels on both sides
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'vm_errors_total / vm_requests_total'
+    data:
+      step: 15s
+      series:
+        - metric: vm_errors_total{job="api",instance="a"}
+          values: 1x20
+        - metric: vm_requests_total{job="api"}
+          values: 10x20
+    vm:
+      - query: vm_errors_total / vm_requests_total
+        result: empty
+    expect:
+      - rule: x
+        reporter: promql/vector_matching
+        severity: bug
+        summary: impossible binary operation
+        lines: "2"
+        diagnostics:
+          - message: 'The left hand side of the query on `vm` Prometheus server at $URI returns labels: `[instance, job]`, which don''t match the right hand side labels: `[job]`. This query will never return any results.'
+            fragment: vm_errors_total
+            start: 0
+            end: 15
+            line: 2
+          - message: 'The right hand side of the query on `vm` Prometheus server at $URI returns labels: `[job]`.'
+            fragment: vm_requests_total
+            start: 18
+            end: 35
+            line: 2
+  - name: matching on the common label
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'vm_on_errors_total / on(job) group_left() vm_on_requests_total'
+    data:
+      step: 15s
+      series:
+        - metric: vm_on_errors_total{job="api",instance="a"}
+          values: 1x20
+        - metric: vm_on_requests_total{job="api"}
+          values: 10x20
+    vm:
+      - query: vm_on_errors_total / on(job) group_left() vm_on_requests_total
+        result: '{instance="a", job="api"} 0.1'
+    expect: []
+  - name: identical label sets
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'vm_same_a / vm_same_b'
+    data:
+      step: 15s
+      series:
+        - metric: vm_same_a{job="api",instance="a"}
+          values: 1x20
+        - metric: vm_same_b{job="api",instance="a"}
+          values: 4x20
+    vm:
+      - query: vm_same_a / vm_same_b
+        result: '{instance="a", job="api"} 0.25'
+    expect: []
+  - name: MetricsQL if with different labels
+    kind: boundary
+    comment: '`if` matches series like `and`, so different labels on both sides never match.'
+    rules: |
+      - record: x
+        expr: 'vm_if_a if vm_if_b'
+    data:
+      step: 15s
+      series:
+        - metric: vm_if_a{job="api",instance="a"}
+          values: 1x20
+        - metric: vm_if_b{job="api"}
+          values: 1x20
+    vm:
+      - query: vm_if_a if vm_if_b
+        result: empty
+    expect:
+      - rule: x
+        reporter: promql/vector_matching
+        severity: bug
+        summary: impossible binary operation
+        lines: "2"
+        diagnostics:
+          - message: 'The left hand side of the query on `vm` Prometheus server at $URI returns labels: `[instance, job]`, which don''t match the right hand side labels: `[job]`. This query will never return any results.'
+            fragment: vm_if_a
+            start: 0
+            end: 7
+            line: 2
+          - message: 'The right hand side of the query on `vm` Prometheus server at $URI returns labels: `[job]`.'
+            fragment: vm_if_b
+            start: 11
+            end: 18
+            line: 2
+  - name: MetricsQL default with different labels
+    kind: negative
+    comment: '`default` fills missing series like `or`, label mismatch is intended.'
+    rules: |
+      - record: x
+        expr: 'vm_default_a default vm_default_b'
+    data:
+      step: 15s
+      series:
+        - metric: vm_default_a{job="api",instance="a"}
+          values: 1x20
+        - metric: vm_default_b{job="api"}
+          values: "0x20"
+    expect: []

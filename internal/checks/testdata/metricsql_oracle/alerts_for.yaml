@@ -1,0 +1,27 @@
+check: alerts/for
+cases:
+  - name: for set to zero on a MetricsQL alert
+    kind: positive
+    rules: |
+      - alert: Errors
+        expr: 'rollup_rate(errors_total) > 0'
+        for: 0s
+    expect:
+      - rule: Errors
+        reporter: alerts/for
+        severity: information
+        summary: redundant field with default value
+        lines: "3"
+        diagnostics:
+          - message: '`0s` is the default value of `for`, this line is unnecessary.'
+            fragment: 0s
+            start: 0
+            end: 2
+            line: 3
+  - name: for set
+    kind: negative
+    rules: |
+      - alert: Errors
+        expr: 'rollup_rate(errors_total) > 0'
+        for: 5m
+    expect: []

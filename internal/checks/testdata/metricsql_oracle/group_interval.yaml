@@ -1,0 +1,43 @@
+check: group/interval
+cases:
+  - name: MetricsQL rules in a group with a long interval
+    kind: positive
+    rules: |
+      groups:
+        - name: vm
+          interval: 10m
+          rules:
+            - record: x
+              expr: 'rate(foo{a="1" or b="2"})'
+    expect:
+      - rule: x
+        reporter: group/interval
+        severity: warning
+        summary: interval too long
+        lines: "3"
+        diagnostics:
+          - message: Using group interval > 5m will cause gaps in recording rule results and flapping alerts.
+            fragment: 10m
+            start: 0
+            end: 3
+            line: 3
+  - name: MetricsQL rules in a group with a normal interval
+    kind: negative
+    rules: |
+      groups:
+        - name: vm
+          interval: 1m
+          rules:
+            - record: x
+              expr: 'rate(foo{a="1" or b="2"})'
+    expect: []
+  - name: interval exactly five minutes
+    kind: boundary
+    rules: |
+      groups:
+        - name: vm
+          interval: 5m
+          rules:
+            - record: x
+              expr: 'rate(foo{a="1" or b="2"})'
+    expect: []

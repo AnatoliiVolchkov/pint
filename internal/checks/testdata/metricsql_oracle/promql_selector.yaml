@@ -1,0 +1,84 @@
+check: promql/selector
+cases:
+  - name: selector without required label
+    kind: positive
+    settings:
+      label: job
+    rules: |
+      - record: x
+        expr: 'sum(rate(foo[5m]))'
+    expect:
+      - rule: x
+        reporter: promql/selector
+        severity: warning
+        summary: required matcher missing
+        lines: "2"
+        diagnostics:
+          - message: Vector selectors inside the `rate()` function must specify `job` label. Please add a `{job="..."} matcher.
+            fragment: foo
+            start: 9
+            end: 12
+            line: 2
+  - name: one or filter branch without required label
+    kind: positive
+    settings:
+      label: job
+    rules: |
+      - record: x
+        expr: 'rate(foo{job="a" or instance="b"}[5m])'
+    expect:
+      - rule: x
+        reporter: promql/selector
+        severity: warning
+        summary: required matcher missing
+        lines: "2"
+        diagnostics:
+          - message: Vector selectors inside the `rate()` function must specify `job` label. Please add a `{job="..."} matcher.
+            fragment: foo{job="a" or instance="b"}
+            start: 5
+            end: 33
+            line: 2
+  - name: every or filter branch has the label
+    kind: negative
+    settings:
+      label: job
+    rules: |
+      - record: x
+        expr: 'rate(foo{job="a" or job="b"}[5m])'
+    expect: []
+  - name: label coming from a WITH template filter
+    kind: negative
+    settings:
+      label: job
+    rules: |
+      - record: x
+        expr: 'WITH (f = {job="a"}) rate(foo{f}[5m])'
+    expect: []
+  - name: selector outside of a function call
+    kind: boundary
+    comment: Only selectors inside calls matching the call regexp are checked.
+    settings:
+      label: job
+    rules: |
+      - record: x
+        expr: 'foo{instance="b"}'
+    expect: []
+  - name: repeated selectors, only the second lacks the label
+    kind: positive
+    settings:
+      label: job
+    rules: |
+      - record: x
+        expr: 'rate(foo{job="a"}[5m]) / rate(foo[5m])'
+    expect:
+      - rule: x
+        reporter: promql/selector
+        severity: warning
+        summary: required matcher missing
+        lines: "2"
+        diagnostics:
+          - message: Vector selectors inside the `rate()` function must specify `job` label. Please add a `{job="..."} matcher.
+            fragment: foo
+            start: 30
+            end: 33
+            line: 2

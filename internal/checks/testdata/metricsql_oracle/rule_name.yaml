@@ -1,0 +1,29 @@
+check: rule/name
+cases:
+  - name: name not matching the pattern
+    kind: positive
+    settings:
+      re: ^[a-z_:]+$
+    rules: |
+      - record: Job:Foo
+        expr: 'sum(rate(foo{a="1" or b="2"})) by (job)'
+    expect:
+      - rule: Job:Foo
+        reporter: rule/name
+        severity: bug
+        summary: name not allowed
+        lines: "1"
+        diagnostics:
+          - message: recording rule name must match `^^[a-z_:]+$$`.
+            fragment: Job:Foo
+            start: 0
+            end: 7
+            line: 1
+  - name: name matching the pattern
+    kind: negative
+    settings:
+      re: ^[a-z_:]+$
+    rules: |
+      - record: job:foo:rate
+        expr: 'sum(rate(foo{a="1" or b="2"})) by (job)'
+    expect: []

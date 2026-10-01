@@ -1,0 +1,28 @@
+check: promql/counter
+cases:
+  - name: raw counter value without metadata
+    kind: negative
+    comment: Using a counter without rate() is a real problem, but detecting counters needs metric metadata which VictoriaMetrics doesn't serve, so it's never reported against it. Mocked metadata covers the positive path in metricsql_test.go.
+    rules: |
+      - alert: Errors
+        expr: 'counter_errors_total > 10'
+    data:
+      step: 15s
+      series:
+        - metric: counter_errors_total{job="a"}
+          values: 0+5x40
+    vm:
+      - query: counter_errors_total > 10
+        result: '{__name__="counter_errors_total", job="a"} 195'
+    expect: []
+  - name: counter used with rate
+    kind: negative
+    rules: |
+      - alert: Errors
+        expr: 'rate(counter_rate_total[5m]) > 1'
+    data:
+      step: 15s
+      series:
+        - metric: counter_rate_total{job="a"}
+          values: 0+30x40
+    expect: []

@@ -1,0 +1,110 @@
+check: promql/range_query
+cases:
+  - name: range longer than retention
+    kind: positive
+    comment: The test deployments keep two months (62 days) of data.
+    rules: |
+      - record: x
+        expr: 'rate(rq_long_total[90d])'
+    data:
+      step: 1m
+      series:
+        - metric: rq_long_total{job="a"}
+          values: 0+60x30
+    expect:
+      - rule: x
+        reporter: promql/range_query
+        severity: warning
+        summary: query beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`rq_long_total[90d]` selector is trying to query Prometheus for 90d worth of metrics, but `vm` Prometheus server at $URI is configured to only keep 62d of metrics history.'
+            fragment: rq_long_total[90d]
+            start: 5
+            end: 23
+            line: 2
+    expect_cluster:
+      - rule: x
+        reporter: promql/range_query
+        severity: warning
+        summary: query beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`rq_long_total[90d]` selector is trying to query Prometheus for 90d worth of metrics, but `vm` Prometheus server at $URI is configured to only keep 31d of metrics history.'
+            fragment: rq_long_total[90d]
+            start: 5
+            end: 23
+            line: 2
+  - name: range within retention
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'rate(rq_ok_total[30d])'
+    data:
+      step: 1m
+      series:
+        - metric: rq_ok_total{job="a"}
+          values: 0+60x30
+    vm:
+      - query: count(rate(rq_ok_total[30d]))
+        result: '{} 1'
+    expect: []
+  - name: range equal to retention
+    kind: boundary
+    rules: |
+      - record: x
+        expr: 'rate(rq_equal_total[62d])'
+    data:
+      step: 1m
+      series:
+        - metric: rq_equal_total{job="a"}
+          values: 0+60x30
+    expect: []
+    expect_cluster:
+      - rule: x
+        reporter: promql/range_query
+        severity: warning
+        summary: query beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`rq_equal_total[62d]` selector is trying to query Prometheus for 62d worth of metrics, but `vm` Prometheus server at $URI is configured to only keep 31d of metrics history.'
+            fragment: rq_equal_total[62d]
+            start: 5
+            end: 24
+            line: 2
+  - name: range longer than configured limit
+    kind: positive
+    settings:
+      limit: 1h
+    rules: |
+      - record: x
+        expr: 'max_over_time(rq_limit[2h])'
+    data:
+      step: 1m
+      series:
+        - metric: rq_limit{job="a"}
+          values: 1x30
+    expect:
+      - rule: x
+        reporter: promql/range_query
+        severity: warning
+        summary: query beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`rq_limit[2h]` selector is trying to query Prometheus for 2h worth of metrics, but 1h is the maximum allowed range query.'
+            fragment: rq_limit[2h]
+            start: 14
+            end: 26
+            line: 2
+  - name: subquery range longer than retention
+    kind: boundary
+    comment: Not reported in PromQL or MetricsQL mode, upstream pint only inspects range selectors and not subquery ranges.
+    rules: |
+      - record: x
+        expr: 'max_over_time(rate(rq_subquery_total[5m])[90d:1h])'
+    data:
+      step: 1m
+      series:
+        - metric: rq_subquery_total{job="a"}
+          values: 0+60x30
+    expect: []

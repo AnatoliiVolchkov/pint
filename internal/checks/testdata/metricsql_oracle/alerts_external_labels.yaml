@@ -1,0 +1,67 @@
+check: alerts/external_labels
+cases:
+  - name: external label not configured
+    kind: positive
+    rules: |
+      - alert: Down
+        expr: 'el_up{job="a" or job="b"} == 0'
+        annotations:
+          summary: 'down in {{ $externalLabels.cluster }}'
+    data:
+      step: 15s
+      series:
+        - metric: el_up{job="a"}
+          values: 1x20
+    expect:
+      - rule: Down
+        reporter: alerts/external_labels
+        severity: bug
+        summary: invalid label
+        lines: "4"
+        diagnostics:
+          - message: The template is using `cluster` external label but `vm` Prometheus server at $URI doesn't have this label configured in global:external_labels.
+            fragment: down in {{ $externalLabels.cluster }}
+            start: 0
+            end: 37
+            line: 4
+  - name: external label configured
+    kind: negative
+    settings:
+      externalLabels: cluster=demo
+    rules: |
+      - alert: Down
+        expr: 'el_ok_up{job="a" or job="b"} == 0'
+        annotations:
+          summary: 'down in {{ $externalLabels.cluster }}'
+    data:
+      step: 15s
+      series:
+        - metric: el_ok_up{job="a"}
+          values: 1x20
+    expect: []
+  - name: other external label configured
+    kind: positive
+    settings:
+      externalLabels: region=eu
+    rules: |
+      - alert: Down
+        expr: 'el_other_up == 0'
+        labels:
+          cluster: '{{ $externalLabels.cluster }}'
+    data:
+      step: 15s
+      series:
+        - metric: el_other_up{job="a"}
+          values: 1x20
+    expect:
+      - rule: Down
+        reporter: alerts/external_labels
+        severity: bug
+        summary: invalid label
+        lines: "4"
+        diagnostics:
+          - message: The template is using `cluster` external label but `vm` Prometheus server at $URI doesn't have this label configured in global:external_labels.
+            fragment: '{{ $externalLabels.cluster }}'
+            start: 0
+            end: 29
+            line: 4

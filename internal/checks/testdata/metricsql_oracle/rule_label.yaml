@@ -1,0 +1,33 @@
+check: rule/label
+cases:
+  - name: missing required label
+    kind: positive
+    settings:
+      key: severity
+      required: "true"
+    rules: |
+      - alert: Down
+        expr: 'up{job="a" or job="b"} == 0'
+    expect:
+      - rule: Down
+        reporter: rule/label
+        severity: bug
+        summary: required label not set
+        lines: 1-2
+        diagnostics:
+          - message: '`severity` label is required.'
+            fragment: up{
+            start: 0
+            end: 3
+            line: 2
+  - name: required label present
+    kind: negative
+    settings:
+      key: severity
+      required: "true"
+    rules: |
+      - alert: Down
+        expr: 'up{job="a" or job="b"} == 0'
+        labels:
+          severity: page
+    expect: []

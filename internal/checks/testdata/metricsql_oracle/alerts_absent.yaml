@@ -1,0 +1,97 @@
+check: alerts/absent
+cases:
+  - name: absent without for
+    kind: positive
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - alert: Missing
+        expr: 'absent(absent_up{job="a"})'
+    data:
+      step: 1m
+      series:
+        - metric: absent_up{job="a"}
+          values: 1x30
+    vm:
+      - query: absent(absent_up{job="a"})
+        result: empty
+    expect:
+      - rule: Missing
+        reporter: alerts/absent
+        severity: warning
+        summary: absent() based alert without for
+        lines: "2"
+        diagnostics:
+          - message: Using `absent()` might cause false positive alerts when Prometheus restarts.
+            fragment: absent(absent_up{job="a"})
+            start: 0
+            end: 26
+            line: 2
+  - name: absent with long enough for
+    kind: negative
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - alert: Missing
+        expr: 'absent(absent_for_up{job="a"})'
+        for: 5m
+    data:
+      step: 1m
+      series:
+        - metric: absent_for_up{job="a"}
+          values: 1x30
+    expect: []
+  - name: absent with for shorter than two scrape intervals
+    kind: positive
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - alert: Missing
+        expr: 'absent(absent_short_up{job="a"})'
+        for: 1m
+    data:
+      step: 1m
+      series:
+        - metric: absent_short_up{job="a"}
+          values: 1x30
+    expect:
+      - rule: Missing
+        reporter: alerts/absent
+        severity: warning
+        summary: absent() based alert with insufficient for
+        lines: "2"
+        diagnostics:
+          - message: Using `absent()` might cause false positive alerts when Prometheus restarts.
+            fragment: absent(absent_short_up{job="a"})
+            start: 0
+            end: 32
+            line: 2
+          - message: Use a value that's at least twice Prometheus scrape interval (`1m`).
+            fragment: 1m
+            start: 0
+            end: 2
+            line: 3
+  - name: absent inside a WITH template
+    kind: positive
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - alert: Missing
+        expr: 'WITH (missing(m) = absent(m)) missing(absent_with_up{job="a"})'
+    data:
+      step: 1m
+      series:
+        - metric: absent_with_up{job="a"}
+          values: 1x30
+    expect:
+      - rule: Missing
+        reporter: alerts/absent
+        severity: warning
+        summary: absent() based alert without for
+        lines: "2"
+        diagnostics:
+          - message: Using `absent()` might cause false positive alerts when Prometheus restarts.
+            fragment: missing(absent_with_up{job="a"})
+            start: 30
+            end: 62
+            line: 2

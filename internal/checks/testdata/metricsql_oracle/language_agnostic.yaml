@@ -1,0 +1,33 @@
+check: alerts/annotation
+cases:
+  - name: missing required annotation on a MetricsQL alert
+    kind: positive
+    settings:
+      key: summary
+      required: "true"
+    rules: |
+      - alert: Down
+        expr: 'WITH (f = {job="a" or job="b"}) up{f} == 0'
+    expect:
+      - rule: Down
+        reporter: alerts/annotation
+        severity: bug
+        summary: required annotation not set
+        lines: 1-2
+        diagnostics:
+          - message: '`summary` annotation is required.'
+            fragment: WIT
+            start: 0
+            end: 3
+            line: 2
+  - name: required annotation present
+    kind: negative
+    settings:
+      key: summary
+      required: "true"
+    rules: |
+      - alert: Down
+        expr: 'WITH (f = {job="a" or job="b"}) up{f} == 0'
+        annotations:
+          summary: down
+    expect: []

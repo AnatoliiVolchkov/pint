@@ -1,0 +1,54 @@
+check: alerts/comparison
+cases:
+  - name: alert without condition
+    kind: positive
+    rules: |
+      - alert: Always
+        expr: 'rate(errors_total[5m])'
+    expect:
+      - rule: Always
+        reporter: alerts/comparison
+        severity: warning
+        summary: always firing alert
+        lines: "2"
+        diagnostics:
+          - message: This query doesn't have any condition and so this alert will always fire if it matches anything.
+            fragment: errors_total[5m]
+            start: 5
+            end: 21
+            line: 2
+  - name: alert with bool comparison
+    kind: positive
+    rules: |
+      - alert: Always
+        expr: 'rate(errors_total[5m]) > bool 0'
+    expect:
+      - rule: Always
+        reporter: alerts/comparison
+        severity: warning
+        summary: always firing alert
+        lines: "2"
+        diagnostics:
+          - message: Results of this query are using the `bool` modifier, which means it will always return a result and the alert will always fire.
+            fragment: errors_total[5m]
+            start: 5
+            end: 21
+            line: 2
+  - name: alert with comparison
+    kind: negative
+    rules: |
+      - alert: Errors
+        expr: 'rate(errors_total[5m]) > 0'
+    expect: []
+  - name: comparison inside WITH template
+    kind: negative
+    rules: |
+      - alert: Errors
+        expr: 'WITH (high(x) = x > 10) high(rate(errors_total[5m]))'
+    expect: []
+  - name: MetricsQL if condition
+    kind: boundary
+    rules: |
+      - alert: Errors
+        expr: 'rate(errors_total[5m]) if rate(requests_total[5m]) > 0'
+    expect: []

@@ -1,0 +1,122 @@
+check: promql/offset
+cases:
+  - name: offset beyond retention
+    kind: positive
+    comment: The test deployments keep two months (62 days) of data.
+    rules: |
+      - record: x
+        expr: 'offset_far offset 90d'
+    data:
+      step: 1m
+      series:
+        - metric: offset_far{job="a"}
+          values: 1x30
+    vm:
+      - query: offset_far offset 90d
+        result: empty
+    expect:
+      - rule: x
+        reporter: promql/offset
+        severity: warning
+        summary: query offset beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`offset_far offset 90d` selector is using a 90d offset, but `vm` Prometheus server at $URI is configured to only keep 62d of metrics history.'
+            fragment: offset 90d
+            start: 11
+            end: 21
+            line: 2
+    expect_cluster:
+      - rule: x
+        reporter: promql/offset
+        severity: warning
+        summary: query offset beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`offset_far offset 90d` selector is using a 90d offset, but `vm` Prometheus server at $URI is configured to only keep 31d of metrics history.'
+            fragment: offset 90d
+            start: 11
+            end: 21
+            line: 2
+  - name: offset within retention
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'offset_near offset 10m'
+    data:
+      step: 1m
+      series:
+        - metric: offset_near{job="a"}
+          values: 1x30
+    vm:
+      - query: offset_near offset 10m
+        result: '{__name__="offset_near", job="a"} 1'
+    expect: []
+  - name: offset beyond retention inside a rollup
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'sum(rollup_rate(offset_rollup_total[5m] offset 100d))'
+    data:
+      step: 1m
+      series:
+        - metric: offset_rollup_total{job="a"}
+          values: 0+60x30
+    expect:
+      - rule: x
+        reporter: promql/offset
+        severity: warning
+        summary: query offset beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`offset_rollup_total offset 100d` selector is using a 100d offset, but `vm` Prometheus server at $URI is configured to only keep 62d of metrics history.'
+            fragment: offset 100d
+            start: 40
+            end: 51
+            line: 2
+    expect_cluster:
+      - rule: x
+        reporter: promql/offset
+        severity: warning
+        summary: query offset beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`offset_rollup_total offset 100d` selector is using a 100d offset, but `vm` Prometheus server at $URI is configured to only keep 31d of metrics history.'
+            fragment: offset 100d
+            start: 40
+            end: 51
+            line: 2
+  - name: repeated selectors, only the right one is too far
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'offset_repeat offset 1h - offset_repeat offset 90d'
+    data:
+      step: 1m
+      series:
+        - metric: offset_repeat{job="a"}
+          values: 1x30
+    expect:
+      - rule: x
+        reporter: promql/offset
+        severity: warning
+        summary: query offset beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`offset_repeat offset 90d` selector is using a 90d offset, but `vm` Prometheus server at $URI is configured to only keep 62d of metrics history.'
+            fragment: offset 90d
+            start: 40
+            end: 50
+            line: 2
+    expect_cluster:
+      - rule: x
+        reporter: promql/offset
+        severity: warning
+        summary: query offset beyond configured retention
+        lines: "2"
+        diagnostics:
+          - message: '`offset_repeat offset 90d` selector is using a 90d offset, but `vm` Prometheus server at $URI is configured to only keep 31d of metrics history.'
+            fragment: offset 90d
+            start: 40
+            end: 50
+            line: 2

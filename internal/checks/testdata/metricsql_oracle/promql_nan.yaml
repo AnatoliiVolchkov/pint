@@ -1,0 +1,102 @@
+check: promql/nan
+cases:
+  - name: division inside sum
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'sum(foo / bar)'
+    expect:
+      - rule: x
+        reporter: promql/nan
+        severity: warning
+        summary: unsafe division in aggregation
+        lines: "2"
+        diagnostics:
+          - message: This aggregation can return Inf if any series for `bar` evaluates to zero.
+            fragment: bar
+            start: 10
+            end: 13
+            line: 2
+  - name: division inside sum returns Inf
+    kind: positive
+    comment: VictoriaMetrics confirms that a single zero divisor turns the whole sum into +Inf.
+    rules: |
+      - record: x
+        expr: 'sum(nan_div_num / nan_div_den)'
+    data:
+      step: 15s
+      series:
+        - metric: nan_div_num{i="1"}
+          values: 10x20
+        - metric: nan_div_num{i="2"}
+          values: 10x20
+        - metric: nan_div_den{i="1"}
+          values: "0x20"
+        - metric: nan_div_den{i="2"}
+          values: 5x20
+    vm:
+      - query: sum(nan_div_num / nan_div_den)
+        result: '{} +Inf'
+    expect:
+      - rule: x
+        reporter: promql/nan
+        severity: warning
+        summary: unsafe division in aggregation
+        lines: "2"
+        diagnostics:
+          - message: This aggregation can return Inf if any series for `nan_div_den` evaluates to zero.
+            fragment: nan_div_den
+            start: 18
+            end: 29
+            line: 2
+  - name: modulo inside sum is safe in MetricsQL
+    kind: negative
+    comment: Modulo by zero returns NaN and VictoriaMetrics aggregations skip NaN values, so the sum stays finite. In PromQL mode modulo is reported.
+    rules: |
+      - record: x
+        expr: 'sum(nan_mod_num % nan_mod_den)'
+    data:
+      step: 15s
+      series:
+        - metric: nan_mod_num{i="1"}
+          values: 10x20
+        - metric: nan_mod_num{i="2"}
+          values: 10x20
+        - metric: nan_mod_den{i="1"}
+          values: "0x20"
+        - metric: nan_mod_den{i="2"}
+          values: 3x20
+    vm:
+      - query: sum(nan_mod_num % nan_mod_den)
+        result: '{} 1'
+    expect: []
+  - name: division outside aggregation
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'sum(foo) / sum(bar)'
+    expect: []
+  - name: division guarded by MetricsQL default
+    kind: boundary
+    comment: default only fills missing series, a zero divisor still produces +Inf.
+    rules: |
+      - record: x
+        expr: 'sum((foo / bar) default 0)'
+    expect:
+      - rule: x
+        reporter: promql/nan
+        severity: warning
+        summary: unsafe division in aggregation
+        lines: "2"
+        diagnostics:
+          - message: This aggregation can return Inf if any series for `bar` evaluates to zero.
+            fragment: bar
+            start: 11
+            end: 14
+            line: 2
+  - name: division by constant
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'sum(foo / 60)'
+    expect: []

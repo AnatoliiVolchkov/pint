@@ -1,0 +1,46 @@
+check: rule/duplicate
+cases:
+  - name: duplicated recording rule
+    kind: positive
+    rules: |
+      - record: foo
+        expr: rollup_rate(foo[5m])
+    others:
+      - path: other.yaml
+        rules: |
+          - record: foo
+            expr: rollup_rate(foo[5m])
+    expect:
+      - rule: foo
+        reporter: rule/duplicate
+        severity: bug
+        summary: duplicated recording rule
+        lines: 1-2
+        diagnostics:
+          - message: Duplicated rule, identical rule found at other.yaml:1.
+            fragment: foo
+            start: 0
+            end: 3
+            line: 1
+  - name: different expression
+    kind: negative
+    rules: |
+      - record: foo
+        expr: rollup_rate(foo[5m])
+    others:
+      - path: other.yaml
+        rules: |
+          - record: foo
+            expr: rollup_rate(foo[10m])
+    expect: []
+  - name: same name but or filters never overlap
+    kind: boundary
+    rules: |
+      - record: foo
+        expr: 'foo{a="1" or b="2"}'
+    others:
+      - path: other.yaml
+        rules: |
+          - record: foo
+            expr: foo
+    expect: []

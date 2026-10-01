@@ -1,0 +1,89 @@
+check: promql/rate
+cases:
+  - name: window shorter than two scrape intervals
+    kind: positive
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - record: x
+        expr: 'rate(rate_short_total[1m])'
+    data:
+      step: 1m
+      series:
+        - metric: rate_short_total{job="a"}
+          values: 0+60x30
+    vm:
+      - query: rate(rate_short_total[5m])
+        result: '{job="a"} 1'
+    expect:
+      - rule: x
+        reporter: promql/rate
+        severity: bug
+        summary: duration too small
+        lines: "2"
+        diagnostics:
+          - message: Duration for `rate()` must be at least 2 x scrape_interval, `vm` Prometheus server at $URI is using `1m` scrape_interval.
+            fragment: rate(rate_short_total[1m])
+            start: 0
+            end: 26
+            line: 2
+  - name: window of five scrape intervals
+    kind: negative
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - record: x
+        expr: 'rate(rate_ok_total[5m])'
+    data:
+      step: 1m
+      series:
+        - metric: rate_ok_total{job="a"}
+          values: 0+60x30
+    vm:
+      - query: rate(rate_ok_total[5m])
+        result: '{job="a"} 1'
+    expect: []
+  - name: window exactly two scrape intervals
+    kind: boundary
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - record: x
+        expr: 'rate(rate_two_total[2m])'
+    data:
+      step: 1m
+      series:
+        - metric: rate_two_total{job="a"}
+          values: 0+60x30
+    expect: []
+  - name: implicit MetricsQL window
+    kind: negative
+    comment: MetricsQL picks the window from the step and scrape interval, there's nothing to report.
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - record: x
+        expr: 'rate(rate_implicit_total)'
+    data:
+      step: 1m
+      series:
+        - metric: rate_implicit_total{job="a"}
+          values: 0+60x30
+    expect: []
+  - name: rate on a gauge without metadata
+    kind: negative
+    comment: Detecting rate() on gauges needs metric metadata which VictoriaMetrics doesn't serve, so it's never reported against VictoriaMetrics.
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - record: x
+        expr: 'rate(rate_gauge[5m])'
+    data:
+      step: 1m
+      series:
+        - metric: rate_gauge{job="a"}
+          values: 5x10 3x10 7x10
+    vm:
+      - query: count(rate_gauge)
+        result: '{} 1'
+    expect: []

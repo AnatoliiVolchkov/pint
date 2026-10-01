@@ -1,0 +1,105 @@
+check: alerts/count
+cases:
+  - name: alert fired in the lookback window
+    kind: positive
+    settings:
+      lookback: 30m
+      resolve: 5m
+      step: 1m
+    rules: |
+      - alert: High
+        expr: 'count_errors > 5'
+    data:
+      step: 1m
+      series:
+        - metric: count_errors{job="a"}
+          values: 1x10 10x5 1x16
+        - metric: count_errors{job="b"}
+          values: 1x31
+    vm:
+      - query: max_over_time(count_errors[30m]) > 5
+        result: '{__name__="count_errors", job="a"} 10'
+    expect:
+      - rule: High
+        reporter: alerts/count
+        severity: information
+        summary: alert count estimate
+        lines: "2"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI would trigger 1 alert(s) in the last 30m.'
+            fragment: count_errors > 5
+            start: 0
+            end: 16
+            line: 2
+  - name: alert with for that is never satisfied
+    kind: boundary
+    comment: The condition is true for 5 minutes but the alert needs 10.
+    settings:
+      lookback: 30m
+      resolve: 5m
+      step: 1m
+    rules: |
+      - alert: High
+        expr: 'count_for_errors > 5'
+        for: 10m
+    data:
+      step: 1m
+      series:
+        - metric: count_for_errors{job="a"}
+          values: 1x10 10x5 1x16
+    expect:
+      - rule: High
+        reporter: alerts/count
+        severity: information
+        summary: alert count estimate
+        lines: "2"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI would trigger 0 alert(s) in the last 30m.'
+            fragment: count_for_errors > 5
+            start: 0
+            end: 20
+            line: 2
+  - name: alert never firing
+    kind: boundary
+    settings:
+      lookback: 30m
+      resolve: 5m
+      step: 1m
+    rules: |
+      - alert: High
+        expr: 'count_quiet > 5'
+    data:
+      step: 1m
+      series:
+        - metric: count_quiet{job="a"}
+          values: 1x31
+    vm:
+      - query: max_over_time(count_quiet[30m]) > 5
+        result: empty
+    expect:
+      - rule: High
+        reporter: alerts/count
+        severity: information
+        summary: alert count estimate
+        lines: "2"
+        diagnostics:
+          - message: '`vm` Prometheus server at $URI would trigger 0 alert(s) in the last 30m.'
+            fragment: count_quiet > 5
+            start: 0
+            end: 15
+            line: 2
+  - name: recording rules are not counted
+    kind: negative
+    settings:
+      lookback: 30m
+      resolve: 5m
+      step: 1m
+    rules: |
+      - record: x
+        expr: 'count_record > 5'
+    data:
+      step: 1m
+      series:
+        - metric: count_record{job="a"}
+          values: 10x31
+    expect: []

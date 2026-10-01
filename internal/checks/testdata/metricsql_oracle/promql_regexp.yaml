@@ -1,0 +1,82 @@
+check: promql/regexp
+cases:
+  - name: regexp without special characters
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'foo{job=~"bar"}'
+    expect:
+      - rule: x
+        reporter: promql/regexp
+        severity: warning
+        summary: redundant regexp
+        lines: "2"
+        diagnostics:
+          - message: Unnecessary regexp match on static string `job=~"bar"`, use `job="bar"` instead.
+            fragment: job=~"bar"
+            start: 4
+            end: 14
+            line: 2
+  - name: anchored regexp
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'foo{job=~"^bar$"}'
+    expect:
+      - rule: x
+        reporter: promql/regexp
+        severity: warning
+        summary: redundant regexp anchors
+        lines: "2"
+        diagnostics:
+          - message: Prometheus regexp matchers are automatically fully anchored so a match for `job=~"^bar$"` will result in `job=~"^^bar$$"`, remove regexp anchors `^` and/or `$`.
+            fragment: job=~"^bar$"
+            start: 4
+            end: 16
+            line: 2
+  - name: regexp inside or filter
+    kind: positive
+    rules: |
+      - record: x
+        expr: 'foo{a="1" or job=~"bar"}'
+    expect:
+      - rule: x
+        reporter: promql/regexp
+        severity: warning
+        summary: redundant regexp
+        lines: "2"
+        diagnostics:
+          - message: Unnecessary regexp match on static string `job=~"bar"`, use `job="bar"` instead.
+            fragment: job=~"bar"
+            start: 13
+            end: 23
+            line: 2
+  - name: real regexp
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'foo{job=~"bar|baz"}'
+    expect: []
+  - name: or filters instead of regexp
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'foo{job="bar" or job="baz"}'
+    expect: []
+  - name: repeated selectors, only the right one is wrong
+    kind: boundary
+    rules: |
+      - record: x
+        expr: 'foo{job=~"a|b"} + foo{job=~"a"}'
+    expect:
+      - rule: x
+        reporter: promql/regexp
+        severity: warning
+        summary: redundant regexp
+        lines: "2"
+        diagnostics:
+          - message: Unnecessary regexp match on static string `job=~"a"`, use `job="a"` instead.
+            fragment: job=~"a"
+            start: 22
+            end: 30
+            line: 2

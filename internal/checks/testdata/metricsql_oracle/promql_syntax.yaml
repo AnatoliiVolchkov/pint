@@ -1,0 +1,122 @@
+check: promql/syntax
+cases:
+  - name: aggregation without a series argument
+    kind: negative
+    comment: Valid MetricsQL that returns nothing, upstream metricsql accepts it.
+    rules: |
+      - record: x
+        expr: 'sum() by (job) + topk(3)'
+    expect: []
+  - name: unbalanced parenthesis
+    kind: positive
+    rules: |
+      - record: broken
+        expr: 'sum(foo) by ('
+    expect:
+      - rule: broken
+        reporter: promql/syntax
+        severity: fatal
+        summary: MetricsQL syntax error
+        lines: "2"
+        diagnostics:
+          - message: 'ModifierExpr: identList: unexpected token ""; want "ident"; unparsed data: ""'
+            fragment: ""
+            start: 13
+            end: 13
+            line: 2
+  - name: unknown function
+    kind: positive
+    rules: |
+      - record: broken
+        expr: 'sum(rate_foo(bar[5m]))'
+    expect:
+      - rule: broken
+        reporter: promql/syntax
+        severity: fatal
+        summary: MetricsQL syntax error
+        lines: "2"
+        diagnostics:
+          - message: unsupported function "rate_foo"
+            fragment: rate_foo(bar[5m])
+            start: 4
+            end: 21
+            line: 2
+  - name: invalid regexp inside or filter
+    kind: positive
+    rules: |
+      - record: broken
+        expr: 'foo{a="b" or c=~"("}'
+    expect:
+      - rule: broken
+        reporter: promql/syntax
+        severity: fatal
+        summary: MetricsQL syntax error
+        lines: "2"
+        diagnostics:
+          - message: 'cannot expand WITH expressions: invalid regexp in c="(": error parsing regexp: missing closing ): `^(?:()$`'
+            fragment: c=~"("
+            start: 13
+            end: 19
+            line: 2
+  - name: unknown WITH template argument
+    kind: positive
+    rules: |
+      - record: broken
+        expr: 'WITH (f(x) = rate(x[5m])) f(foo, bar)'
+    expect:
+      - rule: broken
+        reporter: promql/syntax
+        severity: fatal
+        summary: MetricsQL syntax error
+        lines: "2"
+        diagnostics:
+          - message: 'cannot expand WITH expressions: invalid number of args for "f"; got 2; want 1'
+            fragment: f(foo, bar)
+            start: 26
+            end: 37
+            line: 2
+  - name: error after multibyte text
+    kind: positive
+    rules: |
+      - record: broken
+        expr: 'foo{a="日本"} + bar)'
+    expect:
+      - rule: broken
+        reporter: promql/syntax
+        severity: fatal
+        summary: MetricsQL syntax error
+        lines: "2"
+        diagnostics:
+          - message: 'unparsed data left: ")"'
+            fragment: )
+            start: 21
+            end: 22
+            line: 2
+  - name: WITH template with or filters
+    kind: negative
+    rules: |
+      - record: ok
+        expr: 'WITH (f(x) = rate(x[5m])) sum(f(foo{job="a" or job="b"})) by (job)'
+    expect: []
+  - name: rollup functions and keep_metric_names
+    kind: negative
+    rules: |
+      - record: ok
+        expr: 'rollup_rate(foo[5m]) keep_metric_names'
+    expect: []
+  - name: implicit lookbehind window
+    kind: boundary
+    comment: Valid MetricsQL, rate() without a window is invalid PromQL.
+    rules: |
+      - record: ok
+        expr: 'rate(foo)'
+    expect: []
+  - name: multiline query with comments
+    kind: negative
+    rules: |
+      - record: ok
+        expr: |
+          sum(
+            rate(foo[5m]) # per-second rate
+          ) by (job)
+    expect: []
