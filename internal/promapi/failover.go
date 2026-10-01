@@ -140,6 +140,14 @@ func (fg *FailoverGroup) UptimeMetric() string {
 	return fg.uptimeMetric
 }
 
+// Backend returns the type of servers in this group, all servers use the same backend.
+func (fg *FailoverGroup) Backend() string {
+	if len(fg.servers) == 0 {
+		return BackendPrometheus
+	}
+	return fg.servers[0].Backend()
+}
+
 func (fg *FailoverGroup) ServerCount() int {
 	return len(fg.servers)
 }

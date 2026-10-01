@@ -94,6 +94,10 @@ func (q configQuery) CacheTTL() time.Duration {
 }
 
 func (prom *Prometheus) Config(ctx context.Context, cacheTTL time.Duration) (*ConfigResult, error) {
+	if prom.vm != nil {
+		return &ConfigResult{URI: prom.publicURI, Config: prom.vm.config()}, nil
+	}
+
 	slog.LogAttrs(ctx, slog.LevelDebug, "Scheduling Prometheus configuration query", slog.String("uri", prom.safeURI))
 
 	prom.locker.lock(APIPathConfig)

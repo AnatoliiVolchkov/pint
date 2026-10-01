@@ -43,7 +43,13 @@ func (q flagsQuery) Run() queryResult {
 	var qr queryResult
 
 	args := url.Values{}
-	resp, err := q.prom.doRequest(ctx, http.MethodGet, q.Endpoint(), args)
+	var resp *http.Response
+	var err error
+	if q.prom.vm != nil {
+		resp, err = q.prom.doRequestURI(ctx, http.MethodGet, q.prom.vm.rootURI, vmPathFlags, args)
+	} else {
+		resp, err = q.prom.doRequest(ctx, http.MethodGet, q.Endpoint(), args)
+	}
 	if err != nil {
 		qr.err = fmt.Errorf("failed to query Prometheus flags: %w", err)
 		return qr
@@ -55,7 +61,11 @@ func (q flagsQuery) Run() queryResult {
 		return qr
 	}
 
-	flags, err := parseFlags(resp.Body)
+	parse := parseFlags
+	if q.prom.vm != nil {
+		parse = parseVictoriaMetricsFlags
+	}
+	flags, err := parse(resp.Body)
 	qr.value, qr.err = flags, err
 	return qr
 }

@@ -1,12 +1,15 @@
 package promapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -39,6 +42,10 @@ func IsQueryTooExpensive(err error) bool {
 			return true
 		}
 		if strings.HasSuffix(e1.Err.Error(), "expanding series: context deadline exceeded") {
+			return true
+		}
+		// VictoriaMetrics query limits.
+		if strings.Contains(e1.Err.Error(), "-search.maxSamplesPerQuery") || strings.Contains(e1.Err.Error(), "-search.maxUniqueTimeseries") {
 			return true
 		}
 	}
@@ -82,6 +89,28 @@ func decodeErrorType(s string) v1.ErrorType {
 	case string(v1.ErrClient):
 		return v1.ErrClient
 	default:
+		return decodeHTTPErrorType(s)
+	}
+}
+
+// decodeHTTPErrorType handles VictoriaMetrics responses which use HTTP status codes as errorType.
+func decodeHTTPErrorType(s string) v1.ErrorType {
+	code, err := strconv.Atoi(s)
+	if err != nil {
+		return ErrUnknown
+	}
+	switch {
+	case code == http.StatusBadRequest:
+		return v1.ErrBadData
+	case code == http.StatusUnprocessableEntity:
+		return v1.ErrExec
+	case code == http.StatusGatewayTimeout:
+		return v1.ErrTimeout
+	case code/100 == 4:
+		return v1.ErrClient
+	case code/100 == 5:
+		return v1.ErrServer
+	default:
 		return ErrUnknown
 	}
 }
@@ -111,6 +140,8 @@ func decodeError(err error) string {
 	return err.Error()
 }
 
+const maxErrorBodySize = 1 << 20
+
 type PrometheusResponse struct {
 	Status    string `json:"status"`
 	Error     string `json:"error"`
@@ -133,6 +164,8 @@ func tryDecodingAPIError(resp *http.Response) error {
 				apiPath = APIPathMetadata
 			case strings.HasSuffix(resp.Request.URL.Path, APIPathBuildInfo):
 				apiPath = APIPathBuildInfo
+			case strings.HasSuffix(resp.Request.URL.Path, vmPathFlags):
+				apiPath = vmPathFlags
 			}
 			msg = "`" + apiPath + "` API endpoint"
 		}
@@ -145,10 +178,24 @@ func tryDecodingAPIError(resp *http.Response) error {
 		}
 	}
 
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
+
 	var data PrometheusResponse
-	if err := json.UnmarshalRead(resp.Body, &data); err != nil {
+	if err := json.Unmarshal(body, &data); err != nil {
 		switch resp.StatusCode / 100 {
 		case 4:
+			// VictoriaMetrics returns plain text errors for unknown API paths.
+			if bytes.Contains(body, []byte("unsupported path requested")) {
+				msg := "some API endpoints"
+				if resp.Request != nil {
+					msg = "`" + resp.Request.URL.Path + "` API endpoint"
+				}
+				return APIError{
+					Status:    "",
+					ErrorType: ErrAPIUnsupported,
+					Err:       errors.New("this server doesn't seem to support " + msg),
+				}
+			}
 			return APIError{
 				Status:    "error",
 				ErrorType: v1.ErrClient,

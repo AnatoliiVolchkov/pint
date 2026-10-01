@@ -106,6 +106,7 @@ type PrometheusQuerySample struct {
 }
 
 type PrometheusQueryResponse struct {
+	VMStats *vmQueryStats `json:"stats"`
 	PrometheusResponse
 	Data struct {
 		ResultType string                  `json:"resultType"`
@@ -241,5 +242,6 @@ func parseVectorSamples(r io.Reader) (samples []Sample, _ QueryStats, err error)
 		})
 	}
 
+	data.VMStats.apply(&data.Data.Stats)
 	return samples, data.Data.Stats, nil
 }

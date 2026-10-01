@@ -70,6 +70,8 @@ type QuerySamples struct {
 type QueryStats struct {
 	Timings QueryTimings `json:"timings"`
 	Samples QuerySamples `json:"samples"`
+	// SeriesFetched is only reported by VictoriaMetrics.
+	SeriesFetched int `json:"-"`
 }
 
 func sanitizeURI(s string) string {
@@ -128,8 +130,10 @@ type Prometheus struct {
 	cache            *queryCache
 	locker           *partitionLocker
 	apis             *unsupporedAPIs
+	vm               *victoriaMetrics // only set for VictoriaMetrics servers
 	concurrencyLimit chan struct{}
 	client           http.Client
+	backend          string
 	name             string
 	unsafeURI        string // raw prometheus URI, for queries
 	safeURI          string // prometheus URI but with auth info stripped, for logging
@@ -152,6 +156,7 @@ func NewPrometheus(name, uri, publicURI string, headers map[string]string, timeo
 	}
 
 	prom := Prometheus{ // nolint: exhaustruct_v5
+		backend:     BackendPrometheus,
 		name:        name,
 		unsafeURI:   uri,
 		safeURI:     safeURI,
@@ -170,6 +175,10 @@ func NewPrometheus(name, uri, publicURI string, headers map[string]string, timeo
 
 func (prom *Prometheus) SafeURI() string {
 	return prom.safeURI
+}
+
+func (prom *Prometheus) Backend() string {
+	return prom.backend
 }
 
 func (prom *Prometheus) runQuery(ctx context.Context, query querier) (queryResult, error) {
@@ -199,7 +208,11 @@ func (prom *Prometheus) StartWorkers() {
 }
 
 func (prom *Prometheus) doRequest(ctx context.Context, method, path string, args url.Values) (*http.Response, error) {
-	u, _ := url.Parse(prom.unsafeURI)
+	return prom.doRequestURI(ctx, method, prom.unsafeURI, path, args)
+}
+
+func (prom *Prometheus) doRequestURI(ctx context.Context, method, baseURI, path string, args url.Values) (*http.Response, error) {
+	u, _ := url.Parse(baseURI)
 	u.Path = strings.TrimSuffix(u.Path, "/")
 	// url.JoinPath only fails if passed u.String() fails to parse with url.Parse()
 	// but we already parsed it above so it can't fail here.
