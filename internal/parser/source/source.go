@@ -2,6 +2,7 @@ package source
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -897,6 +898,9 @@ func walkAggregation(expr string, n *ast.AggregateExpr) (src []*Source) {
 			case "histogram":
 				s.guaranteeLabel("This label will be added to the results by the histogram() call.", n.PosRange, "vmrange")
 			case "quantiles":
+				if len(n.Args) == 0 {
+					break
+				}
 				if sl, ok := n.Args[0].(*ast.StringLiteral); ok {
 					s.guaranteeLabel("This label will be added to the results by the quantiles() call.", n.PosRange, sl.Val)
 				}
@@ -1074,26 +1078,36 @@ If you're hoping to get instance specific labels this way and alert when some ta
 	case "label_join":
 		// One label added to the results.
 		// label_join(v instant-vector, dst_label string, separator string, src_label_1 string, src_label_2 string, ...)
+		// MetricsQL only validates arguments when executing the query, so they might
+		// be missing or not be strings.
 		s.Returns = ast.ValueTypeVector
-		s.guaranteeLabel(
-			fmt.Sprintf("This label will be added to the result by a %s() call.", n.Func.Name),
-			n.PosRange,
-			n.Args[1].(*ast.StringLiteral).Val,
-		)
+		if dst, ok := stringArg(n, 1); ok {
+			s.guaranteeLabel(
+				fmt.Sprintf("This label will be added to the result by a %s() call.", n.Func.Name),
+				n.PosRange,
+				dst,
+			)
+		}
 		for i := 3; i < len(n.Args); i++ {
-			s.UsedLabels = appendToSlice(s.UsedLabels, n.Args[i].(*ast.StringLiteral).Val)
+			if src, ok := stringArg(n, i); ok {
+				s.UsedLabels = appendToSlice(s.UsedLabels, src)
+			}
 		}
 
 	case "label_replace":
 		// One label added to the results.
 		// label_replace(v instant-vector, dst_label string, replacement string, src_label string, regex string)
 		s.Returns = ast.ValueTypeVector
-		s.guaranteeLabel(
-			fmt.Sprintf("This label will be added to the result by a %s() call.", n.Func.Name),
-			n.PosRange,
-			n.Args[1].(*ast.StringLiteral).Val,
-		)
-		s.UsedLabels = appendToSlice(s.UsedLabels, n.Args[3].(*ast.StringLiteral).Val)
+		if dst, ok := stringArg(n, 1); ok {
+			s.guaranteeLabel(
+				fmt.Sprintf("This label will be added to the result by a %s() call.", n.Func.Name),
+				n.PosRange,
+				dst,
+			)
+		}
+		if src, ok := stringArg(n, 3); ok {
+			s.UsedLabels = appendToSlice(s.UsedLabels, src)
+		}
 
 	case "pi":
 		s.Returns = ast.ValueTypeScalar
@@ -1155,10 +1169,13 @@ If you're hoping to get instance specific labels this way and alert when some ta
 		s.Returns = ast.ValueTypeVector
 		s.ReturnInfo.AlwaysReturns = true
 		s.ReturnInfo.ValuePosition = n.PosRange
-		for _, vs := range walkNode(expr, n.Args[0]) {
-			if vs.ReturnInfo.KnownReturn {
-				s.ReturnInfo.ReturnedNumber = vs.ReturnInfo.ReturnedNumber
-				s.ReturnInfo.KnownReturn = true
+		// MetricsQL accepts vector() without an argument.
+		if len(n.Args) > 0 {
+			for _, vs := range walkNode(expr, n.Args[0]) {
+				if vs.ReturnInfo.KnownReturn {
+					s.ReturnInfo.ReturnedNumber = vs.ReturnInfo.ReturnedNumber
+					s.ReturnInfo.KnownReturn = true
+				}
 			}
 		}
 		funcNamePos := FindFuncNamePosition(expr, n.PosRange, n.Func.Name)
@@ -1183,9 +1200,13 @@ func parseCall(expr string, n *ast.Call) (src []*Source) {
 
 	var vt ast.ValueType
 	for i, e := range n.Args {
-		if i >= len(n.Func.ArgTypes) {
+		switch {
+		case len(n.Func.ArgTypes) == 0:
+			// MetricsQL accepts arguments to functions that take none, e.g. time(foo).
+			vt = ast.ValueTypeNone
+		case i >= len(n.Func.ArgTypes):
 			vt = n.Func.ArgTypes[len(n.Func.ArgTypes)-1]
-		} else {
+		default:
 			vt = n.Func.ArgTypes[i]
 		}
 
@@ -1753,8 +1774,9 @@ func canJoin(ls, rs *Source, vm *ast.VectorMatching) (bool, string, ast.Position
 			}
 		}
 	default: // ls unless rs
-		for name, l := range ls.Labels {
-			if l.Kind != GuaranteedLabel {
+		// Sorted, so the same label is reported on every run.
+		for _, name := range slices.Sorted(maps.Keys(ls.Labels)) {
+			if ls.Labels[name].Kind != GuaranteedLabel {
 				continue
 			}
 			if slices.Contains(vm.MatchingLabels, name) {

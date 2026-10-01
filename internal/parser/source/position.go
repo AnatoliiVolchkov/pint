@@ -9,6 +9,11 @@ import (
 )
 
 func GetQueryFragment(expr string, pos ast.PositionRange) string {
+	// Positions of expressions expanded from MetricsQL WITH templates can overlap, never
+	// slice outside of the query.
+	if pos.Start < 0 || pos.End > ast.Pos(len(expr)) || pos.Start > pos.End {
+		return ""
+	}
 	return expr[pos.Start:pos.End]
 }
 
@@ -35,11 +40,15 @@ func isOutside(pos ast.PositionRange, outside []ast.PositionRange) bool {
 // - FirstColumn = pos.Start + 1
 // - LastColumn = pos.End.
 func FindFuncNamePosition(expr string, within ast.PositionRange, fn string) ast.PositionRange {
+	if fn == "" {
+		// MetricsQL union `(a, b)` has no function name.
+		return within
+	}
 	fragment := GetQueryFragment(expr, within)
 	lower := strings.ToLower(fragment)
 	fnLower := strings.ToLower(fn)
 	offset := 0
-	for {
+	for offset <= len(lower) {
 		// Find next case-insensitive occurrence of fn.
 		idx := strings.Index(lower[offset:], fnLower)
 		if idx < 0 {
@@ -63,6 +72,7 @@ func FindFuncNamePosition(expr string, within ast.PositionRange, fn string) ast.
 		}
 		offset = idx + 1 // Try next occurrence.
 	}
+	return within
 }
 
 // FindFuncPosition returns the position of the whole `fn(...)` call inside the
@@ -70,10 +80,13 @@ func FindFuncNamePosition(expr string, within ast.PositionRange, fn string) ast.
 // one call, outside lists ranges the match must fall within, which lets callers
 // pick the right `fn(...)` when the same keyword appears on both sides.
 func FindFuncPosition(expr string, within ast.PositionRange, fn string, outside []ast.PositionRange) ast.PositionRange {
+	if fn == "" {
+		return within
+	}
 	fragment := GetQueryFragment(expr, within)
 	lower := strings.ToLower(fragment)
 	fnLower := strings.ToLower(fn)
-	for offset := 0; ; {
+	for offset := 0; offset <= len(lower); {
 		idx := strings.Index(lower[offset:], fnLower)
 		if idx < 0 {
 			return within
@@ -113,6 +126,7 @@ func FindFuncPosition(expr string, within ast.PositionRange, fn string, outside 
 		}
 		return within
 	}
+	return within
 }
 
 // findArgumentPosition looks for name inside the expr substring selected by
@@ -128,6 +142,10 @@ func FindFuncPosition(expr string, within ast.PositionRange, fn string, outside 
 // If expr is `sum(foo) without(notify)` and within selects `without(notify)`,
 // then name="notify" returns the position of `notify` in the full expr.
 func findArgumentPosition(expr string, within ast.PositionRange, name string) ast.PositionRange {
+	if name == "" {
+		// MetricsQL accepts empty label names, e.g. label_copy(foo, "", "").
+		return within
+	}
 	fragment := GetQueryFragment(expr, within)
 
 	isSpace := func(b byte) bool {
@@ -136,7 +154,7 @@ func findArgumentPosition(expr string, within ast.PositionRange, name string) as
 	// Match the right-most name that sits as a complete argument, i.e. one
 	// bordered by '(' or ',' on the left and ',' or ')' on the right.
 	best := -1
-	for off := 0; ; {
+	for off := 0; off <= len(fragment); {
 		i := strings.Index(fragment[off:], name)
 		if i < 0 {
 			break
@@ -180,6 +198,11 @@ func findBinOpsOperatorPosition(expr string, n *ast.BinaryExpr, op string) ast.P
 	within := ast.PositionRange{
 		Start: n.LHS.PositionRange().End + 1,
 		End:   n.RHS.PositionRange().Start,
+	}
+	if within.Start > within.End {
+		// Both sides come from the same MetricsQL WITH template argument, e.g.
+		// `WITH (f(x) = x + x) f(foo)`, the operator only exists at the use-site.
+		return n.PosRange
 	}
 	idx := strings.Index(GetQueryFragment(expr, within), op)
 	if idx < 0 {
