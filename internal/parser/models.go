@@ -39,6 +39,10 @@ type commentText struct {
 }
 
 func commentColumn(contentLines []string, line int) int {
+	// A foot comment of the last node can be reported past the end of the file.
+	if line < 1 || line > len(contentLines) {
+		return 0
+	}
 	s := contentLines[line-1]
 	return len(s) - len(strings.TrimLeft(s, " \t"))
 }
