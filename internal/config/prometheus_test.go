@@ -152,6 +152,30 @@ func TestPrometheusConfig(t *testing.T) {
 				},
 			},
 		},
+		{
+			conf: PrometheusConfig{
+				Name:    "vm",
+				URI:     "http://localhost:8428",
+				Backend: "prometheus",
+			},
+		},
+		{
+			conf: PrometheusConfig{
+				Name:           "vm",
+				URI:            "http://vmselect:8481/select/0/prometheus",
+				Backend:        "victoriametrics",
+				ScrapeInterval: "30s",
+				ExternalLabels: map[string]string{"cluster": "a"},
+			},
+		},
+		{
+			conf: PrometheusConfig{
+				Name:    "vm",
+				URI:     "http://localhost:8428",
+				Backend: "VictoriaMetrics",
+			},
+			err: errors.New(`unsupported prometheus backend "VictoriaMetrics", supported backends are: prometheus, victoriametrics`),
+		},
 	}
 
 	for _, tc := range testCases {

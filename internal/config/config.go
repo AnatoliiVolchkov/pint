@@ -15,6 +15,8 @@ import (
 
 	"github.com/cloudflare/pint/internal/checks"
 	"github.com/cloudflare/pint/internal/discovery"
+	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/promapi"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsimple"
@@ -225,6 +227,10 @@ func Load(path string, failOnMissing bool) (cfg Config, fromFile bool, err error
 		}
 	}
 
+	if err = cfg.validateBackends(); err != nil {
+		return cfg, fromFile, err
+	}
+
 	for i := range cfg.Rules {
 		if err = cfg.Rules[i].validate(); err != nil {
 			return cfg, fromFile, err
@@ -246,6 +252,38 @@ func Load(path string, failOnMissing bool) (cfg Config, fromFile bool, err error
 	)
 
 	return cfg, fromFile, nil
+}
+
+// validateBackends checks that the query language can be used with all configured servers.
+func (cfg Config) validateBackends() error {
+	type server struct{ name, backend string }
+	servers := make([]server, 0, len(cfg.Prometheus))
+	for _, prom := range cfg.Prometheus {
+		servers = append(servers, server{name: prom.Name, backend: prom.getBackend()})
+	}
+	if cfg.Discovery != nil {
+		for _, pt := range cfg.Discovery.templates() {
+			servers = append(servers, server{name: pt.Name, backend: pt.getBackend()})
+		}
+	}
+
+	lang := cfg.Parser.getQueryLanguage()
+	for _, s := range servers {
+		switch {
+		case lang == parser.MetricsQL.Name() && s.backend == promapi.BackendPrometheus:
+			return fmt.Errorf(
+				"prometheus server %q is using %q backend which doesn't support %s, set backend = %q or use query_language = %q",
+				s.name, s.backend, lang, promapi.BackendVictoriaMetrics, parser.PromQL.Name(),
+			)
+		case lang == parser.PromQL.Name() && s.backend == promapi.BackendVictoriaMetrics:
+			slog.LogAttrs(
+				context.Background(), slog.LevelWarn,
+				"VictoriaMetrics server is configured but rules will be parsed as PromQL, set query_language = \"metricsql\" in the parser block to allow MetricsQL syntax",
+				slog.String("name", s.name),
+			)
+		}
+	}
+	return nil
 }
 
 func parseDuration(d string) (time.Duration, error) {

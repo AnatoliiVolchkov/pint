@@ -18,11 +18,12 @@ const (
 )
 
 type Parser struct {
-	Schema  string   `hcl:"schema,optional" json:"schema,omitempty"`
-	Names   string   `hcl:"names,optional" json:"names,omitempty"`
-	Relaxed []string `hcl:"relaxed,optional" json:"relaxed,omitempty"`
-	Include []string `hcl:"include,optional" json:"include,omitempty"`
-	Exclude []string `hcl:"exclude,optional" json:"exclude,omitempty"`
+	Schema        string   `hcl:"schema,optional" json:"schema,omitempty"`
+	Names         string   `hcl:"names,optional" json:"names,omitempty"`
+	QueryLanguage string   `hcl:"query_language,optional" json:"query_language,omitempty"`
+	Relaxed       []string `hcl:"relaxed,optional" json:"relaxed,omitempty"`
+	Include       []string `hcl:"include,optional" json:"include,omitempty"`
+	Exclude       []string `hcl:"exclude,optional" json:"exclude,omitempty"`
 
 	opts parser.Options
 }
@@ -60,6 +61,10 @@ func (p Parser) validate() error {
 		return fmt.Errorf("unsupported parser names: %s", n)
 	}
 
+	if _, err := parser.NewLanguage(p.QueryLanguage); err != nil {
+		return err
+	}
+
 	for _, pattern := range p.Relaxed {
 		_, err := regexp.Compile(pattern)
 		if err != nil {
@@ -94,9 +99,19 @@ func (p *Parser) initOptions() {
 		schema = parser.ThanosSchema
 	}
 
+	lang, _ := parser.NewLanguage(p.QueryLanguage)
+
 	p.opts = parser.Options{
+		Language: lang,
 		Names:    names,
 		Schema:   schema,
 		IsStrict: false,
 	}
+}
+
+func (p Parser) getQueryLanguage() string {
+	if p.QueryLanguage == "" {
+		return parser.PromQL.Name()
+	}
+	return p.QueryLanguage
 }

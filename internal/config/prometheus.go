@@ -79,20 +79,30 @@ func (t *TLSConfig) toHTTPConfig() (*tls.Config, error) {
 }
 
 type PrometheusConfig struct {
-	Headers     map[string]string `hcl:"headers,optional" json:"headers,omitempty"`
-	TLS         *TLSConfig        `hcl:"tls,block" json:"tls,omitzero"`
-	Name        string            `hcl:",label" json:"name"`
-	URI         string            `hcl:"uri" json:"uri"`
-	PublicURI   string            `hcl:"publicURI,optional" json:"publicURI,omitempty"`
-	Timeout     string            `hcl:"timeout,optional"  json:"timeout"`
-	Uptime      string            `hcl:"uptime,optional" json:"uptime"`
-	Failover    []string          `hcl:"failover,optional" json:"failover,omitempty"`
-	Include     []string          `hcl:"include,optional" json:"include,omitempty"`
-	Exclude     []string          `hcl:"exclude,optional" json:"exclude,omitempty"`
-	Tags        []string          `hcl:"tags,optional" json:"tags,omitempty"`
-	Concurrency int               `hcl:"concurrency,optional" json:"concurrency"`
-	RateLimit   int               `hcl:"rateLimit,optional" json:"rateLimit"`
-	Required    bool              `hcl:"required,optional" json:"required"`
+	Headers        map[string]string `hcl:"headers,optional" json:"headers,omitempty"`
+	ExternalLabels map[string]string `hcl:"externalLabels,optional" json:"externalLabels,omitempty"`
+	TLS            *TLSConfig        `hcl:"tls,block" json:"tls,omitzero"`
+	Name           string            `hcl:",label" json:"name"`
+	URI            string            `hcl:"uri" json:"uri"`
+	PublicURI      string            `hcl:"publicURI,optional" json:"publicURI,omitempty"`
+	Backend        string            `hcl:"backend,optional" json:"backend,omitempty"`
+	Timeout        string            `hcl:"timeout,optional"  json:"timeout"`
+	Uptime         string            `hcl:"uptime,optional" json:"uptime"`
+	ScrapeInterval string            `hcl:"scrapeInterval,optional" json:"scrapeInterval,omitempty"`
+	Failover       []string          `hcl:"failover,optional" json:"failover,omitempty"`
+	Include        []string          `hcl:"include,optional" json:"include,omitempty"`
+	Exclude        []string          `hcl:"exclude,optional" json:"exclude,omitempty"`
+	Tags           []string          `hcl:"tags,optional" json:"tags,omitempty"`
+	Concurrency    int               `hcl:"concurrency,optional" json:"concurrency"`
+	RateLimit      int               `hcl:"rateLimit,optional" json:"rateLimit"`
+	Required       bool              `hcl:"required,optional" json:"required"`
+}
+
+func (pc PrometheusConfig) getBackend() string {
+	if pc.Backend == "" {
+		return promapi.BackendPrometheus
+	}
+	return pc.Backend
 }
 
 func (pc PrometheusConfig) validate() error {
@@ -101,6 +111,10 @@ func (pc PrometheusConfig) validate() error {
 	}
 	if _, err := url.Parse(pc.URI); err != nil {
 		return fmt.Errorf("prometheus URI %q is invalid: %w", pc.URI, err)
+	}
+
+	if err := validateBackend(pc.getBackend(), pc.ScrapeInterval, pc.ExternalLabels); err != nil {
+		return err
 	}
 
 	if pc.Timeout != "" {
@@ -144,6 +158,27 @@ func (pc PrometheusConfig) validate() error {
 	return nil
 }
 
+func validateBackend(backend, scrapeInterval string, externalLabels map[string]string) error {
+	switch backend {
+	case promapi.BackendPrometheus:
+		if scrapeInterval != "" {
+			return fmt.Errorf("scrapeInterval can only be set when using %q backend", promapi.BackendVictoriaMetrics)
+		}
+		if len(externalLabels) > 0 {
+			return fmt.Errorf("externalLabels can only be set when using %q backend", promapi.BackendVictoriaMetrics)
+		}
+	case promapi.BackendVictoriaMetrics:
+		if scrapeInterval != "" {
+			if _, err := parseDuration(scrapeInterval); err != nil {
+				return fmt.Errorf("invalid scrapeInterval %q: %w", scrapeInterval, err)
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported prometheus backend %q, supported backends are: %s, %s", backend, promapi.BackendPrometheus, promapi.BackendVictoriaMetrics)
+	}
+	return nil
+}
+
 func (pc *PrometheusConfig) applyDefaults() {
 	if pc.Timeout == "" {
 		pc.Timeout = (time.Minute * 2).String()
@@ -167,10 +202,20 @@ func newFailoverGroup(prom PrometheusConfig) *promapi.FailoverGroup {
 
 	var tlsConf *tls.Config
 	tlsConf, _ = prom.TLS.toHTTPConfig()
+	newServer := func(uri string) *promapi.Prometheus {
+		if prom.getBackend() == promapi.BackendVictoriaMetrics {
+			scrapeInterval, _ := parseDuration(prom.ScrapeInterval)
+			return promapi.NewVictoriaMetrics(prom.Name, uri, prom.PublicURI, prom.Headers, timeout, prom.Concurrency, prom.RateLimit, tlsConf, promapi.VictoriaMetricsOptions{
+				ExternalLabels: prom.ExternalLabels,
+				ScrapeInterval: scrapeInterval,
+			})
+		}
+		return promapi.NewPrometheus(prom.Name, uri, prom.PublicURI, prom.Headers, timeout, prom.Concurrency, prom.RateLimit, tlsConf)
+	}
 	upstreams := make([]*promapi.Prometheus, 0, len(prom.Failover)+1)
-	upstreams = append(upstreams, promapi.NewPrometheus(prom.Name, prom.URI, prom.PublicURI, prom.Headers, timeout, prom.Concurrency, prom.RateLimit, tlsConf))
+	upstreams = append(upstreams, newServer(prom.URI))
 	for _, uri := range prom.Failover {
-		upstreams = append(upstreams, promapi.NewPrometheus(prom.Name, uri, prom.PublicURI, prom.Headers, timeout, prom.Concurrency, prom.RateLimit, tlsConf))
+		upstreams = append(upstreams, newServer(uri))
 	}
 	include := make([]*regexp.Regexp, 0, len(prom.Include))
 	for _, path := range prom.Include {

@@ -64,11 +64,12 @@ Syntax:
 
 ```js
 parser {
-  schema  = "prometheus|thanos"
-  names   = "legacy|utf-8"
-  include = [ "(.*)", ... ]
-  exclude = [ "(.*)", ... ]
-  relaxed = [ "(.*)", ... ]
+  schema         = "prometheus|thanos"
+  names          = "legacy|utf-8"
+  query_language = "promql|metricsql"
+  include        = [ "(.*)", ... ]
+  exclude        = [ "(.*)", ... ]
+  relaxed        = [ "(.*)", ... ]
 }
 ```
 
@@ -85,6 +86,14 @@ parser {
 - `names` - validation scheme for label names. This controls whether Prometheus libraries are
   allowing UTF-8 in label **names** or not. See [utf-8 guide](https://prometheus.io/docs/guides/utf8/).
   Default value is `utf-8`.
+- `query_language` - query language used in rule `expr` fields, valid values are `promql` and `metricsql`.
+  Set it to `metricsql` when rules are evaluated by [vmalert](https://docs.victoriametrics.com/victoriametrics/vmalert/)
+  against VictoriaMetrics, this allows all [MetricsQL](https://docs.victoriametrics.com/victoriametrics/metricsql/)
+  syntax (`WITH` templates, extra functions, optional lookbehind windows, `or` label filters,
+  `keep_metric_names` and more) and makes all checks follow MetricsQL semantics.
+  When using `metricsql` all `prometheus` servers must use `backend = "victoriametrics"`.
+  Rule files are parsed using the same YAML schema regardless of this option.
+  Default value is `promql`.
 - `include` - list of regexp patterns to check when running checks. Only files
   matching those regexp rules will be checked, other modified files will be ignored.
 - `exclude` - list of regexp patterns to ignore when running checks.
@@ -312,17 +321,20 @@ Syntax:
 
 ```js
 prometheus "$name" {
-  uri         = "https://..."
-  publicURI   = "https://..."
-  failover    = ["https://...", ...]
-  tags        = ["...", ...]
-  headers     = { "...": "..." }
-  timeout     = "2m"
-  concurrency = 16
-  rateLimit   = 100
-  required    = true|false
-  include     = ["...", ...]
-  exclude     = ["...", ...]
+  uri            = "https://..."
+  publicURI      = "https://..."
+  backend        = "prometheus|victoriametrics"
+  failover       = ["https://...", ...]
+  tags           = ["...", ...]
+  headers        = { "...": "..." }
+  timeout        = "2m"
+  concurrency    = 16
+  rateLimit      = 100
+  required       = true|false
+  include        = ["...", ...]
+  exclude        = ["...", ...]
+  scrapeInterval = "1m"
+  externalLabels = { "...": "..." }
   tls {
     serverName = "..."
     caCert     = "..."
@@ -336,6 +348,36 @@ prometheus "$name" {
 - `$name` - each defined server should have a unique name that can be used in check
   definitions.
 - `uri` - base URI of this Prometheus server, used for API requests and queries.
+  When using `backend = "victoriametrics"` this should be the URI of the Prometheus
+  compatible API, which is:
+  - `http://victoriametrics:8428` (or `http://victoriametrics:8428/prometheus`)
+    for single-node VictoriaMetrics.
+  - `http://vmselect:8481/select/<accountID>[:<projectID>]/prometheus` for
+    cluster VictoriaMetrics.
+- `backend` - type of the server, valid values are `prometheus` and `victoriametrics`.
+  Default value is `prometheus`. Setting it to `victoriametrics` tells pint to:
+  - Read flags from the `/flags` endpoint at the root of the server (with the
+    `/select/<tenant>/prometheus` or `/prometheus` prefix stripped from `uri`) and use
+    the `-retentionPeriod` flag as the retention time. vmselect doesn't know the
+    retention of vmstorage nodes, so for cluster setups pint assumes the default
+    retention of one month.
+  - Not query the Prometheus configuration API, VictoriaMetrics doesn't expose one.
+    Scrape interval and external labels used by checks are taken from `scrapeInterval`
+    and `externalLabels` options instead.
+  - Skip Prometheus feature flag checks.
+  - Use `seriesFetched` and `executionTimeMsec` query stats reported by VictoriaMetrics,
+    VictoriaMetrics doesn't report the number of queried samples so `maxTotalSamples`
+    and `maxPeakSamples` limits of the [query/cost](checks/query/cost.md) check
+    can't be enforced.
+- `scrapeInterval` - scrape interval used by checks that need it, for example
+  [promql/rate](checks/promql/rate.md). Only valid with `backend = "victoriametrics"`,
+  Prometheus servers expose it via the configuration API.
+  Default value is `1m`.
+- `externalLabels` - external labels used by checks that need them, for example
+  [alerts/external_labels](checks/alerts/external_labels.md).
+  Only valid with `backend = "victoriametrics"`, Prometheus servers expose them via the
+  configuration API. Set it to external labels configured on vmalert
+  (`-external.label` flag).
 - `publicURI` - optional URI to use instead of `uri` in problems reported to users.
   Set it if Prometheus links used by pint in comments submitted to BitBucket or GitHub
   should use different URIs than the one used by pint when querying Prometheus.
@@ -433,6 +475,27 @@ prometheus "dev" {
 }
 ```
 
+VictoriaMetrics example, see also [victoriametrics.hcl](examples/victoriametrics.hcl):
+
+```js
+parser {
+  query_language = "metricsql"
+}
+
+prometheus "vm" {
+  uri            = "http://victoriametrics:8428"
+  backend        = "victoriametrics"
+  scrapeInterval = "30s"
+  externalLabels = { cluster = "demo" }
+}
+
+prometheus "vm-cluster" {
+  uri      = "http://vmselect-1:8481/select/0/prometheus"
+  failover = ["http://vmselect-2:8481/select/0/prometheus"]
+  backend  = "victoriametrics"
+}
+```
+
 ## Prometheus discovery
 
 Sometimes specifying a static list of Prometheus server definitions in pint
@@ -515,17 +578,20 @@ Fields that are allowed to be templated are:
 
 ```js
 template {
-  name        = "..."
-  uri         = "https://..."
-  failover    = ["https://...", ...]
-  tags        = ["...", ...]
-  headers     = { "...": "..." }
-  timeout     = "2m"
-  concurrency = 16
-  rateLimit   = 100
-  required    = true|false
-  include     = ["...", ...]
-  exclude     = ["...", ...]
+  name           = "..."
+  uri            = "https://..."
+  backend        = "prometheus|victoriametrics"
+  failover       = ["https://...", ...]
+  tags           = ["...", ...]
+  headers        = { "...": "..." }
+  timeout        = "2m"
+  concurrency    = 16
+  rateLimit      = 100
+  required       = true|false
+  include        = ["...", ...]
+  exclude        = ["...", ...]
+  scrapeInterval = "1m"
+  externalLabels = { "...": "..." }
   tls {
     serverName = "..."
     caCert     = "..."

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.89.0
+
+### Added
+
+- Added support for [VictoriaMetrics](https://docs.victoriametrics.com/) and
+  [MetricsQL](https://docs.victoriametrics.com/victoriametrics/metricsql/):
+  - New `query_language` option in the `parser` config block, set it to `metricsql`
+    to parse rule expressions as MetricsQL. All checks understand MetricsQL syntax
+    and semantics.
+  - New `backend` option in `prometheus` and discovery `template` config blocks,
+    set it to `victoriametrics` when `uri` points to single-node VictoriaMetrics
+    or vmselect.
+  - New `scrapeInterval` and `externalLabels` options for VictoriaMetrics servers,
+    used instead of values that pint reads from Prometheus configuration API.
+  - New `--query-language` flag for `pint parse`.
+  See [configuration](configuration.md) for details.
+
 ## v0.88.0
 
 ### Added

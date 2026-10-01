@@ -253,6 +253,15 @@ func TestPrometheusTemplateRender(t *testing.T) {
 		},
 		{
 			template: PrometheusTemplate{
+				Name:    "vm",
+				URI:     "http://localhost",
+				Backend: "foo",
+			},
+			data: map[string]string{},
+			err:  `unsupported prometheus backend "foo", supported backends are: prometheus, victoriametrics`,
+		},
+		{
+			template: PrometheusTemplate{
 				Name: "{{ $name }}",
 				URI:  "http://",
 			},

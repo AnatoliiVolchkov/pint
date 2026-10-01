@@ -104,6 +104,7 @@ func TestParserInitOptions(t *testing.T) {
 			description: "defaults",
 			conf:        Parser{},
 			expected: parser.Options{
+				Language: parser.PromQL,
 				Names:    model.UTF8Validation,
 				Schema:   parser.PrometheusSchema,
 				IsStrict: false,
@@ -114,6 +115,7 @@ func TestParserInitOptions(t *testing.T) {
 			description: "legacy names",
 			conf:        Parser{Names: NamesLegacy},
 			expected: parser.Options{
+				Language: parser.PromQL,
 				Names:    model.LegacyValidation,
 				Schema:   parser.PrometheusSchema,
 				IsStrict: false,
@@ -124,6 +126,7 @@ func TestParserInitOptions(t *testing.T) {
 			description: "thanos schema",
 			conf:        Parser{Schema: SchemaThanos},
 			expected: parser.Options{
+				Language: parser.PromQL,
 				Names:    model.UTF8Validation,
 				Schema:   parser.ThanosSchema,
 				IsStrict: false,
@@ -134,8 +137,20 @@ func TestParserInitOptions(t *testing.T) {
 			description: "legacy names with thanos schema",
 			conf:        Parser{Names: NamesLegacy, Schema: SchemaThanos},
 			expected: parser.Options{
+				Language: parser.PromQL,
 				Names:    model.LegacyValidation,
 				Schema:   parser.ThanosSchema,
+				IsStrict: false,
+			},
+		},
+		{
+			// MetricsQL query language setting produces MetricsQL language.
+			description: "metricsql query language",
+			conf:        Parser{QueryLanguage: "metricsql"},
+			expected: parser.Options{
+				Language: parser.MetricsQL,
+				Names:    model.UTF8Validation,
+				Schema:   parser.PrometheusSchema,
 				IsStrict: false,
 			},
 		},

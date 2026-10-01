@@ -86,6 +86,9 @@ var watchCmd = &cli.Command{
 				if prom == nil {
 					return fmt.Errorf("no Prometheus named %q configured in pint", args[0])
 				}
+				if prom.Backend() == promapi.BackendVictoriaMetrics {
+					return fmt.Errorf("%q is a VictoriaMetrics server which doesn't expose a list of rule files, use `pint watch glob` instead", args[0])
+				}
 
 				slog.LogAttrs(ctx, slog.LevelDebug, "Starting rule_files watch", slog.String("name", args[0]))
 

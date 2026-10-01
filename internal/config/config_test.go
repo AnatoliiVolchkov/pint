@@ -7,6 +7,7 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gkampitakis/go-snaps/snaps"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +19,7 @@ import (
 	"github.com/cloudflare/pint/internal/config"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/promapi"
 )
 
 func TestMain(t *testing.M) {
@@ -1888,6 +1890,64 @@ func TestConfigErrors(t *testing.T) {
 			err:    "unsupported parser names: foo",
 		},
 		{
+			config: `parser {query_language = "sql"}`,
+			err:    `unsupported query language "sql", supported languages are: promql, metricsql`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri     = "http://localhost"
+  backend = "thanos"
+}`,
+			err: `unsupported prometheus backend "thanos", supported backends are: prometheus, victoriametrics`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri            = "http://localhost"
+  scrapeInterval = "30s"
+}`,
+			err: `scrapeInterval can only be set when using "victoriametrics" backend`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri            = "http://localhost"
+  externalLabels = {cluster = "a"}
+}`,
+			err: `externalLabels can only be set when using "victoriametrics" backend`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri            = "http://localhost"
+  backend        = "victoriametrics"
+  scrapeInterval = "abc"
+}`,
+			err: `invalid scrapeInterval "abc": not a valid duration string: "abc"`,
+		},
+		{
+			config: `parser {
+  query_language = "metricsql"
+}
+prometheus "prom" {
+  uri = "http://localhost"
+}`,
+			err: `prometheus server "prom" is using "prometheus" backend which doesn't support metricsql, set backend = "victoriametrics" or use query_language = "promql"`,
+		},
+		{
+			config: `parser {
+  query_language = "metricsql"
+}
+discovery {
+  filepath {
+    directory = "."
+    match     = "(?P<name>.+).yaml"
+    template {
+      name = "{{ $name }}"
+      uri  = "http://localhost"
+    }
+  }
+}`,
+			err: `prometheus server "{{ $name }}" is using "prometheus" backend which doesn't support metricsql, set backend = "victoriametrics" or use query_language = "promql"`,
+		},
+		{
 			config: `repository {
   bitbucket {
     project    = ""
@@ -2299,6 +2359,41 @@ func TestConfigErrors(t *testing.T) {
 			require.EqualError(t, err, tc.err, tc.config)
 		})
 	}
+}
+
+func TestVictoriaMetricsBackend(t *testing.T) {
+	dir := t.TempDir()
+	path := path.Join(dir, "config.hcl")
+	err := os.WriteFile(path, []byte(`
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri            = "http://localhost:8428"
+  failover       = ["http://localhost:8429"]
+  backend        = "victoriametrics"
+  scrapeInterval = "15s"
+  externalLabels = {cluster = "a"}
+}
+`), 0o644)
+	require.NoError(t, err)
+
+	cfg, _, err := config.Load(path, true)
+	require.NoError(t, err)
+	require.Equal(t, "metricsql", cfg.Parser.Options().Language.Name())
+
+	gen := config.NewPrometheusGenerator(cfg, prometheus.NewRegistry())
+	defer gen.Stop()
+	gen.GenerateStatic()
+	require.Equal(t, 1, gen.Count())
+	prom := gen.ServerWithName("vm")
+	require.Equal(t, promapi.BackendVictoriaMetrics, prom.Backend())
+	require.Equal(t, 2, prom.ServerCount())
+
+	res, err := prom.Config(context.Background(), 0).Wait()
+	require.NoError(t, err)
+	require.Equal(t, time.Second*15, res.Config.Global.ScrapeInterval)
+	require.Equal(t, map[string]string{"cluster": "a"}, res.Config.Global.ExternalLabels)
 }
 
 func TestDuplicatedPrometeusName(t *testing.T) {
