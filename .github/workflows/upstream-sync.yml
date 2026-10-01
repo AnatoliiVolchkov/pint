@@ -42,6 +42,7 @@ jobs:
         uses: ./.github/actions/private-go-modules
         with:
           token: ${{ secrets.METRICSQL_READ_TOKEN }}
+          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
 
       - name: Merge upstream
         env:

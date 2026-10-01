@@ -34,6 +34,7 @@ jobs:
         uses: ./.github/actions/private-go-modules
         with:
           token: ${{ secrets.METRICSQL_READ_TOKEN }}
+          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
 
       - name: Pull VictoriaMetrics images
         run: docker compose -f internal/promapi/vmtest/docker-compose.yml pull --quiet

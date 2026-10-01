@@ -167,14 +167,27 @@ GOWORK=off go build ./...      # builds against the pinned tag, like CI
 
 Workflows that build pint use `.github/actions/private-go-modules`, which sets
 `GOPRIVATE=github.com/AnatoliiVolchkov/*` and configures git to authenticate requests for
-`https://github.com/AnatoliiVolchkov/metricsql` with the `METRICSQL_READ_TOKEN` secret.
-Create the token once:
+`https://github.com/AnatoliiVolchkov/metricsql` with one of two read-only credentials, both limited
+to that single repository:
 
-1. GitHub, Settings, Developer settings, Fine-grained personal access tokens,
-   Generate new token: resource owner `AnatoliiVolchkov`, repository access "Only select
-   repositories" with `AnatoliiVolchkov/metricsql`, repository permission Contents: Read-only
-   (Metadata: Read-only is added automatically), choose an expiry.
-2. `gh secret set METRICSQL_READ_TOKEN -R AnatoliiVolchkov/pint` and paste the token.
+- `METRICSQL_READ_TOKEN` (used when set): fine-grained PAT. Create it in GitHub, Settings,
+  Developer settings, Fine-grained personal access tokens, Generate new token: resource
+  owner `AnatoliiVolchkov`, repository access "Only select repositories" with `AnatoliiVolchkov/metricsql`,
+  repository permission Contents: Read-only, an expiry. Then
+  `gh secret set METRICSQL_READ_TOKEN -R AnatoliiVolchkov/pint`.
+- `METRICSQL_DEPLOY_KEY` (configured): private key of the read-only deploy key
+  "AnatoliiVolchkov/pint CI (read-only)" of `AnatoliiVolchkov/metricsql`. Rotate it with:
+
+  ```sh
+  d=$(mktemp -d)
+  ssh-keygen -q -t ed25519 -N "" -C "AnatoliiVolchkov/pint CI read-only" -f "$d/key"
+  gh repo deploy-key add "$d/key.pub" -R AnatoliiVolchkov/metricsql --title "AnatoliiVolchkov/pint CI (read-only)"
+  gh secret set METRICSQL_DEPLOY_KEY -R AnatoliiVolchkov/pint < "$d/key"
+  rm -rf "$d"
+  gh repo deploy-key list -R AnatoliiVolchkov/metricsql   # delete the old key with gh repo deploy-key delete <id>
+  ```
+
+The credential only appears in the job's git configuration, it is never printed.
 
 ## Automated sync
 
@@ -201,8 +214,9 @@ What it does:
 
 Tokens:
 
-- `METRICSQL_READ_TOKEN` (required): fine-grained PAT, repository `AnatoliiVolchkov/metricsql`,
-  permission Contents: Read-only. Used by every workflow that builds pint.
+- `METRICSQL_READ_TOKEN` or `METRICSQL_DEPLOY_KEY` (one is required): read-only access to
+  `AnatoliiVolchkov/metricsql`, see "CI access to the private module". Used by every workflow that
+  builds pint.
 - `SYNC_TOKEN` (optional): fine-grained PAT on `AnatoliiVolchkov/pint` with Contents, Pull requests,
   Issues and Workflows read/write. Without it the job uses `GITHUB_TOKEN`, which cannot push
   merges that modify `.github/workflows/*` (the job then opens an issue saying so), and pull

@@ -1,10 +1,17 @@
 name: Private Go modules
-description: Allow the go command to fetch github.com/AnatoliiVolchkov/metricsql with a read-only token.
+description: >-
+  Allow the go command to fetch github.com/AnatoliiVolchkov/metricsql with read-only credentials,
+  either a fine-grained token or a read-only deploy key of that repository.
 
 inputs:
   token:
     description: Fine-grained token with Contents read-only access to AnatoliiVolchkov/metricsql.
-    required: true
+    required: false
+    default: ""
+  ssh-key:
+    description: Private key of a read-only deploy key of AnatoliiVolchkov/metricsql.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -13,12 +20,27 @@ runs:
       shell: bash
       env:
         METRICSQL_READ_TOKEN: ${{ inputs.token }}
+        METRICSQL_DEPLOY_KEY: ${{ inputs.ssh-key }}
       run: |
-        if [ -z "$METRICSQL_READ_TOKEN" ]; then
-          echo "::error::METRICSQL_READ_TOKEN secret is not set, see docs/UPSTREAM_SYNC.md"
-          exit 1
-        fi
-        git config --global \
-          "url.https://x-access-token:${METRICSQL_READ_TOKEN}@github.com/AnatoliiVolchkov/metricsql.insteadOf" \
-          "https://github.com/AnatoliiVolchkov/metricsql"
         echo "GOPRIVATE=github.com/AnatoliiVolchkov/*" >> "$GITHUB_ENV"
+        if [ -n "$METRICSQL_READ_TOKEN" ]; then
+          git config --global \
+            "url.https://x-access-token:${METRICSQL_READ_TOKEN}@github.com/AnatoliiVolchkov/metricsql.insteadOf" \
+            "https://github.com/AnatoliiVolchkov/metricsql"
+          exit 0
+        fi
+        if [ -n "$METRICSQL_DEPLOY_KEY" ]; then
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          umask 077
+          printf '%s\n' "$METRICSQL_DEPLOY_KEY" > ~/.ssh/metricsql_deploy_key
+          # GitHub's published ed25519 host key.
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" >> ~/.ssh/known_hosts
+          git config --global core.sshCommand "ssh -i ~/.ssh/metricsql_deploy_key -o IdentitiesOnly=yes"
+          git config --global \
+            "url.ssh://git@github.com/AnatoliiVolchkov/metricsql.insteadOf" \
+            "https://github.com/AnatoliiVolchkov/metricsql"
+          exit 0
+        fi
+        echo "::error::set METRICSQL_READ_TOKEN or METRICSQL_DEPLOY_KEY, see docs/UPSTREAM_SYNC.md"
+        exit 1

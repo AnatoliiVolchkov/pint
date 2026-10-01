@@ -1,0 +1,207 @@
+name: pint CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Never build against a local go.work, always against the pinned metricsql tag.
+  GOWORK: "off"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          show-progress: false
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.ver
+          cache-dependency-path: tools/golangci-lint/go.sum
+
+      - name: Configure private Go modules
+        uses: ./.github/actions/private-go-modules
+        with:
+          token: ${{ secrets.METRICSQL_READ_TOKEN }}
+          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
+
+      - name: Check go.mod
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Lint code
+        run: make lint
+
+      - name: Format code
+        run: |
+          make format
+          git diff --exit-code
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          show-progress: false
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.ver
+          cache: false
+
+      - name: Configure private Go modules
+        uses: ./.github/actions/private-go-modules
+        with:
+          token: ${{ secrets.METRICSQL_READ_TOKEN }}
+          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
+
+      - name: Pull VictoriaMetrics images
+        run: docker compose -f internal/promapi/vmtest/docker-compose.yml pull --quiet
+
+      - name: go vet
+        run: go vet ./...
+
+      # make test runs the whole suite with -race and -count=3, including the real
+      # VictoriaMetrics tests, which must not be skipped here.
+      - name: Test
+        env:
+          PINT_VM_REQUIRED: "1"
+        run: make test
+
+      - name: Coverage of MetricsQL and VictoriaMetrics code
+        run: |
+          go tool cover -func=.cover/coverage.out > coverage.txt
+          {
+            echo "## Coverage"
+            echo '```'
+            grep -E 'internal/parser/(ast|metricsql|promql)/|internal/parser/source/metricsql.go|internal/promapi/(victoriametrics|errors|flags|config|query|range)\.go|internal/promapi/vmtest/|^total:' coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check for local changes
+        run: git diff --exit-code
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: |
+            .cover/coverage.out
+            coverage.txt
+          if-no-files-found: ignore
+
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - {pkg: ./internal/parser, name: FuzzParse}
+          - {pkg: ./internal/parser/metricsql, name: FuzzMetricsQLParse}
+          - {pkg: ./internal/parser/metricsql, name: FuzzMetricsQLPositions}
+          - {pkg: ./internal/checks, name: FuzzMetricsQLChecks}
+    name: Fuzz ${{ matrix.target.name }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          show-progress: false
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.ver
+          cache: false
+
+      - name: Configure private Go modules
+        uses: ./.github/actions/private-go-modules
+        with:
+          token: ${{ secrets.METRICSQL_READ_TOKEN }}
+          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
+
+      - name: Fuzz smoke test
+        run: go test -run '^$' -fuzz='^${{ matrix.target.name }}$' -fuzztime=30s ${{ matrix.target.pkg }}
+
+      - name: Upload fuzz failures
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-${{ matrix.target.name }}
+          path: ${{ matrix.target.pkg }}/testdata/fuzz
+          if-no-files-found: ignore
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          show-progress: false
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.ver
+          cache: false
+
+      - name: Configure private Go modules
+        uses: ./.github/actions/private-go-modules
+        with:
+          token: ${{ secrets.METRICSQL_READ_TOKEN }}
+          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
+
+      - name: Build binary
+        run: |
+          make build
+          ./pint version
+          for target in linux/arm64 darwin/arm64 darwin/amd64; do
+            CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go build -trimpath \
+              -ldflags="-X main.version=$(git describe --tags --always --dirty=-dev) -X main.commit=$(git rev-parse HEAD) -s -w" \
+              -o "dist/pint-${target%/*}-${target#*/}" ./cmd/pint
+          done
+          cp pint dist/pint-linux-amd64
+
+      # Same as upstream's examples.yml, which can't fetch the private module.
+      - name: Generate dummy TLS certificates
+        run: |
+          sudo mkdir -p /etc/pint/certs
+          sudo chmod 777 /etc/pint/certs
+          openssl req -x509 -newkey rsa:2048 -keyout /dev/null -out /etc/pint/certs/ca.pem -days 1 -nodes -subj "/CN=test-ca"
+          openssl req -x509 -newkey rsa:2048 -keyout /etc/pint/certs/client.key -out /etc/pint/certs/client.pem -days 1 -nodes -subj "/CN=test-client"
+
+      - name: Verify examples
+        env:
+          AUTH_KEY: "12345"
+          PROMETHEUS_AUTH_TOKEN: "abcdef"
+        run: |
+          for CFG in docs/examples/* ; do
+            echo ">>> $CFG"
+            ./pint -c "$CFG" config
+          done
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pint-binaries
+          path: dist/
