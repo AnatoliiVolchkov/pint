@@ -140,11 +140,14 @@ type oracleProblem struct {
 }
 
 type oracleDiagnostic struct {
-	Message  string `yaml:"message"`
-	Fragment string `yaml:"fragment"`
-	Start    int    `yaml:"start"`
-	End      int    `yaml:"end"`
-	Line     int    `yaml:"line"`
+	Message string `yaml:"message"`
+	// MessageRe replaces Message when a value in it depends on timing, e.g. a series life span
+	// that depends on how the query step aligns with the data.
+	MessageRe string `yaml:"message_re,omitempty"`
+	Fragment  string `yaml:"fragment"`
+	Start     int    `yaml:"start"`
+	End       int    `yaml:"end"`
+	Line      int    `yaml:"line"`
 }
 
 func loadOracle(t *testing.T) []oracleFile {
@@ -595,7 +598,11 @@ func runOracleCase(t *testing.T, check string, c oracleCase, prom *promapi.Failo
 		require.Len(t, g.Diagnostics, len(want.Diagnostics), "problem %d diagnostics", i)
 		for j, wd := range want.Diagnostics {
 			gd := g.Diagnostics[j]
-			require.Equal(t, normalizeMessage(wd.Message), normalizeMessage(gd.Message), "problem %d diagnostic %d message", i, j)
+			if wd.MessageRe != "" {
+				require.Regexp(t, wd.MessageRe, normalizeMessage(gd.Message), "problem %d diagnostic %d message", i, j)
+			} else {
+				require.Equal(t, normalizeMessage(wd.Message), normalizeMessage(gd.Message), "problem %d diagnostic %d message", i, j)
+			}
 			require.Equal(t, wd.Fragment, gd.Fragment, "problem %d diagnostic %d fragment", i, j)
 			require.Equal(t, wd.Start, gd.Start, "problem %d diagnostic %d start", i, j)
 			require.Equal(t, wd.End, gd.End, "problem %d diagnostic %d end", i, j)

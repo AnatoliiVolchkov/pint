@@ -40,6 +40,8 @@ type Target struct {
 	InsertURL string
 	// FlushURL is the storage root serving /internal/force_flush, optional.
 	FlushURL string
+	// DeleteURL serves /api/v1/admin/tsdb/delete_series.
+	DeleteURL string
 }
 
 // Env describes available VictoriaMetrics deployments.
@@ -97,13 +99,15 @@ func Start(t testing.TB) *Env {
 func start() {
 	runID := fmt.Sprintf("r%d%d", os.Getpid(), time.Now().UnixNano()%1_000_000)
 	if single := os.Getenv("PINT_VM_URL"); single != "" {
+		clusterURL := trim(os.Getenv("PINT_VM_CLUSTER_URL"))
 		env = &Env{
-			Single: Target{Name: "single", QueryURL: trim(single), InsertURL: trim(single), FlushURL: trim(single)},
+			Single: Target{Name: "single", QueryURL: trim(single), InsertURL: trim(single), FlushURL: trim(single), DeleteURL: trim(single)},
 			Cluster: Target{
 				Name:      "cluster",
-				QueryURL:  trim(os.Getenv("PINT_VM_CLUSTER_URL")),
+				QueryURL:  clusterURL,
 				InsertURL: trim(os.Getenv("PINT_VM_CLUSTER_INSERT_URL")),
 				FlushURL:  trim(os.Getenv("PINT_VM_CLUSTER_STORAGE_URL")),
+				DeleteURL: strings.Replace(clusterURL, "/select/", "/delete/", 1),
 			},
 			RunID: runID,
 		}
@@ -195,9 +199,13 @@ func startCompose(runID string) (*Env, error) {
 	if err != nil {
 		return nil, err
 	}
+	del, err := c.url("vmselect", "8481", "/delete/0/prometheus")
+	if err != nil {
+		return nil, err
+	}
 	return &Env{
-		Single:  Target{Name: "single", QueryURL: single, InsertURL: single, FlushURL: single},
-		Cluster: Target{Name: "cluster", QueryURL: sel, InsertURL: ins, FlushURL: storage},
+		Single:  Target{Name: "single", QueryURL: single, InsertURL: single, FlushURL: single, DeleteURL: single},
+		Cluster: Target{Name: "cluster", QueryURL: sel, InsertURL: ins, FlushURL: storage, DeleteURL: del},
 		RunID:   runID,
 	}, nil
 }

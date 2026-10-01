@@ -60,10 +60,12 @@ func metricName(metric string) string {
 // so instant queries always see it.
 const newestSampleAge = 5 * time.Second
 
-// Import writes series with samples step apart, the newest 5s ago, and waits until every
-// series can be queried.
+// Import replaces all data of the imported metrics with series whose samples are step
+// apart, the newest 5s ago, and waits until every series can be queried. Replacing keeps
+// repeated test runs (go test -count=N) against the same VictoriaMetrics independent.
 func (tg Target) Import(t testing.TB, step time.Duration, series ...Series) {
 	t.Helper()
+	tg.deleteMetrics(t, series)
 	now := time.Now().Add(-newestSampleAge).Truncate(time.Second)
 	var body strings.Builder
 	expected := map[string]int{}
@@ -114,6 +116,34 @@ func (tg Target) Import(t testing.TB, step time.Duration, series ...Series) {
 			time.Sleep(250 * time.Millisecond)
 			tg.flush()
 		}
+	}
+}
+
+// deleteMetrics removes existing series of every metric name in series.
+func (tg Target) deleteMetrics(t testing.TB, series []Series) {
+	t.Helper()
+	if tg.DeleteURL == "" {
+		return
+	}
+	args := url.Values{}
+	seen := map[string]bool{}
+	for _, s := range series {
+		if name := metricName(s.Metric); !seen[name] {
+			seen[name] = true
+			args.Add("match[]", fmt.Sprintf(`{__name__=%q}`, name))
+		}
+	}
+	if len(args) == 0 {
+		return
+	}
+	resp, err := post(tg.DeleteURL+"/api/v1/admin/tsdb/delete_series", "application/x-www-form-urlencoded", args.Encode())
+	if err != nil {
+		t.Fatalf("cannot delete series on %s: %s", tg.Name, err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("deleting series on %s returned %s", tg.Name, resp.Status)
 	}
 }
 

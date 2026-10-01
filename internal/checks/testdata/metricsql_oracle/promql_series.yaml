@@ -123,7 +123,10 @@ cases:
     expect: []
   - name: series stopped 20 minutes ago
     kind: boundary
-    comment: The series exists in the lookback window but not now.
+    comment: >-
+      The series exists in the lookback window but not now. The reported life span is 10
+      minutes of samples plus up to 5 minutes of lookback depending on step alignment, so
+      the message is matched with message_re.
     rules: |
       - record: x
         expr: 'rate(series_gone_total{job="api"}[5m])'
@@ -145,6 +148,7 @@ cases:
         lines: "2"
         diagnostics:
           - message: The `series_gone_total` metric is only sometimes present on `vm` Prometheus server at $URI with an average life span of 15m in the last 1w.
+            message_re: '^The `series_gone_total` metric is only sometimes present on `vm` Prometheus server at \$URI with an average life span of 1[0-5]m in the last 1w\.$'
             fragment: series_gone_total{job="api"}
             start: 5
             end: 33
