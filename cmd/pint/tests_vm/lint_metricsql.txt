@@ -1,0 +1,38 @@
+! exec pint --no-color lint rules
+! stdout .
+stderr 'level=INFO msg="Configured new Prometheus server" name=vm uris=1'
+stderr 'level=INFO msg="Problems found" Fatal=1 Bug=2'
+stderr 'Fatal: MetricsQL syntax error \(promql/syntax\)\n  ---> rules/1.yml:13 -> `broken`'
+stderr 'Bug: template uses non-existent label \(alerts/template\)\n  ---> rules/1.yml:8-11 -> `Down`'
+stderr 'Bug: query on nonexistent series \(promql/series\)\n  ---> rules/1.yml:7 -> `missing`'
+stderr 'didn''t have any series for the\n\s+`pint_vm_e2e_missing_total` metric in the last 1w'
+! stderr '-> `ok`'
+! stderr 'unable to run checks'
+! stderr 'Query returned an error'
+! stderr 'No results for Prometheus uptime metric'
+
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: ok
+    expr: 'WITH (r = rate(pint_vm_e2e_requests_total{job="api" or instance="a"}[5m])) sum(r) by (job)'
+  - record: missing
+    expr: 'sum(rate(pint_vm_e2e_missing_total{job="api" or job="web"}[5m])) by (job)'
+  - alert: Down
+    expr: 'sum(pint_vm_e2e_up{job="api"}) by (job) == 0'
+    annotations:
+      summary: '{{ $labels.instance }} is down'
+  - record: broken
+    expr: 'sum(pint_vm_e2e_up) by ('
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri     = ENV_PINT_VM_URL
+  backend = "victoriametrics"
+  uptime  = "pint_vm_e2e_up"
+  timeout = "30s"
+}

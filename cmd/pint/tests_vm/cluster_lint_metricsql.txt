@@ -1,0 +1,31 @@
+[!vmcluster] skip 'PINT_VM_CLUSTER_URL is not set'
+
+! exec pint --no-color lint rules
+! stdout .
+stderr 'level=INFO msg="Configured new Prometheus server" name=vmcluster uris=1'
+stderr 'level=INFO msg="Problems found" Bug=1'
+stderr 'Bug: query on nonexistent series \(promql/series\)\n  ---> rules/1.yml:7 -> `missing`'
+stderr '`vmcluster` Prometheus server at http://[^ ]+/select/0/prometheus\s+didn''t have any series'
+! stderr '-> `ok`'
+! stderr 'Query returned an error'
+! stderr 'No results for Prometheus uptime metric'
+
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: ok
+    expr: 'WITH (r = rate(pint_vm_e2e_requests_total{job="api" or instance="a"}[5m])) sum(r) by (job)'
+  - record: missing
+    expr: 'sum(rate(pint_vm_e2e_missing_total[5m])) by (job)'
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vmcluster" {
+  uri     = ENV_PINT_VM_CLUSTER_URL
+  backend = "victoriametrics"
+  uptime  = "pint_vm_e2e_up"
+  timeout = "30s"
+}

@@ -1,0 +1,75 @@
+name: VictoriaMetrics integration tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions: read-all
+
+env:
+  VM_VERSION: v1.115.0
+
+jobs:
+  test-victoriametrics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          show-progress: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.ver
+          cache: false
+
+      - name: Start VictoriaMetrics single-node
+        run: |
+          docker run -d --name vm-single -p 127.0.0.1:8428:8428 \
+            victoriametrics/victoria-metrics:${VM_VERSION} \
+            -retentionPeriod=2 -search.latencyOffset=1s -search.disableCache
+
+      - name: Start VictoriaMetrics cluster
+        run: |
+          docker network create vm-cluster
+          docker run -d --name vmstorage --network vm-cluster \
+            victoriametrics/vmstorage:${VM_VERSION}-cluster \
+            -retentionPeriod=2
+          docker run -d --name vminsert --network vm-cluster -p 127.0.0.1:8480:8480 \
+            victoriametrics/vminsert:${VM_VERSION}-cluster \
+            -storageNode=vmstorage:8400
+          docker run -d --name vmselect --network vm-cluster -p 127.0.0.1:8481:8481 \
+            victoriametrics/vmselect:${VM_VERSION}-cluster \
+            -storageNode=vmstorage:8401 -search.latencyOffset=1s -search.disableCache
+
+      - name: Wait for VictoriaMetrics
+        run: |
+          for url in http://127.0.0.1:8428/health http://127.0.0.1:8480/health http://127.0.0.1:8481/health; do
+            for i in $(seq 1 60); do
+              curl -sf "$url" && break
+              [ "$i" = 60 ] && exit 1
+              sleep 1
+            done
+          done
+
+      - name: Test
+        env:
+          PINT_VM_REQUIRED: "1"
+          PINT_VM_URL: http://127.0.0.1:8428
+          PINT_VM_CLUSTER_URL: http://127.0.0.1:8481/select/0/prometheus
+          PINT_VM_CLUSTER_INSERT_URL: http://127.0.0.1:8480/insert/0/prometheus
+        run: go test -count=1 -timeout=10m -run 'VictoriaMetrics(Integration|Scripts)' -v ./internal/promapi/ ./cmd/pint/
+
+      - name: VictoriaMetrics logs
+        if: failure()
+        run: |
+          for c in vm-single vmstorage vminsert vmselect; do
+            echo "::group::$c"
+            docker logs "$c"
+            echo "::endgroup::"
+          done
