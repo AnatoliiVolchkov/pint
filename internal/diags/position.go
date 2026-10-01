@@ -97,6 +97,9 @@ func NewPositionRange(lines []string, val *yaml.Node, minColumn int) (offsets Po
 	need := val.Value[needIndex]
 	lineIndex := val.Line
 	columnIndex := val.Column
+	// Block scalar content starts on the line after the `|-` or `>` indicator,
+	// characters of the indicator and of a comment after it must not be matched.
+	skipLine := val.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0
 
 	for lineIndex <= len(lines) {
 		// Append new line but only if we already have any tokens.
@@ -107,7 +110,8 @@ func NewPositionRange(lines []string, val *yaml.Node, minColumn int) (offsets Po
 			offsets = appendPosition(offsets, lineIndex-1, len(lines[lineIndex-2])+1)
 		}
 
-		if len(lines[lineIndex-1]) == 0 {
+		if skipLine || len(lines[lineIndex-1]) == 0 {
+			skipLine = false
 			goto NEXT
 		}
 
