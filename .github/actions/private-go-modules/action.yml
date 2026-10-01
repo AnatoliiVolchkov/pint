@@ -1,0 +1,24 @@
+name: Private Go modules
+description: Allow the go command to fetch github.com/AnatoliiVolchkov/metricsql with a read-only token.
+
+inputs:
+  token:
+    description: Fine-grained token with Contents read-only access to AnatoliiVolchkov/metricsql.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Configure git credentials for AnatoliiVolchkov/metricsql
+      shell: bash
+      env:
+        METRICSQL_READ_TOKEN: ${{ inputs.token }}
+      run: |
+        if [ -z "$METRICSQL_READ_TOKEN" ]; then
+          echo "::error::METRICSQL_READ_TOKEN secret is not set, see docs/UPSTREAM_SYNC.md"
+          exit 1
+        fi
+        git config --global \
+          "url.https://x-access-token:${METRICSQL_READ_TOKEN}@github.com/AnatoliiVolchkov/metricsql.insteadOf" \
+          "https://github.com/AnatoliiVolchkov/metricsql"
+        echo "GOPRIVATE=github.com/AnatoliiVolchkov/*" >> "$GITHUB_ENV"

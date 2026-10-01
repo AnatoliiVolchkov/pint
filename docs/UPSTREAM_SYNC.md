@@ -112,6 +112,46 @@ gh pr create --repo AnatoliiVolchkov/pint --base main --head "$BRANCH" \
 Merge the pull request with a **merge commit** (not squash, not rebase) so upstream
 history stays intact and future merges only see new upstream commits.
 
+## Automated sync
+
+`.github/workflows/upstream-sync.yml` runs `.github/scripts/upstream-sync.sh` every Monday
+and on demand:
+
+```sh
+gh workflow run upstream-sync.yml -R AnatoliiVolchkov/pint                  # real run
+gh workflow run upstream-sync.yml -R AnatoliiVolchkov/pint -f dry_run=true  # detect and test-merge only
+gh run watch -R AnatoliiVolchkov/pint $(gh run list -R AnatoliiVolchkov/pint -w upstream-sync.yml -L1 --json databaseId --jq '.[0].databaseId')
+```
+
+What it does:
+
+1. Fetches `upstream/main` and counts commits missing from `main`. If there are none it
+   exits successfully without changing anything.
+2. Creates `sync/upstream-YYYYMMDD` from `main` and runs `git merge --no-ff upstream/main`.
+3. On conflicts it aborts the merge, prints the conflicting files in the job log and summary,
+   opens (or comments on) an issue titled `Upstream sync conflict: main <sha>` with the
+   exact commands to resolve it, and fails. Nothing is pushed.
+4. On a clean merge it runs `go build`, `go vet` and `go test ./...`, pushes the sync branch
+   and opens or updates a pull request against `main` (a draft if tests failed).
+5. It never pushes to `main` and never resolves conflicts by itself.
+
+Tokens:
+
+- `METRICSQL_READ_TOKEN` (required): fine-grained PAT, repository `AnatoliiVolchkov/metricsql`,
+  permission Contents: Read-only. Used by every workflow that builds pint.
+- `SYNC_TOKEN` (optional): fine-grained PAT on `AnatoliiVolchkov/pint` with Contents, Pull requests,
+  Issues and Workflows read/write. Without it the job uses `GITHUB_TOKEN`, which cannot push
+  merges that modify `.github/workflows/*` (the job then opens an issue saying so), and pull
+  requests it opens do not trigger `pint-ci.yml`; tests still run inside the sync job.
+
+The repository setting "Allow GitHub Actions to create and approve pull requests" must be
+enabled for `GITHUB_TOKEN` to open pull requests:
+
+```sh
+gh api -X PUT repos/AnatoliiVolchkov/pint/actions/permissions/workflow \
+  -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true
+```
+
 ## Disabled upstream workflows
 
 Upstream workflows are kept byte-for-byte unchanged so they never conflict during
