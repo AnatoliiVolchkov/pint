@@ -380,8 +380,14 @@ func (c *converter) convertAggrFuncExpr(ae *mql.AggrFuncExpr) ast.Node {
 		agg.Args = args
 	}
 	if agg.Expr == nil {
-		c.fail(ae.Pos, "missing series argument in call to %s()", name)
-		agg.Expr = &ast.VectorSelector{PosRange: toPosRange(ae.Pos)}
+		// MetricsQL accepts aggregations without a series argument, e.g. `sum()`, they
+		// return no results. Aggregate a synthetic `union()`, which is empty too.
+		end := toPosRange(ae.Pos).End
+		agg.Expr = &ast.Call{
+			Func:     function("union", nil),
+			Args:     nil,
+			PosRange: ast.PositionRange{Start: end, End: end},
+		}
 	}
 	return agg
 }
