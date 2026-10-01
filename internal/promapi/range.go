@@ -319,6 +319,10 @@ func parseMatrixSamples(r io.Reader, step time.Duration) (dst MetricTimeRanges, 
 		}
 	}
 
+	if err = data.partialResponseError(); err != nil {
+		return nil, data.Data.Stats, err
+	}
+
 	if data.Data.ResultType != "matrix" {
 		return nil, data.Data.Stats, APIError{
 			Status:    data.Status,

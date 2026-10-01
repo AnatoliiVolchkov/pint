@@ -146,6 +146,21 @@ type PrometheusResponse struct {
 	Status    string `json:"status"`
 	Error     string `json:"error"`
 	ErrorType string `json:"errorType"`
+	// IsPartial is set by VictoriaMetrics cluster when some vmstorage nodes didn't respond.
+	IsPartial bool `json:"isPartial"`
+}
+
+// partialResponseError rejects partial VictoriaMetrics results, checks would otherwise
+// report series missing on unavailable storage nodes as rule problems.
+func (pr PrometheusResponse) partialResponseError() error {
+	if !pr.IsPartial {
+		return nil
+	}
+	return APIError{
+		Status:    pr.Status,
+		ErrorType: v1.ErrServer,
+		Err:       errors.New("VictoriaMetrics returned a partial response, some vmstorage nodes are unavailable"),
+	}
 }
 
 func tryDecodingAPIError(resp *http.Response) error {

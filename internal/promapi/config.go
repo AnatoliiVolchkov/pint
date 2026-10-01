@@ -32,8 +32,8 @@ type PrometheusConfig struct {
 }
 
 type PrometheusConfigResponse struct {
-	PrometheusResponse
 	Data v1.ConfigResult `json:"data"`
+	PrometheusResponse
 }
 
 type ConfigResult struct {

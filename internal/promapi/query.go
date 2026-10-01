@@ -226,6 +226,10 @@ func parseVectorSamples(r io.Reader) (samples []Sample, _ QueryStats, err error)
 		}
 	}
 
+	if err = data.partialResponseError(); err != nil {
+		return nil, data.Data.Stats, err
+	}
+
 	if data.Data.ResultType != "vector" {
 		return nil, data.Data.Stats, APIError{
 			Status:    data.Status,
