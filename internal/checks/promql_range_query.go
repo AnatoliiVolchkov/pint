@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	promParser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/output"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 )
@@ -120,7 +120,7 @@ func (c RangeQueryCheck) Check(ctx context.Context, entry *discovery.Entry, _ []
 func (c RangeQueryCheck) checkSources(expr *parser.PromQLExpr, retention time.Duration, reason string, s Severity) (problems []Problem) {
 	for _, src := range expr.Source() {
 		src.WalkSources(func(src *source.Source, _ *source.Join, _ *source.Unless) {
-			n, ok := source.MostOuterOperation[*promParser.MatrixSelector](src)
+			n, ok := source.MostOuterOperation[*ast.MatrixSelector](src)
 			if !ok {
 				return
 			}

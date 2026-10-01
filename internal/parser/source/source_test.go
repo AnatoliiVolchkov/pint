@@ -14,9 +14,9 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
+	"github.com/cloudflare/pint/internal/parser/promql"
 	"github.com/cloudflare/pint/internal/parser/source"
-
-	promParser "github.com/prometheus/prometheus/promql/parser"
 )
 
 func TestMain(t *testing.M) {
@@ -503,7 +503,7 @@ func TestLabelsSource(t *testing.T) {
 			done[expr] = struct{}{}
 
 			t.Log(expr)
-			n, err := parser.DecodeExpr(expr)
+			n, err := parser.DecodeExpr(parser.PromQL, expr)
 			if err != nil {
 				t.Error(err)
 				t.FailNow()
@@ -531,7 +531,7 @@ func TestLabelsSource(t *testing.T) {
 }
 
 func TestLabelsSourceCallCoverage(t *testing.T) {
-	for name, def := range promParser.Functions {
+	for name, def := range promql.Functions() {
 		t.Run(name, func(t *testing.T) {
 			if def.Experimental {
 				t.SkipNow()
@@ -545,20 +545,20 @@ func TestLabelsSourceCallCoverage(t *testing.T) {
 					b.WriteString(", ")
 				}
 				switch at {
-				case promParser.ValueTypeNone:
-				case promParser.ValueTypeScalar:
+				case ast.ValueTypeNone:
+				case ast.ValueTypeScalar:
 					b.WriteRune('1')
-				case promParser.ValueTypeVector:
+				case ast.ValueTypeVector:
 					b.WriteString("http_requests_total")
-				case promParser.ValueTypeMatrix:
+				case ast.ValueTypeMatrix:
 					b.WriteString("http_requests_total[2m]")
-				case promParser.ValueTypeString:
+				case ast.ValueTypeString:
 					b.WriteString(`"foo"`)
 				}
 			}
 			b.WriteRune(')')
 
-			n, err := parser.DecodeExpr(b.String())
+			n, err := parser.DecodeExpr(parser.PromQL, b.String())
 			if err != nil {
 				t.Error(err)
 				t.FailNow()
@@ -566,7 +566,7 @@ func TestLabelsSourceCallCoverage(t *testing.T) {
 			output := source.LabelsSource(b.String(), n.Expr)
 			require.Len(t, output, 1)
 			require.NotEmpty(t, output[0].Operations)
-			call, ok := source.MostOuterOperation[*promParser.Call](output[0])
+			call, ok := source.MostOuterOperation[*ast.Call](output[0])
 			require.True(t, ok, "no call found in operations for: %q ~> %+v", b.String(), output)
 			require.NotNil(t, call, "no call detected in: %q ~> %+v", b.String(), output)
 			require.Equal(t, name, output[0].Operation())
@@ -583,7 +583,7 @@ func TestLabelsSourceCallCoverageExperimental(t *testing.T) {
 		"info": `info(http_requests_total, {job="foo"})`,
 	}
 
-	for name, def := range promParser.Functions {
+	for name, def := range promql.Functions() {
 		t.Run(name, func(t *testing.T) {
 			if !def.Experimental {
 				t.SkipNow()
@@ -600,21 +600,21 @@ func TestLabelsSourceCallCoverageExperimental(t *testing.T) {
 						b.WriteString(", ")
 					}
 					switch at {
-					case promParser.ValueTypeNone:
-					case promParser.ValueTypeScalar:
+					case ast.ValueTypeNone:
+					case ast.ValueTypeScalar:
 						b.WriteRune('1')
-					case promParser.ValueTypeVector:
+					case ast.ValueTypeVector:
 						b.WriteString("http_requests_total")
-					case promParser.ValueTypeMatrix:
+					case ast.ValueTypeMatrix:
 						b.WriteString("http_requests_total[2m]")
-					case promParser.ValueTypeString:
+					case ast.ValueTypeString:
 						b.WriteString(`"foo"`)
 					}
 				}
 				b.WriteRune(')')
 			}
 
-			n, err := parser.DecodeExpr(b.String())
+			n, err := parser.DecodeExpr(parser.PromQL, b.String())
 			require.NoError(t, err, "unexpected parse error for: %s", b.String())
 
 			output := source.LabelsSource(b.String(), n.Expr)
@@ -625,22 +625,22 @@ func TestLabelsSourceCallCoverageExperimental(t *testing.T) {
 
 func TestLabelsSourceCallCoverageFail(t *testing.T) {
 	n := &parser.PromQLNode{
-		Expr: &promParser.Call{
-			Func: &promParser.Function{
+		Expr: &ast.Call{
+			Func: &ast.Function{
 				Name: "fake_call",
 			},
 		},
 	}
 	output := source.LabelsSource("fake_call()", n.Expr)
 	require.Len(t, output, 1)
-	call, ok := source.MostOuterOperation[*promParser.Call](output[0])
+	call, ok := source.MostOuterOperation[*ast.Call](output[0])
 	require.False(t, ok, "no call should have been detected in fake function, got: %v", ok)
 	require.Nil(t, call, "no call should have been detected in fake function, got: %+v", call)
 }
 
 func TestVectorOperation(t *testing.T) {
 	n := &parser.PromQLNode{
-		Expr: &promParser.NumberLiteral{
+		Expr: &ast.NumberLiteral{
 			Val: 1,
 		},
 	}
@@ -876,7 +876,7 @@ func TestLabelsSourceWithFeatures(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			n, err := parser.DecodeExpr(tc.expr)
+			n, err := parser.DecodeExpr(parser.PromQL, tc.expr)
 			require.NoError(t, err, "unexpected parse error for: %s", tc.expr)
 
 			output := source.LabelsSource(tc.expr, n.Expr)
@@ -895,12 +895,12 @@ func TestLabelsSourceWithFeatures(t *testing.T) {
 
 func BenchmarkLabelsSource(b *testing.B) {
 	type testCase struct {
-		node promParser.Node
+		node ast.Node
 		expr string
 	}
 	queries := make([]testCase, 0, len(testCases))
 	for _, expr := range testCases {
-		n, err := parser.DecodeExpr(expr)
+		n, err := parser.DecodeExpr(parser.PromQL, expr)
 		require.NoError(b, err)
 		queries = append(queries, testCase{
 			expr: expr,

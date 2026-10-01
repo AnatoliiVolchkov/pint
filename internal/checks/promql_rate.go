@@ -11,11 +11,11 @@ import (
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/output"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	promParser "github.com/prometheus/prometheus/promql/parser"
 )
 
 // FIXME: add native histograms
@@ -121,11 +121,11 @@ func (c RateCheck) collectRateMetricNames(expr *parser.PromQLExpr, entries []*di
 				return
 			}
 			// Skip subqueries like rate(foo[5m:1m]) — only collect names from range selectors.
-			if _, ok := source.MostOuterOperation[*promParser.MatrixSelector](s); !ok {
+			if _, ok := source.MostOuterOperation[*ast.MatrixSelector](s); !ok {
 				return
 			}
 			// We confirmed MatrixSelector above, which always wraps a VectorSelector.
-			vs, _ := source.MostOuterOperation[*promParser.VectorSelector](s)
+			vs, _ := source.MostOuterOperation[*ast.VectorSelector](s)
 			add(vs.Name)
 			for _, e := range entries {
 				if e.State == discovery.Removed {
@@ -142,7 +142,7 @@ func (c RateCheck) collectRateMetricNames(expr *parser.PromQLExpr, entries []*di
 						if rsrc.Type != source.AggregateSource {
 							continue
 						}
-						if rvs, ok := source.MostOuterOperation[*promParser.VectorSelector](rsrc); ok {
+						if rvs, ok := source.MostOuterOperation[*ast.VectorSelector](rsrc); ok {
 							add(rvs.Name)
 						}
 					}
@@ -170,12 +170,14 @@ func (c RateCheck) checkSources(
 				return
 			}
 
-			m, ok := source.MostOuterOperation[*promParser.MatrixSelector](s)
+			m, ok := source.MostOuterOperation[*ast.MatrixSelector](s)
 			if !ok {
 				return
 			}
 
-			if m.Range < cfg.Config.Global.ScrapeInterval*time.Duration(c.minIntervals) {
+			// MetricsQL windows like rate(foo) or rate(foo[5i]) are calculated at query time.
+			runtimeWindow := m.Implicit || m.StepRelative
+			if !runtimeWindow && m.Range < cfg.Config.Global.ScrapeInterval*time.Duration(c.minIntervals) {
 				problems = append(problems, Problem{
 					Anchor:   AnchorAfter,
 					Lines:    expr.Value.Pos.Lines(),
@@ -207,7 +209,7 @@ func (c RateCheck) checkSources(
 			}
 
 			// MatrixSelector always wraps a VectorSelector, so this can't fail.
-			vs, _ := source.MostOuterOperation[*promParser.VectorSelector](s)
+			vs, _ := source.MostOuterOperation[*ast.VectorSelector](s)
 
 			if _, ok := done[vs.Name]; ok {
 				return
@@ -264,7 +266,7 @@ func (c RateCheck) checkSources(
 						if rsrc.Type != source.AggregateSource {
 							continue
 						}
-						if rvs, ok := source.MostOuterOperation[*promParser.VectorSelector](rsrc); ok {
+						if rvs, ok := source.MostOuterOperation[*ast.VectorSelector](rsrc); ok {
 							metadata, err := pending[rvs.Name].Wait()
 							if err != nil {
 								if errors.Is(err, promapi.ErrUnsupported) {
@@ -323,9 +325,9 @@ func (c RateCheck) checkSources(
 	return problems
 }
 
-func findRateCall(s *source.Source) (*promParser.Call, bool) {
+func findRateCall(s *source.Source) (*ast.Call, bool) {
 	for _, op := range s.Operations {
-		call, ok := op.Node.(*promParser.Call)
+		call, ok := op.Node.(*ast.Call)
 		if !ok {
 			continue
 		}

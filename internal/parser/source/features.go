@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	promParser "github.com/prometheus/prometheus/promql/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 )
 
 type PrometheusVersion struct {
@@ -207,12 +207,12 @@ func newDefaultFeatures() *Features {
 	})
 
 	// Experimental aggregation operators behind promql-experimental-functions.
-	f.Register(promParser.ItemTypeStr[promParser.LIMITK], FeatureVersion{
+	f.Register(ast.OpLimitK.String(), FeatureVersion{
 		Flag:          FeatureExperimentalFunctions,
 		MinVersion:    ver(2, 54, 0),
 		StableVersion: ver(0, 0, 0),
 	})
-	f.Register(promParser.ItemTypeStr[promParser.LIMIT_RATIO], FeatureVersion{
+	f.Register(ast.OpLimitRatio.String(), FeatureVersion{
 		Flag:          FeatureExperimentalFunctions,
 		MinVersion:    ver(2, 54, 0),
 		StableVersion: ver(0, 0, 0),
@@ -226,19 +226,19 @@ func newDefaultFeatures() *Features {
 	})
 
 	// Extended range selectors behind promql-extended-range-selectors.
-	f.Register(promParser.ItemTypeStr[promParser.ANCHORED], FeatureVersion{
+	f.Register(ast.OpAnchored.String(), FeatureVersion{
 		Flag:          FeatureExtendedRangeSelectors,
 		MinVersion:    ver(3, 7, 0),
 		StableVersion: ver(0, 0, 0),
 	})
-	f.Register(promParser.ItemTypeStr[promParser.SMOOTHED], FeatureVersion{
+	f.Register(ast.OpSmoothed.String(), FeatureVersion{
 		Flag:          FeatureExtendedRangeSelectors,
 		MinVersion:    ver(3, 7, 0),
 		StableVersion: ver(0, 0, 0),
 	})
 
 	// Fill modifiers behind promql-binop-fill-modifiers.
-	f.Register(promParser.ItemTypeStr[promParser.FILL], FeatureVersion{
+	f.Register(ast.OpFill.String(), FeatureVersion{
 		Flag:          FeatureBinopFillModifiers,
 		MinVersion:    ver(3, 10, 0),
 		StableVersion: ver(0, 0, 0),

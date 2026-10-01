@@ -3,10 +3,10 @@ package parser_test
 import (
 	"testing"
 
-	promParser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 )
 
 func TestWalkUpExpr(t *testing.T) {
@@ -82,16 +82,16 @@ func TestWalkUpExpr(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.walkFromChild == nil {
 				// Test nil node case
-				nodes := parser.WalkUpExpr[*promParser.VectorSelector](nil)
+				nodes := parser.WalkUpExpr[*ast.VectorSelector](nil)
 				require.Len(t, nodes, tc.expected)
 				return
 			}
 
-			query, err := parser.DecodeExpr(tc.expr)
+			query, err := parser.DecodeExpr(parser.PromQL, tc.expr)
 			require.NoError(t, err)
 
 			startNode := tc.walkFromChild(query)
-			nodes := parser.WalkUpExpr[*promParser.VectorSelector](startNode)
+			nodes := parser.WalkUpExpr[*ast.VectorSelector](startNode)
 			require.Len(t, nodes, tc.expected)
 		})
 	}
@@ -153,11 +153,11 @@ func TestWalkUpExprForCallNodes(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			query, err := parser.DecodeExpr(tc.expr)
+			query, err := parser.DecodeExpr(parser.PromQL, tc.expr)
 			require.NoError(t, err)
 
 			startNode := tc.walkFromChild(query)
-			nodes := parser.WalkUpExpr[*promParser.Call](startNode)
+			nodes := parser.WalkUpExpr[*ast.Call](startNode)
 			require.Len(t, nodes, tc.expected)
 		})
 	}
@@ -211,11 +211,11 @@ func TestWalkUpExprForAggregateExpr(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			query, err := parser.DecodeExpr(tc.expr)
+			query, err := parser.DecodeExpr(parser.PromQL, tc.expr)
 			require.NoError(t, err)
 
 			startNode := tc.walkFromChild(query)
-			nodes := parser.WalkUpExpr[*promParser.AggregateExpr](startNode)
+			nodes := parser.WalkUpExpr[*ast.AggregateExpr](startNode)
 			require.Len(t, nodes, tc.expected)
 		})
 	}

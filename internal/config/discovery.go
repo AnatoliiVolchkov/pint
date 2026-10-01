@@ -386,7 +386,7 @@ func (pq PrometheusQuery) validate() (err error) {
 			return err
 		}
 	}
-	if _, err = parser.DecodeExpr(pq.Query); err != nil {
+	if _, err = parser.DecodeExpr(parser.PromQL, pq.Query); err != nil {
 		return fmt.Errorf("failed to parse prometheus query %q: %w", pq.Query, err)
 	}
 	if len(pq.Template) == 0 {

@@ -4,16 +4,26 @@ import (
 	"context"
 	"errors"
 
-	promParser "github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
+	"github.com/cloudflare/pint/internal/parser/ast"
+	"github.com/cloudflare/pint/internal/parser/metricsql"
 )
 
 const (
 	SyntaxCheckName    = "promql/syntax"
 	SyntaxCheckDetails = "[Click here](https://prometheus.io/docs/prometheus/latest/querying/basics/) for PromQL documentation."
+
+	SyntaxCheckMetricsQLDetails = "[Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation."
 )
+
+// queryLanguageName returns the name of the query language used in messages.
+func queryLanguageName(lang ast.Language) string {
+	if lang.Name() == metricsql.Name {
+		return "MetricsQL"
+	}
+	return "PromQL"
+}
 
 func NewSyntaxCheck() SyntaxCheck {
 	return SyntaxCheck{}
@@ -57,26 +67,28 @@ func (c SyntaxCheck) Check(_ context.Context, entry *discovery.Entry, _ []*disco
 			Kind:        diags.Issue,
 		}
 
-		perrs, ok := errors.AsType[promParser.ParseErrors](err)
-		if ok {
-			for _, perr := range perrs { // Use only the last error.
-				diag = diags.Diagnostic{
-					Message:     perr.Err.Error(),
-					Pos:         expr.Value.Pos,
-					Expr:        nil,
-					FirstColumn: int(perr.PositionRange.Start) + 1,
-					LastColumn:  int(perr.PositionRange.End),
-					Kind:        diags.Issue,
-				}
+		if perr, ok := errors.AsType[*ast.ParseError](err); ok {
+			diag = diags.Diagnostic{
+				Message:     perr.Message,
+				Pos:         expr.Value.Pos,
+				Expr:        nil,
+				FirstColumn: int(perr.PositionRange.Start) + 1,
+				LastColumn:  int(perr.PositionRange.End),
+				Kind:        diags.Issue,
 			}
+		}
+
+		details := SyntaxCheckDetails
+		if expr.Language().Name() == metricsql.Name {
+			details = SyntaxCheckMetricsQLDetails
 		}
 
 		problems = append(problems, Problem{
 			Anchor:      AnchorAfter,
 			Lines:       expr.Value.Pos.Lines(),
 			Reporter:    c.Reporter(),
-			Summary:     "PromQL syntax error",
-			Details:     SyntaxCheckDetails,
+			Summary:     queryLanguageName(expr.Language()) + " syntax error",
+			Details:     details,
 			Diagnostics: []diags.Diagnostic{diag},
 			Severity:    Fatal,
 		})

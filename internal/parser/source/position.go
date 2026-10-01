@@ -4,15 +4,15 @@ import (
 	"strings"
 
 	"github.com/prometheus/prometheus/model/labels"
-	promParser "github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
+
+	"github.com/cloudflare/pint/internal/parser/ast"
 )
 
-func GetQueryFragment(expr string, pos posrange.PositionRange) string {
+func GetQueryFragment(expr string, pos ast.PositionRange) string {
 	return expr[pos.Start:pos.End]
 }
 
-func isOutside(pos posrange.PositionRange, outside []posrange.PositionRange) bool {
+func isOutside(pos ast.PositionRange, outside []ast.PositionRange) bool {
 	for _, out := range outside {
 		if pos.Start >= out.Start && pos.End <= out.End {
 			return false
@@ -34,7 +34,7 @@ func isOutside(pos posrange.PositionRange, outside []posrange.PositionRange) boo
 //
 // - FirstColumn = pos.Start + 1
 // - LastColumn = pos.End.
-func FindFuncNamePosition(expr string, within posrange.PositionRange, fn string) posrange.PositionRange {
+func FindFuncNamePosition(expr string, within ast.PositionRange, fn string) ast.PositionRange {
 	fragment := GetQueryFragment(expr, within)
 	lower := strings.ToLower(fragment)
 	fnLower := strings.ToLower(fn)
@@ -52,9 +52,9 @@ func FindFuncNamePosition(expr string, within posrange.PositionRange, fn string)
 		for i := end; i < len(fragment); i++ {
 			c := fragment[i]
 			if c == '(' {
-				return posrange.PositionRange{
-					Start: within.Start + posrange.Pos(idx),
-					End:   within.Start + posrange.Pos(end),
+				return ast.PositionRange{
+					Start: within.Start + ast.Pos(idx),
+					End:   within.Start + ast.Pos(end),
 				}
 			}
 			if c != ' ' && c != '\n' && c != '\t' {
@@ -69,7 +69,7 @@ func FindFuncNamePosition(expr string, within posrange.PositionRange, fn string)
 // within fragment, from fn up to its closing ')'. When within spans more than
 // one call, outside lists ranges the match must fall within, which lets callers
 // pick the right `fn(...)` when the same keyword appears on both sides.
-func FindFuncPosition(expr string, within posrange.PositionRange, fn string, outside []posrange.PositionRange) posrange.PositionRange {
+func FindFuncPosition(expr string, within ast.PositionRange, fn string, outside []ast.PositionRange) ast.PositionRange {
 	fragment := GetQueryFragment(expr, within)
 	lower := strings.ToLower(fragment)
 	fnLower := strings.ToLower(fn)
@@ -104,9 +104,9 @@ func FindFuncPosition(expr string, within posrange.PositionRange, fn string, out
 			continue
 		}
 
-		pos := posrange.PositionRange{
-			Start: within.Start + posrange.Pos(idx),
-			End:   within.Start + posrange.Pos(open+closeRel+1),
+		pos := ast.PositionRange{
+			Start: within.Start + ast.Pos(idx),
+			End:   within.Start + ast.Pos(open+closeRel+1),
 		}
 		if isOutside(pos, outside) {
 			return pos
@@ -127,7 +127,7 @@ func FindFuncPosition(expr string, within posrange.PositionRange, fn string, out
 //
 // If expr is `sum(foo) without(notify)` and within selects `without(notify)`,
 // then name="notify" returns the position of `notify` in the full expr.
-func findArgumentPosition(expr string, within posrange.PositionRange, name string) posrange.PositionRange {
+func findArgumentPosition(expr string, within ast.PositionRange, name string) ast.PositionRange {
 	fragment := GetQueryFragment(expr, within)
 
 	isSpace := func(b byte) bool {
@@ -167,17 +167,17 @@ func findArgumentPosition(expr string, within posrange.PositionRange, name strin
 	if best < 0 {
 		return within
 	}
-	return posrange.PositionRange{
-		Start: within.Start + posrange.Pos(best),
-		End:   within.Start + posrange.Pos(best+len(name)),
+	return ast.PositionRange{
+		Start: within.Start + ast.Pos(best),
+		End:   within.Start + ast.Pos(best+len(name)),
 	}
 }
 
 // findBinOpsOperatorPosition returns the position of the op operator between the
 // two sides of a binary expression, searching only the gap between them so a
 // matching op inside either side is ignored.
-func findBinOpsOperatorPosition(expr string, n *promParser.BinaryExpr, op string) posrange.PositionRange {
-	within := posrange.PositionRange{
+func findBinOpsOperatorPosition(expr string, n *ast.BinaryExpr, op string) ast.PositionRange {
+	within := ast.PositionRange{
 		Start: n.LHS.PositionRange().End + 1,
 		End:   n.RHS.PositionRange().Start,
 	}
@@ -185,9 +185,9 @@ func findBinOpsOperatorPosition(expr string, n *promParser.BinaryExpr, op string
 	if idx < 0 {
 		return within
 	}
-	return posrange.PositionRange{
-		Start: within.Start + posrange.Pos(idx),
-		End:   within.Start + posrange.Pos(idx+len(op)),
+	return ast.PositionRange{
+		Start: within.Start + ast.Pos(idx),
+		End:   within.Start + ast.Pos(idx+len(op)),
 	}
 }
 
@@ -195,7 +195,7 @@ func findBinOpsOperatorPosition(expr string, n *promParser.BinaryExpr, op string
 // fragment and returns the position spanning from "name" through the closing
 // quote, with End exclusive (one past the closing quote) to match the other
 // position functions and GetQueryFragment.
-func FindMatcherPos(expr string, within posrange.PositionRange, m *labels.Matcher) posrange.PositionRange {
+func FindMatcherPos(expr string, within ast.PositionRange, m *labels.Matcher) ast.PositionRange {
 	fragment := GetQueryFragment(expr, within)
 	// Build the full pattern: name + op + "value" (e.g. job=~"foo").
 	pattern := m.Name + m.Type.String() + `"` + m.Value + `"`
@@ -203,8 +203,8 @@ func FindMatcherPos(expr string, within posrange.PositionRange, m *labels.Matche
 	if idx < 0 {
 		return within
 	}
-	return posrange.PositionRange{
-		Start: within.Start + posrange.Pos(idx),
-		End:   within.Start + posrange.Pos(idx+len(pattern)),
+	return ast.PositionRange{
+		Start: within.Start + ast.Pos(idx),
+		End:   within.Start + ast.Pos(idx+len(pattern)),
 	}
 }

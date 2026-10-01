@@ -15,6 +15,7 @@ import (
 	"github.com/cloudflare/pint/internal/comments"
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -7776,6 +7777,58 @@ groups:
 			}
 		})
 	}
+}
+
+func TestPromQLExprQueryLanguage(t *testing.T) {
+	type testCaseT struct {
+		expr         string
+		promqlValid  bool
+		metricsValid bool
+	}
+
+	testCases := []testCaseT{
+		{expr: `sum(rate(up[5m])) by (job)`, promqlValid: true, metricsValid: true},
+		{expr: `rate(up)`, promqlValid: false, metricsValid: true},
+		{expr: `WITH (x = up{job="a"}) x > 0`, promqlValid: false, metricsValid: true},
+		{expr: `up default 0`, promqlValid: false, metricsValid: true},
+		{expr: `label_set(up, "foo", "bar")`, promqlValid: false, metricsValid: true},
+		{expr: `sum(up`, promqlValid: false, metricsValid: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.expr, func(t *testing.T) {
+			input := []byte("groups:\n- name: foo\n  rules:\n  - record: foo\n    expr: '" + tc.expr + "'\n")
+			for _, lang := range []ast.Language{parser.PromQL, parser.MetricsQL} {
+				p := parser.NewParser(parser.Options{Language: lang, Names: model.UTF8Validation})
+				file := p.Parse(bytes.NewReader(input))
+				require.NoError(t, file.Error.Err)
+				require.Len(t, file.Groups, 1)
+				require.Len(t, file.Groups[0].Rules, 1)
+				expr := file.Groups[0].Rules[0].Expr()
+				require.Equal(t, lang.Name(), expr.Language().Name())
+				valid := tc.promqlValid
+				if lang == parser.MetricsQL {
+					valid = tc.metricsValid
+				}
+				if valid {
+					require.NoError(t, expr.SyntaxError(), "language: %s", lang.Name())
+					require.NotNil(t, expr.Query(), "language: %s", lang.Name())
+				} else {
+					require.Error(t, expr.SyntaxError(), "language: %s", lang.Name())
+				}
+			}
+		})
+	}
+}
+
+func TestNewLanguage(t *testing.T) {
+	for name, expected := range map[string]string{"": "promql", "promql": "promql", "metricsql": "metricsql"} {
+		lang, err := parser.NewLanguage(name)
+		require.NoError(t, err)
+		require.Equal(t, expected, lang.Name())
+	}
+	_, err := parser.NewLanguage("sql")
+	require.EqualError(t, err, `unsupported query language "sql", supported languages are: promql, metricsql`)
 }
 
 func BenchmarkParse(b *testing.B) {

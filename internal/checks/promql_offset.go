@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	promParser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 )
@@ -86,12 +86,12 @@ func (c OffsetCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*dis
 func (c OffsetCheck) checkSources(expr *parser.PromQLExpr, retention time.Duration, reason string) (problems []Problem) {
 	for _, src := range expr.Source() {
 		src.WalkSources(func(s *source.Source, _ *source.Join, _ *source.Unless) {
-			if vs, ok := source.MostOuterOperation[*promParser.VectorSelector](s); ok && vs.OriginalOffset > retention {
+			if vs, ok := source.MostOuterOperation[*ast.VectorSelector](s); ok && vs.OriginalOffset > retention {
 				problems = append(problems, c.offsetProblem(expr, s, vs, vs.OriginalOffset, reason))
 			}
 			// A source can have multiple SubqueryExprs (nested subqueries), check all of them.
 			for _, op := range s.Operations {
-				sq, ok := op.Node.(*promParser.SubqueryExpr)
+				sq, ok := op.Node.(*ast.SubqueryExpr)
 				if !ok {
 					continue
 				}
@@ -101,10 +101,16 @@ func (c OffsetCheck) checkSources(expr *parser.PromQLExpr, retention time.Durati
 			}
 		})
 	}
+	// MetricsQL allows to use offset with any expression, for example sum(foo) offset 5m.
+	for _, node := range parser.WalkDownExpr[*ast.OffsetExpr](expr.Query()) {
+		if oe := node.Expr.(*ast.OffsetExpr); oe.OriginalOffset > retention {
+			problems = append(problems, c.offsetProblem(expr, nil, oe, oe.OriginalOffset, reason))
+		}
+	}
 	return problems
 }
 
-func (c OffsetCheck) offsetProblem(expr *parser.PromQLExpr, s *source.Source, node promParser.Node, offset time.Duration, reason string) Problem {
+func (c OffsetCheck) offsetProblem(expr *parser.PromQLExpr, s *source.Source, node ast.Node, offset time.Duration, reason string) Problem {
 	firstColumn, lastColumn := findOffsetColumns(expr.Value.Value, s, node)
 	return Problem{
 		Anchor:   AnchorAfter,
@@ -131,19 +137,19 @@ func (c OffsetCheck) offsetProblem(expr *parser.PromQLExpr, s *source.Source, no
 	}
 }
 
-func findOffsetColumns(query string, s *source.Source, node promParser.Node) (firstColumn, lastColumn int) {
+func findOffsetColumns(query string, s *source.Source, node ast.Node) (firstColumn, lastColumn int) {
 	nodeStart := int(node.PositionRange().Start)
 
 	var endPos int
 	switch node.(type) {
-	case *promParser.VectorSelector:
+	case *ast.VectorSelector:
 		// If VectorSelector is inside a MatrixSelector, use the MatrixSelector's end position.
-		if m, ok := source.MostOuterOperation[*promParser.MatrixSelector](s); ok {
+		if m, ok := source.MostOuterOperation[*ast.MatrixSelector](s); ok {
 			endPos = int(m.PositionRange().End)
 		} else {
 			endPos = int(node.PositionRange().End)
 		}
-	case *promParser.SubqueryExpr:
+	case *ast.SubqueryExpr, *ast.OffsetExpr:
 		endPos = int(node.PositionRange().End)
 	}
 

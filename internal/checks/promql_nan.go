@@ -7,12 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	promParser "github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
-
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
+	"github.com/cloudflare/pint/internal/parser/metricsql"
 	"github.com/cloudflare/pint/internal/parser/source"
 )
 
@@ -30,13 +29,24 @@ becomes ` + "`NaN`" + ` or ` + "`Inf`" + `, making all other valid series irrele
 To avoid this, filter out zero-valued divisor series before division, for example:
 ` + "`sum(foo / (bar > 0))`" + `
 See [promql/nan](https://cloudflare.github.io/pint/checks/promql/nan.html) for more details.`
+
+	NaNCheckMetricsQLDetails = `Division by zero produces ` + "`+Inf`" + ` in MetricsQL, ` + "`NaN`" + ` results are treated as missing values.
+
+Even if only one out of many input series is ` + "`Inf`" + `, the entire aggregation result
+becomes ` + "`Inf`" + `, making all other valid series irrelevant.
+To avoid this, filter out zero-valued divisor series before division, for example:
+` + "`sum(foo / (bar > 0))`" + `
+See [promql/nan](https://cloudflare.github.io/pint/checks/promql/nan.html) for more details.`
 )
 
 func NewNaNCheck() NaNCheck {
-	return NaNCheck{}
+	return NaNCheck{metricsQL: false}
 }
 
-type NaNCheck struct{}
+type NaNCheck struct {
+	// MetricsQL ignores NaN values, only Inf can break aggregations.
+	metricsQL bool
+}
 
 func (c NaNCheck) Meta() CheckMeta {
 	return CheckMeta{
@@ -64,6 +74,7 @@ func (c NaNCheck) Check(_ context.Context, entry *discovery.Entry, entries []*di
 	if expr.SyntaxError() != nil {
 		return problems
 	}
+	c.metricsQL = expr.Language().Name() == metricsql.Name
 	recordingRulesByName := c.collectRecordingRulesByName(entries)
 
 	for _, src := range expr.Source() {
@@ -73,19 +84,19 @@ func (c NaNCheck) Check(_ context.Context, entry *discovery.Entry, entries []*di
 			}
 			// These aggregations combine input values into a single result,
 			// so non-finite inputs can invalidate or skew the output.
-			if aggr, ok := source.MostOuterOperation[*promParser.AggregateExpr](s); ok {
-				switch aggr.Op {
-				case promParser.SUM,
-					promParser.AVG,
-					promParser.STDDEV,
-					promParser.STDVAR:
+			if aggr, ok := source.MostOuterOperation[*ast.AggregateExpr](s); ok {
+				switch aggr.Op { // nolint: exhaustive
+				case ast.OpSum,
+					ast.OpAvg,
+					ast.OpStddev,
+					ast.OpStdvar:
 				default:
 					return
 				}
 			}
 			if divisorPos, ok := c.findUnsafeDivisor(s, true); ok {
 				divisor := source.GetQueryFragment(expr.Value.Value, divisorPos)
-				msg := "This aggregation can return NaN or Inf if any series for `" + divisor + "` evaluates to zero."
+				msg := "This aggregation can return " + c.nonFinite() + " if any series for `" + divisor + "` evaluates to zero."
 				problems = append(problems, c.reportFor(expr, msg, divisorPos))
 				return
 			}
@@ -113,7 +124,7 @@ func (c NaNCheck) checkRecordingRules(
 			continue
 		}
 		namePos := c.findNamePosition(expr.Value.Value, s.Position, name)
-		msg := "This aggregation can return NaN or Inf because recording rule `" + name + "` can produce it."
+		msg := "This aggregation can return " + c.nonFinite() + " because recording rule `" + name + "` can produce it."
 		problems = append(problems, c.reportFor(expr, msg, namePos))
 	}
 
@@ -181,7 +192,7 @@ func (c NaNCheck) collectExprSelectorNames(expr *parser.PromQLExpr) map[string]b
 func (c NaNCheck) collectSelectorNames(s *source.Source) map[string]bool {
 	names := map[string]bool{}
 	s.WalkSources(func(inner *source.Source, _ *source.Join, _ *source.Unless) {
-		if vs, ok := source.MostOuterOperation[*promParser.VectorSelector](inner); ok {
+		if vs, ok := source.MostOuterOperation[*ast.VectorSelector](inner); ok {
 			names[vs.Name] = true
 		}
 	})
@@ -199,9 +210,9 @@ func (c NaNCheck) collectSelectorNames(s *source.Source) map[string]bool {
 // aggregation. In that case a top-level `foo / bar` in the recording rule is
 // still unsafe, because the aggregation using the recording rule will consume
 // its result.
-func (c NaNCheck) findUnsafeDivisor(s *source.Source, skipTopLevelJoin bool) (posrange.PositionRange, bool) {
+func (c NaNCheck) findUnsafeDivisor(s *source.Source, skipTopLevelJoin bool) (ast.PositionRange, bool) {
 	for _, j := range s.Joins {
-		if j.Op != promParser.DIV && j.Op != promParser.MOD {
+		if !c.isUnsafeOp(j.Op) {
 			continue
 		}
 		// sum(foo) / sum(bar) - division between aggregation results, not inside
@@ -213,13 +224,13 @@ func (c NaNCheck) findUnsafeDivisor(s *source.Source, skipTopLevelJoin bool) (po
 		if c.safeDivisorSource(j.Src) {
 			continue
 		}
-		if vs, ok := source.MostOuterOperation[*promParser.VectorSelector](j.Src); ok {
+		if vs, ok := source.MostOuterOperation[*ast.VectorSelector](j.Src); ok {
 			return vs.PosRange, true
 		}
 		return j.Src.Position, true
 	}
 	for _, ind := range s.Indirect {
-		if ind.Op != promParser.DIV && ind.Op != promParser.MOD {
+		if !c.isUnsafeOp(ind.Op) {
 			continue
 		}
 		// sum(1 / bar) - scalar on the left, vector divides and can be zero.
@@ -227,7 +238,7 @@ func (c NaNCheck) findUnsafeDivisor(s *source.Source, skipTopLevelJoin bool) (po
 			if c.safeDivisorSource(s) {
 				continue
 			}
-			vs, _ := source.MostOuterOperation[*promParser.VectorSelector](s)
+			vs, _ := source.MostOuterOperation[*ast.VectorSelector](s)
 			return vs.PosRange, true
 		}
 		if c.safeDivisorSource(ind.Src) {
@@ -235,7 +246,29 @@ func (c NaNCheck) findUnsafeDivisor(s *source.Source, skipTopLevelJoin bool) (po
 		}
 		return ind.Src.Position, true
 	}
-	return posrange.PositionRange{}, false
+	return ast.PositionRange{}, false
+}
+
+// isUnsafeOp returns true if op can produce non-finite values that break aggregations.
+func (c NaNCheck) isUnsafeOp(op ast.Op) bool {
+	if c.metricsQL {
+		return op == ast.OpDiv
+	}
+	return op == ast.OpDiv || op == ast.OpMod
+}
+
+func (c NaNCheck) details() string {
+	if c.metricsQL {
+		return NaNCheckMetricsQLDetails
+	}
+	return NaNCheckDetails
+}
+
+func (c NaNCheck) nonFinite() string {
+	if c.metricsQL {
+		return "Inf"
+	}
+	return "NaN or Inf"
 }
 
 func (c NaNCheck) sourceHasUnsafeDivision(expr *parser.PromQLExpr) bool {
@@ -253,19 +286,19 @@ func (c NaNCheck) sourceHasUnsafeDivision(expr *parser.PromQLExpr) bool {
 	return false
 }
 
-func (c NaNCheck) findNamePosition(expr string, within posrange.PositionRange, name string) posrange.PositionRange {
+func (c NaNCheck) findNamePosition(expr string, within ast.PositionRange, name string) ast.PositionRange {
 	fragment := source.GetQueryFragment(expr, within)
 	idx := strings.Index(fragment, name)
 	if idx < 0 {
 		return within
 	}
-	return posrange.PositionRange{
-		Start: within.Start + posrange.Pos(idx),
-		End:   within.Start + posrange.Pos(idx+len(name)),
+	return ast.PositionRange{
+		Start: within.Start + ast.Pos(idx),
+		End:   within.Start + ast.Pos(idx+len(name)),
 	}
 }
 
-func (c NaNCheck) reportFor(expr *parser.PromQLExpr, message string, highlight posrange.PositionRange) Problem {
+func (c NaNCheck) reportFor(expr *parser.PromQLExpr, message string, highlight ast.PositionRange) Problem {
 	firstCol := int(highlight.Start) + 1
 	lastCol := int(highlight.End)
 	return Problem{
@@ -273,7 +306,7 @@ func (c NaNCheck) reportFor(expr *parser.PromQLExpr, message string, highlight p
 		Lines:    expr.Value.Pos.Lines(),
 		Reporter: c.Reporter(),
 		Summary:  "unsafe division in aggregation",
-		Details:  NaNCheckDetails,
+		Details:  c.details(),
 		Diagnostics: []diags.Diagnostic{
 			{
 				Message:     message,
@@ -295,16 +328,16 @@ func (c NaNCheck) excludesZero(cond source.Condition) bool {
 	if !cond.KnownValue {
 		return false
 	}
-	switch cond.Op {
-	case promParser.GTR:
+	switch cond.Op { // nolint: exhaustive
+	case ast.OpGtr:
 		return cond.Value >= 0
-	case promParser.GTE:
+	case ast.OpGte:
 		return cond.Value > 0
-	case promParser.LSS:
+	case ast.OpLss:
 		return cond.Value <= 0
-	case promParser.LTE:
+	case ast.OpLte:
 		return cond.Value < 0
-	case promParser.NEQ:
+	case ast.OpNeq:
 		return cond.Value == 0
 	default:
 		return false

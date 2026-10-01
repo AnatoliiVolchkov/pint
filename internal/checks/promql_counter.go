@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	promParser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/promapi"
 )
 
@@ -75,12 +75,12 @@ func (c CounterCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*di
 	done := map[string]struct{}{}
 
 LOOP:
-	for _, vs := range parser.WalkDownExpr[*promParser.VectorSelector](expr.Query()) {
+	for _, vs := range parser.WalkDownExpr[*ast.VectorSelector](expr.Query()) {
 		if !c.needsMetadataCheck(vs) {
 			continue LOOP
 		}
 
-		selector := vs.Expr.(*promParser.VectorSelector)
+		selector := vs.Expr.(*ast.VectorSelector)
 		if _, ok := done[selector.Name]; ok {
 			continue LOOP
 		}
@@ -136,20 +136,20 @@ func (c CounterCheck) needsMetadataCheck(vs *parser.PromQLNode) bool {
 		return true
 	}
 
-	for _, call := range parser.WalkUpExpr[*promParser.Call](vs.Parent) {
-		if fn := call.Expr.(*promParser.Call); c.isSafeFunc(fn.Func.Name) {
+	for _, call := range parser.WalkUpExpr[*ast.Call](vs.Parent) {
+		if fn := call.Expr.(*ast.Call); c.isSafeFunc(fn.Func.Name) {
 			return false
 		}
 	}
 
-	for _, aggr := range parser.WalkUpExpr[*promParser.AggregateExpr](vs.Parent) {
-		if ag := aggr.Expr.(*promParser.AggregateExpr); ag.Op == promParser.COUNT || ag.Op == promParser.GROUP {
+	for _, aggr := range parser.WalkUpExpr[*ast.AggregateExpr](vs.Parent) {
+		if ag := aggr.Expr.(*ast.AggregateExpr); ag.Op == ast.OpCount || ag.Op == ast.OpGroup {
 			return false
 		}
 	}
 
-	for _, binSide := range parser.WalkUpParent[*promParser.BinaryExpr](vs) {
-		if binExp := binSide.Parent.Expr.(*promParser.BinaryExpr); binExp.Op == promParser.LUNLESS {
+	for _, binSide := range parser.WalkUpParent[*ast.BinaryExpr](vs) {
+		if binExp := binSide.Parent.Expr.(*ast.BinaryExpr); binExp.Op == ast.OpUnless || binExp.Op == ast.OpIfNot {
 			if binExp.RHS.String() == binSide.Expr.String() {
 				return false
 			}
@@ -162,11 +162,11 @@ func (c CounterCheck) needsMetadataCheck(vs *parser.PromQLNode) bool {
 func (c CounterCheck) collectMetricNames(expr *parser.PromQLExpr) []string {
 	seen := map[string]struct{}{}
 	var names []string
-	for _, vs := range parser.WalkDownExpr[*promParser.VectorSelector](expr.Query()) {
+	for _, vs := range parser.WalkDownExpr[*ast.VectorSelector](expr.Query()) {
 		if !c.needsMetadataCheck(vs) {
 			continue
 		}
-		selector := vs.Expr.(*promParser.VectorSelector)
+		selector := vs.Expr.(*ast.VectorSelector)
 		if _, ok := seen[selector.Name]; ok {
 			continue
 		}
@@ -189,6 +189,15 @@ func (c CounterCheck) isSafeFunc(name string) bool {
 	case "irate", "rate":
 		return true
 	case "timestamp":
+		return true
+	// MetricsQL functions.
+	case "changes_prometheus", "increase_prometheus", "increase_pure", "rate_prometheus", "rollup_increase", "rollup_rate":
+		return true
+	case "count_eq_over_time", "count_gt_over_time", "count_le_over_time", "count_ne_over_time":
+		return true
+	case "lifetime", "scrape_interval", "stale_samples_over_time":
+		return true
+	case "tfirst_over_time", "tlast_over_time", "tlast_change_over_time", "timestamp_with_name":
 		return true
 	default:
 		return false

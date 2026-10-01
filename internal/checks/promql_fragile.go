@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"slices"
 
-	promParser "github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 )
 
@@ -77,7 +76,13 @@ func (c FragileCheck) checkTopK(expr *parser.PromQLExpr, src *source.Source) (pr
 	if src.FixedLabels && len(src.TransformedLabels(source.PossibleLabel)) == 0 {
 		return problems
 	}
-	if !slices.Contains([]string{"topk", "bottomk", "limit", "limit_ratio"}, src.Operation()) {
+	if !slices.Contains([]string{
+		"topk", "bottomk", "limit", "limit_ratio",
+		// MetricsQL functions.
+		"any", "outliersk",
+		"topk_avg", "topk_last", "topk_max", "topk_median", "topk_min",
+		"bottomk_avg", "bottomk_last", "bottomk_max", "bottomk_median", "bottomk_min",
+	}, src.Operation()) {
 		return problems
 	}
 	problems = append(problems, Problem{
@@ -126,13 +131,13 @@ func (c FragileCheck) checkPartialData(expr *parser.PromQLExpr, src *source.Sour
 			continue
 		}
 
-		switch j.Op {
-		case promParser.ADD:
-		case promParser.SUB:
-		case promParser.MUL:
-		case promParser.DIV:
-		case promParser.MOD:
-		case promParser.POW:
+		switch j.Op { // nolint: exhaustive
+		case ast.OpAdd:
+		case ast.OpSub:
+		case ast.OpMul:
+		case ast.OpDiv:
+		case ast.OpMod:
+		case ast.OpPow:
 		default:
 			continue
 		}

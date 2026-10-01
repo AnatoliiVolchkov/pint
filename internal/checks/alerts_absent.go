@@ -9,10 +9,9 @@ import (
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/output"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
-
-	promParser "github.com/prometheus/prometheus/promql/parser"
 )
 
 const (
@@ -97,7 +96,7 @@ func (c AlertsAbsentCheck) Check(ctx context.Context, entry *discovery.Entry, _ 
 	for _, s := range absentSources {
 		var summary string
 
-		call, _ := source.MostOuterOperation[*promParser.Call](s)
+		call, _ := source.MostOuterOperation[*ast.Call](s)
 		if s.ReturnInfo.AlwaysReturns {
 			problems = append(problems, Problem{
 				Anchor:   AnchorAfter,

@@ -11,10 +11,11 @@ import (
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	promParser "github.com/prometheus/prometheus/promql/parser"
 )
 
 const (
@@ -188,7 +189,7 @@ func (c RuleDependencyCheck) checkCrossGroupDependency(entry *discovery.Entry, e
 	var deps []*crossGroupDep
 	for _, src := range expr.Source() {
 		src.WalkSources(func(s *source.Source, _ *source.Join, _ *source.Unless) {
-			vs, ok := source.MostOuterOperation[*promParser.VectorSelector](s)
+			vs, ok := source.MostOuterOperation[*ast.VectorSelector](s)
 			if !ok {
 				return
 			}
@@ -271,6 +272,16 @@ func (c RuleDependencyCheck) checkCrossGroupDependency(entry *discovery.Entry, e
 	return problems
 }
 
+// selectsName returns true if any of the MetricsQL `or` filters selects given metric name.
+func selectsName(vs *ast.VectorSelector, name string) bool {
+	for _, lm := range vs.AllMatchers() {
+		if lm.Name == model.MetricNameLabel && lm.Type == labels.MatchEqual && lm.Value == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (c RuleDependencyCheck) usesVector(entry *discovery.Entry, name string) *brokenDependency {
 	expr := entry.Rule.Expr()
 	if expr.SyntaxError() != nil {
@@ -280,11 +291,11 @@ func (c RuleDependencyCheck) usesVector(entry *discovery.Entry, name string) *br
 	var dep *brokenDependency
 	for _, src := range expr.Source() {
 		src.WalkSources(func(s *source.Source, _ *source.Join, _ *source.Unless) {
-			vs, ok := source.MostOuterOperation[*promParser.VectorSelector](s)
+			vs, ok := source.MostOuterOperation[*ast.VectorSelector](s)
 			if !ok {
 				return
 			}
-			if vs.Name == name {
+			if vs.Name == name || selectsName(vs, name) {
 				dep = &brokenDependency{
 					kind:   "recording",
 					metric: name,
@@ -311,14 +322,14 @@ func (c RuleDependencyCheck) usesAlert(entry *discovery.Entry, name string) *bro
 	var dep *brokenDependency
 	for _, src := range expr.Source() {
 		src.WalkSources(func(s *source.Source, _ *source.Join, _ *source.Unless) {
-			vs, ok := source.MostOuterOperation[*promParser.VectorSelector](s)
+			vs, ok := source.MostOuterOperation[*ast.VectorSelector](s)
 			if !ok {
 				return
 			}
 			if vs.Name != "ALERTS" && vs.Name != "ALERTS_FOR_STATE" {
 				return
 			}
-			for _, lm := range vs.LabelMatchers {
+			for _, lm := range vs.AllMatchers() {
 				if lm.Name == "alertname" && lm.Type == labels.MatchEqual && lm.Value == name {
 					dep = &brokenDependency{
 						kind:   "alerting",

@@ -1,26 +1,37 @@
 package parser
 
 import (
-	"errors"
-	"slices"
+	"fmt"
 	"sync"
 
-	promParser "github.com/prometheus/prometheus/promql/parser"
-
+	"github.com/cloudflare/pint/internal/parser/ast"
+	"github.com/cloudflare/pint/internal/parser/metricsql"
+	"github.com/cloudflare/pint/internal/parser/promql"
 	"github.com/cloudflare/pint/internal/parser/source"
 )
 
-// PromQLParser is a shared, goroutine-safe PromQL parser with all feature flags enabled.
-// Each method creates its own internal parser state, so it is safe to call concurrently.
-var PromQLParser = promParser.NewParser(promParser.Options{
-	EnableExperimentalFunctions:  true,
-	ExperimentalDurationExpr:     true,
-	EnableExtendedRangeSelectors: true,
-	EnableBinopFillModifiers:     true,
-})
+// PromQL is the default query language.
+var PromQL ast.Language = promql.Language{}
 
+// MetricsQL is the VictoriaMetrics query language.
+var MetricsQL ast.Language = metricsql.Language{}
+
+// NewLanguage returns the query language with given name.
+func NewLanguage(name string) (ast.Language, error) {
+	switch name {
+	case "", promql.Name:
+		return PromQL, nil
+	case metricsql.Name:
+		return MetricsQL, nil
+	default:
+		return nil, fmt.Errorf("unsupported query language %q, supported languages are: %s, %s", name, promql.Name, metricsql.Name)
+	}
+}
+
+// PromQLExpr is a query expression, it's parsed using the configured query language.
 type PromQLExpr struct {
 	syntaxError error
+	lang        ast.Language
 	Value       *YamlNode
 	query       *PromQLNode
 	mu          *sync.Mutex
@@ -30,8 +41,16 @@ type PromQLExpr struct {
 
 func (pn *PromQLExpr) parse() {
 	if pn.query == nil {
-		pn.query, pn.syntaxError = DecodeExpr(pn.Value.Value)
+		pn.query, pn.syntaxError = DecodeExpr(pn.Language(), pn.Value.Value)
 	}
+}
+
+// Language returns the query language used to parse this expression.
+func (pn *PromQLExpr) Language() ast.Language {
+	if pn.lang == nil {
+		return PromQL
+	}
+	return pn.lang
 }
 
 func (pn *PromQLExpr) Source() []*source.Source {
@@ -59,26 +78,26 @@ func (pn *PromQLExpr) SyntaxError() error {
 	return pn.syntaxError
 }
 
-// PromQLNode is used to turn the parsed PromQL query expression into a tree.
+// PromQLNode is used to turn the parsed query expression into a tree.
 // This allows us to walk the tree up & down and look for either parents
 // or children of specific type. Which is useful if you, for example,
 // want to check if all vector selectors are wrapped inside function
 // calls etc.
 type PromQLNode struct {
 	Parent   *PromQLNode
-	Expr     promParser.Node
+	Expr     ast.Node
 	Children []*PromQLNode
 }
 
-// Tree takes a parsed PromQL node and turns it into a Node
+// Tree takes a parsed query node and turns it into a Node
 // instance with parent and children populated.
-func tree(expr promParser.Node, parent *PromQLNode) *PromQLNode {
+func tree(expr ast.Node, parent *PromQLNode) *PromQLNode {
 	n := PromQLNode{
 		Parent:   parent,
 		Expr:     expr,
 		Children: nil,
 	}
-	for _, child := range promParser.Children(expr) {
+	for _, child := range ast.Children(expr) {
 		n.Children = append(n.Children, tree(child, &n))
 	}
 
@@ -87,12 +106,12 @@ func tree(expr promParser.Node, parent *PromQLNode) *PromQLNode {
 
 // WalkUpExpr allows to iterate a promQLNode node looking for
 // parents of specific type.
-// Prometheus parser returns interfaces which makes it more difficult
+// The parser returns interfaces which makes it more difficult
 // to figure out what kind of node we're dealing with, hence this
 // helper takes a type parameter it tries to cast.
 // It starts by checking the node passed to it and then walks
 // up by visiting all parent nodes.
-func WalkUpExpr[T promParser.Node](node *PromQLNode) (nodes []*PromQLNode) {
+func WalkUpExpr[T ast.Node](node *PromQLNode) (nodes []*PromQLNode) {
 	if node == nil {
 		return nodes
 	}
@@ -109,7 +128,7 @@ func WalkUpExpr[T promParser.Node](node *PromQLNode) (nodes []*PromQLNode) {
 // down, visiting all children.
 // It also starts by checking the node passed to it before walking
 // down the tree.
-func WalkDownExpr[T promParser.Node](node *PromQLNode) (nodes []*PromQLNode) {
+func WalkDownExpr[T ast.Node](node *PromQLNode) (nodes []*PromQLNode) {
 	if _, ok := node.Expr.(T); ok {
 		nodes = append(nodes, node)
 	}
@@ -122,7 +141,7 @@ func WalkDownExpr[T promParser.Node](node *PromQLNode) (nodes []*PromQLNode) {
 // WalkUpParent works like WalkUpExpr but checks the parent
 // (if present) instead of the node itself.
 // It returns the nodes where the parent is of given type.
-func WalkUpParent[T promParser.Node](node *PromQLNode) (nodes []*PromQLNode) {
+func WalkUpParent[T ast.Node](node *PromQLNode) (nodes []*PromQLNode) {
 	if node == nil || node.Parent == nil {
 		return nodes
 	}
@@ -135,29 +154,11 @@ func WalkUpParent[T promParser.Node](node *PromQLNode) (nodes []*PromQLNode) {
 	return nodes
 }
 
-func DecodeExpr(expr string) (*PromQLNode, error) {
-	node, err := PromQLParser.ParseExpr(expr)
+// DecodeExpr parses a query using given query language.
+// Syntax errors are returned as *ast.ParseError.
+func DecodeExpr(lang ast.Language, expr string) (*PromQLNode, error) {
+	node, err := lang.ParseExpr(expr)
 	if err != nil {
-		if errorList, ok := errors.AsType[promParser.ParseErrors](err); ok {
-			// Find the error pointing at the shortest query fragment.
-			slices.SortFunc(errorList, func(a, b promParser.ParseErr) int {
-				ar := a.PositionRange.End - a.PositionRange.Start
-				br := b.PositionRange.End - b.PositionRange.Start
-				switch {
-				case ar < br:
-					return -1
-				case ar > br:
-					return 1
-				default:
-					return 0
-				}
-			})
-			for _, el := range errorList {
-				if el.PositionRange.Start > 0 && el.PositionRange.End > 0 {
-					return nil, promParser.ParseErrors{el}
-				}
-			}
-		}
 		return nil, err
 	}
 	return tree(node, nil), nil

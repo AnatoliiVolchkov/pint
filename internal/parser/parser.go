@@ -14,6 +14,7 @@ import (
 
 	"github.com/cloudflare/pint/internal/comments"
 	"github.com/cloudflare/pint/internal/diags"
+	"github.com/cloudflare/pint/internal/parser/ast"
 )
 
 const (
@@ -36,12 +37,15 @@ const (
 )
 
 type Options struct {
+	// Language is the query language used for rule expressions, PromQL if not set.
+	Language ast.Language
 	Names    model.ValidationScheme
 	Schema   Schema
 	IsStrict bool
 }
 
 var DefaultOptions = Options{
+	Language: PromQL,
 	Names:    model.UTF8Validation,
 	Schema:   PrometheusSchema,
 	IsStrict: false,
@@ -55,6 +59,9 @@ func (o Options) WithStrict(strict bool) Options {
 func NewParser(opts Options) Parser {
 	if opts.Names == model.UnsetValidation {
 		opts.Names = model.LegacyValidation
+	}
+	if opts.Language == nil {
+		opts.Language = PromQL
 	}
 	return Parser{opts: opts}
 }
@@ -279,7 +286,7 @@ func (p Parser) parseRule(node *yaml.Node, offsetLine, offsetColumn int, content
 					return duplicatedKeyError(lines, part.Line+offsetLine, exprKey)
 				}
 				exprNode = part
-				exprPart = newPromQLExpr(part, offsetLine, offsetColumn, contentLines, key.Column+2)
+				exprPart = newPromQLExpr(p.opts.Language, part, offsetLine, offsetColumn, contentLines, key.Column+2)
 				lines.Last = max(lines.Last, exprPart.Value.Pos.Lines().Last)
 			case forKey:
 				if forPart != nil {

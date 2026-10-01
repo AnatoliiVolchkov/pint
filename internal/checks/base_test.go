@@ -33,6 +33,7 @@ import (
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/output"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/promapi"
 )
 
@@ -116,6 +117,24 @@ func newSimpleProm(uri string) *promapi.FailoverGroup {
 	return simpleProm("prom", uri, time.Second*5, true)
 }
 
+func newSimpleVM(uri string) *promapi.FailoverGroup {
+	return promapi.NewFailoverGroup(
+		"prom",
+		uri,
+		[]*promapi.Prometheus{
+			promapi.NewVictoriaMetrics("prom", uri, simplePromPublicURI, map[string]string{"X-Debug": "1"}, time.Second*5, 16, 1000, nil, promapi.VictoriaMetricsOptions{
+				ExternalLabels: nil,
+				ScrapeInterval: 0,
+			}),
+		},
+		true,
+		"up",
+		[]*regexp.Regexp{},
+		[]*regexp.Regexp{},
+		[]string{"mytag"},
+	)
+}
+
 func noProm(_ string) *promapi.FailoverGroup {
 	return nil
 }
@@ -131,12 +150,14 @@ type otherPromsFn func(string) []*promapi.FailoverGroup
 type snapshotFn func(string) string
 
 type checkTest struct {
-	prometheus    newPrometheusFn
-	otherProms    otherPromsFn
-	ctx           newCtxFn
-	checker       newCheckFn
-	snapshot      snapshotFn
-	setup         func(t *testing.T)
+	prometheus newPrometheusFn
+	otherProms otherPromsFn
+	ctx        newCtxFn
+	checker    newCheckFn
+	snapshot   snapshotFn
+	setup      func(t *testing.T)
+	// language used to parse content, PromQL if not set.
+	language      ast.Language
 	description   string
 	content       string
 	entries       []*discovery.Entry
@@ -214,7 +235,7 @@ func runTests(t *testing.T, testCases []checkTest) {
 			}
 
 			ctx, cancel := context.WithCancel(t.Context())
-			entries, err := parseContent(tc.content, parser.DefaultOptions.WithStrict(tc.contentStrict), nil)
+			entries, err := parseContent(tc.content, tc.parserOptions().WithStrict(tc.contentStrict), nil)
 			require.NoError(t, err, "cannot parse rule content")
 			for _, entry := range entries {
 				if tc.ctx != nil {
@@ -276,7 +297,7 @@ func runTests(t *testing.T, testCases []checkTest) {
 
 - record: foo
   expr: 'foo{}{}'
-`, parser.DefaultOptions, nil)
+`, tc.parserOptions(), nil)
 		require.NoError(t, err, "cannot parse rule content")
 		t.Run(tc.description+" (bogus rules)", func(_ *testing.T) {
 			for _, entry := range entries {
@@ -284,6 +305,14 @@ func runTests(t *testing.T, testCases []checkTest) {
 			}
 		})
 	}
+}
+
+func (tc checkTest) parserOptions() parser.Options {
+	opts := parser.DefaultOptions
+	if tc.language != nil {
+		opts.Language = tc.language
+	}
+	return opts
 }
 
 func parseContent(content string, opts parser.Options, changes *discovery.Changes) (entries []*discovery.Entry, _ error) {
@@ -313,6 +342,16 @@ func parseContent(content string, opts parser.Options, changes *discovery.Change
 
 func mustParseContent(content string) (entries []*discovery.Entry) {
 	entries, err := parseContent(content, parser.DefaultOptions, nil)
+	if err != nil {
+		panic(err)
+	}
+	return entries
+}
+
+func mustParseMetricsQL(content string) (entries []*discovery.Entry) {
+	opts := parser.DefaultOptions
+	opts.Language = parser.MetricsQL
+	entries, err := parseContent(content, opts, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -417,6 +456,7 @@ var (
 	requireQueryPath      = requestPathCond{path: promapi.APIPathQuery}
 	requireRangeQueryPath = requestPathCond{path: promapi.APIPathQueryRange}
 	requireMetadataPath   = requestPathCond{path: promapi.APIPathMetadata}
+	requireVMFlagsPath    = requestPathCond{path: "/flags"}
 )
 
 type httpResponse struct {
@@ -575,6 +615,56 @@ func (fg flagsResponse) respond(w http.ResponseWriter, _ *http.Request) {
 	}{
 		Status: "success",
 		Data:   fg.flags,
+	}
+	d, err := json.Marshal(result, jsontext.WithIndent("  "))
+	if err != nil {
+		panic(err)
+	}
+	_, _ = w.Write(d)
+}
+
+// vmFlagsResponse returns flags in the text format used by VictoriaMetrics /flags endpoint.
+type vmFlagsResponse struct {
+	flags map[string]string
+}
+
+func (fg vmFlagsResponse) respond(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	var buf strings.Builder
+	for k, v := range fg.flags {
+		fmt.Fprintf(&buf, "-%s=%q\n", k, v)
+	}
+	_, _ = w.Write([]byte(buf.String()))
+}
+
+// vmVectorResponse returns an instant query response with VictoriaMetrics stats.
+type vmVectorResponse struct {
+	samples       model.Vector
+	seriesFetched int
+	execTimeMsec  float64
+}
+
+func (vr vmVectorResponse) respond(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	type data struct {
+		ResultType string       `json:"resultType"`
+		Result     model.Vector `json:"result"`
+	}
+	type stats struct {
+		SeriesFetched     string  `json:"seriesFetched"`
+		ExecutionTimeMsec float64 `json:"executionTimeMsec"`
+	}
+	result := struct {
+		Status    string `json:"status"`
+		Data      data   `json:"data"`
+		Stats     stats  `json:"stats"`
+		IsPartial bool   `json:"isPartial"`
+	}{
+		Status:    "success",
+		IsPartial: false,
+		Data:      data{ResultType: "vector", Result: vr.samples},
+		Stats:     stats{SeriesFetched: strconv.Itoa(vr.seriesFetched), ExecutionTimeMsec: vr.execTimeMsec},
 	}
 	d, err := json.Marshal(result, jsontext.WithIndent("  "))
 	if err != nil {

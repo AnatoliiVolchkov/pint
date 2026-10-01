@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	promParser "github.com/prometheus/prometheus/promql/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 )
 
 // intRange represents a half-open [start, end) range of 0-indexed positions.
@@ -16,11 +16,11 @@ type intRange struct {
 // nodeRangesFromAST walks a parsed PromQL AST and maps each node's position
 // range to line/column using pos. Only nodes that fit on a single line are
 // included.
-func nodeRangesFromAST(node promParser.Node, pos PositionRanges) []PositionRange {
+func nodeRangesFromAST(node ast.Node, pos PositionRanges) []PositionRange {
 	posLen := pos.Len()
 	var ranges []PositionRange
-	var walk func(n promParser.Node)
-	walk = func(n promParser.Node) {
+	var walk func(n ast.Node)
+	walk = func(n ast.Node) {
 		pr := n.PositionRange()
 		start := int(pr.Start)
 		end := int(pr.End)
@@ -35,7 +35,7 @@ func nodeRangesFromAST(node promParser.Node, pos PositionRanges) []PositionRange
 				})
 			}
 		}
-		for _, child := range promParser.Children(n) {
+		for _, child := range ast.Children(n) {
 			walk(child)
 		}
 	}

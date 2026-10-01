@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"github.com/gkampitakis/go-snaps/snaps"
-	promParser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cloudflare/pint/internal/output"
+	"github.com/cloudflare/pint/internal/parser/ast"
+	"github.com/cloudflare/pint/internal/parser/promql"
 )
 
 func TestInjectDiagnostics(t *testing.T) {
@@ -359,8 +360,8 @@ expr: |2-
 				pos := NewPositionRange(strings.Split(tc.input, "\n"), val, key.Column+2)
 				require.NotEmpty(t, pos)
 
-				var expr promParser.Node
-				if node, err := promParser.NewParser(promParser.Options{}).ParseExpr(val.Value); err == nil {
+				var expr ast.Node
+				if node, err := (promql.Language{}).ParseExpr(val.Value); err == nil {
 					expr = node
 				}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/metricsql"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 )
@@ -57,6 +58,11 @@ func (c FeaturesCheck) Reporter() string {
 func (c FeaturesCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*discovery.Entry) (problems []Problem) {
 	expr := entry.Rule.Expr()
 	if expr.SyntaxError() != nil {
+		return problems
+	}
+
+	// MetricsQL and VictoriaMetrics have no feature flags, all functions are always available.
+	if expr.Language().Name() == metricsql.Name || c.prom.Backend() == promapi.BackendVictoriaMetrics {
 		return problems
 	}
 

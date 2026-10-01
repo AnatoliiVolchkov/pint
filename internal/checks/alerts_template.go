@@ -16,13 +16,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
-	promParser "github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
 	promTemplate "github.com/prometheus/prometheus/template"
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 )
 
@@ -127,14 +126,15 @@ func (c TemplateCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*d
 	}
 
 	src := entry.Rule.AlertingRule.Expr.Source()
+	lang := entry.Rule.AlertingRule.Expr.Language()
 	data := promTemplate.AlertTemplateData(map[string]string{}, map[string]string{}, "", promql.Sample{})
 
 	for _, label := range entry.Labels().Items {
 		meta := analyzeTemplate(label.Value.Value)
-		if syntaxErr, ok := c.checkSyntax(ctx, label, data); ok {
+		if syntaxErr, ok := c.checkSyntax(ctx, lang, label, data); ok {
 			problems = append(problems, syntaxErr)
 		} else {
-			problems = append(problems, c.checkTemplateQueries(entry.Rule, label, meta)...)
+			problems = append(problems, c.checkTemplateQueries(lang, entry.Rule, label, meta)...)
 		}
 		problems = append(problems, c.checkValueInLabels(label, meta)...)
 		problems = append(problems, c.checkQueryLabels(entry.Group, entry.Rule, label, src, meta)...)
@@ -143,10 +143,10 @@ func (c TemplateCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*d
 	if entry.Rule.AlertingRule.Annotations != nil {
 		for _, annotation := range entry.Rule.AlertingRule.Annotations.Items {
 			meta := analyzeTemplate(annotation.Value.Value)
-			if syntaxErr, ok := c.checkSyntax(ctx, annotation, data); ok {
+			if syntaxErr, ok := c.checkSyntax(ctx, lang, annotation, data); ok {
 				problems = append(problems, syntaxErr)
 			} else {
-				problems = append(problems, c.checkTemplateQueries(entry.Rule, annotation, meta)...)
+				problems = append(problems, c.checkTemplateQueries(lang, entry.Rule, annotation, meta)...)
 			}
 			problems = append(problems, c.checkQueryLabels(entry.Group, entry.Rule, annotation, src, meta)...)
 			problems = append(problems, c.checkHumanizeIsNeeded(entry.Rule.AlertingRule.Expr, annotation, meta)...)
@@ -159,8 +159,8 @@ func (c TemplateCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*d
 // checkSyntax validates that a label/annotation template parses and expands.
 // It returns a Fatal problem and true when parsing fails, or false when the
 // template is valid.
-func (c TemplateCheck) checkSyntax(ctx context.Context, kv *parser.YamlKeyValue, data any) (problem Problem, found bool) {
-	err := checkTemplateSyntax(ctx, kv.Key.Value, kv.Value.Value, data)
+func (c TemplateCheck) checkSyntax(ctx context.Context, lang ast.Language, kv *parser.YamlKeyValue, data any) (problem Problem, found bool) {
+	err := checkTemplateSyntax(ctx, lang, kv.Key.Value, kv.Value.Value, data)
 	if err == nil {
 		return problem, false
 	}
@@ -278,7 +278,7 @@ func (c TemplateCheck) checkHumanizeIsNeeded(expr parser.PromQLExpr, ann *parser
 	return problems
 }
 
-func isRateResult(src *source.Source) *promParser.Call {
+func isRateResult(src *source.Source) *ast.Call {
 	if src.Type == source.AggregateSource {
 		switch src.Operation() {
 		case "count", "count_values", "group":
@@ -286,7 +286,7 @@ func isRateResult(src *source.Source) *promParser.Call {
 		}
 	}
 
-	call, ok := source.MostOuterOperation[*promParser.Call](src)
+	call, ok := source.MostOuterOperation[*ast.Call](src)
 	if !ok {
 		return nil
 	}
@@ -299,12 +299,18 @@ func isRateResult(src *source.Source) *promParser.Call {
 	}
 }
 
-func queryFunc(_ context.Context, expr string, _ time.Time) (promql.Vector, error) {
-	if _, err := parser.PromQLParser.ParseExpr(expr); err != nil {
-		return nil, err
+func queryFunc(lang ast.Language) promTemplate.QueryFunc {
+	return func(_ context.Context, expr string, _ time.Time) (promql.Vector, error) {
+		_, err := lang.ParseExpr(expr)
+		if perr, ok := errors.AsType[*ast.ParseError](err); ok {
+			return nil, perr.OriginalError()
+		}
+		if err != nil {
+			return nil, err
+		}
+		// return a single sample so template using `... | first` don't fail
+		return promql.Vector{{}}, nil
 	}
-	// return a single sample so template using `... | first` don't fail
-	return promql.Vector{{}}, nil
 }
 
 func normalizeTemplateError(name string, err error) error {
@@ -386,14 +392,14 @@ func newTemplateError(rawErr error, name, text string) templateError {
 // checkTemplateSyntax parses and expands a template value. If parsing or
 // execution fails it returns a templateError with the normalized message
 // and, when possible, the exact column range where the error occurred.
-func checkTemplateSyntax(ctx context.Context, name, text string, data any) error {
+func checkTemplateSyntax(ctx context.Context, lang ast.Language, name, text string, data any) error {
 	tmpl := promTemplate.NewTemplateExpander(
 		ctx,
 		templateDefsString+text,
 		name,
 		data,
 		model.Time(timestamp.FromTime(time.Now())),
-		queryFunc,
+		queryFunc(lang),
 		nil,
 		nil,
 	)
@@ -613,7 +619,7 @@ func findTemplateVariables(_, text string) (vars []tmplVar, aliases aliasMap, ok
 
 // missingLabel checks if none of the sources can return the given label. If so
 // it returns why and where in the query. ok is false if any source can have it.
-func missingLabel(src []*source.Source, name string) (reason string, fragment posrange.PositionRange, ok bool) {
+func missingLabel(src []*source.Source, name string) (reason string, fragment ast.PositionRange, ok bool) {
 	for _, s := range src {
 		if s.DeadInfo != nil || s.CanHaveLabel(name) {
 			continue
@@ -621,7 +627,7 @@ func missingLabel(src []*source.Source, name string) (reason string, fragment po
 		reason, fragment = s.LabelExcludeReason(name)
 		return reason, fragment, true
 	}
-	return "", posrange.PositionRange{}, false
+	return "", ast.PositionRange{}, false
 }
 
 // nonExistentLabelProblem builds the "template uses non-existent label" problem

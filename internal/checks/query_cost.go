@@ -12,14 +12,12 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	promParser "github.com/prometheus/prometheus/promql/parser"
-
-	"github.com/prometheus/prometheus/promql/parser/posrange"
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/output"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 )
@@ -132,6 +130,27 @@ func (c CostCheck) Check(ctx context.Context, entry *discovery.Entry, entries []
 			},
 		})
 		return problems
+	}
+
+	if c.prom.Backend() == promapi.BackendVictoriaMetrics && (c.maxTotalSamples > 0 || c.maxPeakSamples > 0) {
+		problems = append(problems, Problem{
+			Anchor:   AnchorAfter,
+			Lines:    expr.Value.Pos.Lines(),
+			Reporter: c.Reporter(),
+			Summary:  "unsupported query cost limit",
+			Details:  maybeComment(c.comment),
+			Severity: Warning,
+			Diagnostics: []diags.Diagnostic{
+				{
+					Message:     promText(c.prom.Name(), qr.URI) + " is a VictoriaMetrics server which doesn't report the number of queried samples, `maxTotalSamples` and `maxPeakSamples` limits can't be enforced.",
+					Pos:         expr.Value.Pos,
+					Expr:        expr.Query().Expr,
+					FirstColumn: 1,
+					LastColumn:  len(expr.Value.Value),
+					Kind:        diags.Issue,
+				},
+			},
+		})
 	}
 
 	if c.maxTotalSamples > 0 && qr.Stats.Samples.TotalQueryableSamples > c.maxTotalSamples {
@@ -287,7 +306,12 @@ func (c CostCheck) suggestRecordingRules(
 					slog.LogAttrs(ctx, slog.LevelDebug, "Calculating cost of the new query", slog.String("expr", sq))
 					qr, afterSeries, err := c.getQueryCost(ctx, sq)
 					if err == nil {
-						if qr.Stats.Samples.TotalQueryableSamples >= beforeStats.Samples.TotalQueryableSamples &&
+						isVM := c.prom.Backend() == promapi.BackendVictoriaMetrics
+						if isVM && qr.Stats.SeriesFetched >= beforeStats.SeriesFetched {
+							// VictoriaMetrics only reports the number of fetched series.
+							continue
+						}
+						if !isVM && qr.Stats.Samples.TotalQueryableSamples >= beforeStats.Samples.TotalQueryableSamples &&
 							qr.Stats.Samples.PeakSamples >= beforeStats.Samples.PeakSamples {
 							// Suggestion doesn't reduce the number of samples queried, ignore it.
 							continue
@@ -315,12 +339,18 @@ func (c CostCheck) suggestRecordingRules(
 						details.WriteString("Using `")
 						details.WriteString(other.Rule.RecordingRule.Record.Value)
 						details.WriteString("` rule would speed up this query:\n\n")
-						details.WriteString("- Total queried samples would be ")
-						details.WriteString(c.diffStatsInt(beforeStats.Samples.TotalQueryableSamples, qr.Stats.Samples.TotalQueryableSamples))
-						details.WriteRune('\n')
-						details.WriteString("- Peak queried samples would be ")
-						details.WriteString(c.diffStatsInt(beforeStats.Samples.PeakSamples, qr.Stats.Samples.PeakSamples))
-						details.WriteRune('\n')
+						if isVM {
+							details.WriteString("- Fetched series would be ")
+							details.WriteString(c.diffStatsInt(beforeStats.SeriesFetched, qr.Stats.SeriesFetched))
+							details.WriteRune('\n')
+						} else {
+							details.WriteString("- Total queried samples would be ")
+							details.WriteString(c.diffStatsInt(beforeStats.Samples.TotalQueryableSamples, qr.Stats.Samples.TotalQueryableSamples))
+							details.WriteRune('\n')
+							details.WriteString("- Peak queried samples would be ")
+							details.WriteString(c.diffStatsInt(beforeStats.Samples.PeakSamples, qr.Stats.Samples.PeakSamples))
+							details.WriteRune('\n')
+						}
 						details.WriteString("- Query evaluation time would be ")
 						details.WriteString(c.diffStatsDuration(beforeStats.Timings.EvalTotalTime, qr.Stats.Timings.EvalTotalTime))
 						details.WriteRune('\n')
@@ -357,7 +387,7 @@ func (c CostCheck) suggestRecordingRules(
 	return problems
 }
 
-func (c CostCheck) rewriteRuleFragment(expr string, fragment posrange.PositionRange, replacement string) string {
+func (c CostCheck) rewriteRuleFragment(expr string, fragment ast.PositionRange, replacement string) string {
 	var buf strings.Builder
 	if fragment.Start > 0 {
 		buf.WriteString(expr[:int(fragment.Start)])
@@ -395,7 +425,7 @@ func formatDelta(delta float64) string {
 	return fmt.Sprintf("+%0.2f", delta)
 }
 
-func (c CostCheck) isSuggestionFor(src, potential *source.Source, join *source.Join, unless *source.Unless) (promParser.Node, string, bool, bool) {
+func (c CostCheck) isSuggestionFor(src, potential *source.Source, join *source.Join, unless *source.Unless) (ast.Node, string, bool, bool) {
 	if potential.Type != source.FuncSource && potential.Type != source.AggregateSource {
 		return nil, "", false, false
 	}
@@ -409,7 +439,13 @@ func (c CostCheck) isSuggestionFor(src, potential *source.Source, join *source.J
 	}
 
 	// We're only looking at potential source that have a vector selector.
-	if _, ok := source.MostOuterOperation[*promParser.VectorSelector](potential); !ok {
+	pvs, ok := source.MostOuterOperation[*ast.VectorSelector](potential)
+	if !ok {
+		return nil, "", false, false
+	}
+
+	// MetricsQL `or` filters can't be compared using a single set of matchers.
+	if svs, ok := source.MostOuterOperation[*ast.VectorSelector](src); len(pvs.OrMatchers) > 0 || (ok && len(svs.OrMatchers) > 0) {
 		return nil, "", false, false
 	}
 
@@ -421,7 +457,7 @@ func (c CostCheck) isSuggestionFor(src, potential *source.Source, join *source.J
 	// that uses the exact same query.
 	oop := potential.Operations[len(potential.Operations)-1]
 	for _, op := range src.Operations {
-		if op.Node.Pretty(0) == oop.Node.Pretty(0) {
+		if op.Node.String() == oop.Node.String() {
 			return op.Node, "", true, true
 		}
 	}
@@ -596,7 +632,7 @@ func (c CostCheck) matchingSelectors(query, rule []*labels.Matcher) bool {
 
 func (c CostCheck) selectorLabels(ops source.Operations) (lms []*labels.Matcher) {
 	for _, op := range slices.Backward(ops) {
-		if vs, ok := op.Node.(*promParser.VectorSelector); ok {
+		if vs, ok := op.Node.(*ast.VectorSelector); ok {
 			lms = vs.LabelMatchers
 			break
 		}
@@ -606,7 +642,7 @@ func (c CostCheck) selectorLabels(ops source.Operations) (lms []*labels.Matcher)
 
 func hasVectorSelector(sources []*source.Source) bool {
 	for _, src := range sources {
-		if _, ok := source.MostOuterOperation[*promParser.VectorSelector](src); ok {
+		if _, ok := source.MostOuterOperation[*ast.VectorSelector](src); ok {
 			return true
 		}
 	}

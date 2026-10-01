@@ -15,12 +15,12 @@ import (
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/output"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	promParser "github.com/prometheus/prometheus/promql/parser"
 )
 
 type PromqlSeriesSettings struct {
@@ -73,13 +73,13 @@ func (c *PromqlSeriesSettings) Validate() error {
 	}
 
 	for selector := range c.IgnoreLabelsValue {
-		if _, err := parser.PromQLParser.ParseMetricSelector(selector); err != nil {
+		if _, err := parser.PromQL.ParseMetricSelector(selector); err != nil {
 			return fmt.Errorf("%q is not a valid PromQL metric selector: %w", selector, err)
 		}
 	}
 
 	for _, selector := range c.IgnoreMatchingElsewhere {
-		if _, err := parser.PromQLParser.ParseMetricSelector(selector); err != nil {
+		if _, err := parser.PromQL.ParseMetricSelector(selector); err != nil {
 			return fmt.Errorf("%q is not a valid PromQL metric selector: %w", selector, err)
 		}
 	}
@@ -520,7 +520,7 @@ func (c SeriesCheck) Check(ctx context.Context, entry *discovery.Entry, entries 
 			lms := lm.String()
 
 			pos := source.FindMatcherPos(expr.Value.Value, selector.PosRange, lm)
-			labelSelector := &promParser.VectorSelector{
+			labelSelector := &ast.VectorSelector{
 				Name:          metricName,
 				LabelMatchers: []*labels.Matcher{lm},
 			}
@@ -844,7 +844,7 @@ func (c SeriesCheck) checkOtherServer(ctx context.Context, query string, setting
 
 		if series > 0 {
 			for _, selector := range settings.IgnoreMatchingElsewhere {
-				m, _ := parser.PromQLParser.ParseMetricSelector(selector)
+				m, _ := parser.PromQL.ParseMetricSelector(selector)
 				if c.hasSeriesWithSelector(ctx, pq.prom, query, m) {
 					return "", false
 				}
@@ -917,7 +917,7 @@ func (c SeriesCheck) instantSeriesCount(ctx context.Context, query string) (int,
 	return series, nil
 }
 
-func (c SeriesCheck) getMinAge(rule parser.Rule, selector *promParser.VectorSelector) (minAge time.Duration, problems []Problem) {
+func (c SeriesCheck) getMinAge(rule parser.Rule, selector *ast.VectorSelector) (minAge time.Duration, problems []Problem) {
 	minAge = time.Hour * 2
 	for _, ruleSet := range comments.Only[comments.RuleSet](rule.Comments, comments.RuleSetType) {
 		matcher, key, value := parseRuleSet(ruleSet.Value)
@@ -958,7 +958,7 @@ func (c SeriesCheck) getMinAge(rule parser.Rule, selector *promParser.VectorSele
 	return minAge, problems
 }
 
-func isLabelValueIgnored(settings *PromqlSeriesSettings, rule parser.Rule, selector *promParser.VectorSelector, labelName string) bool {
+func isLabelValueIgnored(settings *PromqlSeriesSettings, rule parser.Rule, selector *ast.VectorSelector, labelName string) bool {
 	for matcher, names := range settings.IgnoreLabelsValue {
 		isMatch, _ := matchSelectorToMetric(selector, matcher)
 		if !isMatch {
@@ -1002,16 +1002,52 @@ func (c SeriesCheck) textAndSeverity(settings *PromqlSeriesSettings, name, text 
 	return text, s
 }
 
-func selectorWithoutOffset(vs *promParser.VectorSelector) *promParser.VectorSelector {
-	if vs.OriginalOffset == 0 {
+func selectorWithoutOffset(vs *ast.VectorSelector) *ast.VectorSelector {
+	if vs.OriginalOffset == 0 && vs.OffsetText == "" {
 		return vs
 	}
 
-	s := &promParser.VectorSelector{}
+	s := &ast.VectorSelector{}
 	*s = *vs
 	s.Offset = 0
 	s.OriginalOffset = 0
+	s.OffsetText = ""
 	return s
+}
+
+// splitSelector returns a separate selector for each group of MetricsQL `or` filters.
+func splitSelector(vs *ast.VectorSelector) []*ast.VectorSelector {
+	vs = selectorWithoutOffset(vs)
+	if len(vs.OrMatchers) == 0 {
+		return []*ast.VectorSelector{vs}
+	}
+	groups := vs.MatcherGroups()
+	selectors := make([]*ast.VectorSelector, 0, len(groups))
+	for _, group := range groups {
+		s := &ast.VectorSelector{}
+		*s = *vs
+		s.LabelMatchers = group
+		s.OrMatchers = nil
+		s.Name = ""
+		for _, lm := range group {
+			if lm.Name == model.MetricNameLabel && lm.Type == labels.MatchEqual {
+				s.Name = lm.Value
+			}
+		}
+		selectors = append(selectors, s)
+	}
+	return selectors
+}
+
+func appendSelectors(selectors []selectorInfo, vs *ast.VectorSelector, fallback string, hasFallback bool) []selectorInfo {
+	for _, s := range splitSelector(vs) {
+		selectors = append(selectors, selectorInfo{
+			selector:    s,
+			hasFallback: hasFallback,
+			fallback:    fallback,
+		})
+	}
+	return selectors
 }
 
 func sourceHasFallback(src []*source.Source) bool {
@@ -1033,7 +1069,7 @@ func joinHasFallback(src []source.Join) bool {
 }
 
 type selectorInfo struct {
-	selector    *promParser.VectorSelector
+	selector    *ast.VectorSelector
 	fallback    string
 	hasFallback bool
 }
@@ -1053,12 +1089,8 @@ func getSelectors(n *parser.PromQLExpr) (selectors []selectorInfo) {
 	}
 	joinFallback := false
 	for _, ls := range sources {
-		if vs, ok := source.MostOuterOperation[*promParser.VectorSelector](ls); ok {
-			selectors = append(selectors, selectorInfo{
-				selector:    selectorWithoutOffset(vs),
-				hasFallback: hasVectorFallback,
-				fallback:    fallbackExpr,
-			})
+		if vs, ok := source.MostOuterOperation[*ast.VectorSelector](ls); ok {
+			selectors = appendSelectors(selectors, vs, fallbackExpr, hasVectorFallback)
 		}
 		joinFallback = joinHasFallback(ls.Joins)
 		var joinFallbackExpr string
@@ -1071,32 +1103,24 @@ func getSelectors(n *parser.PromQLExpr) (selectors []selectorInfo) {
 			}
 		}
 		for _, js := range ls.Joins {
-			if vs, ok := source.MostOuterOperation[*promParser.VectorSelector](js.Src); ok {
-				selectors = append(selectors, selectorInfo{
-					selector:    selectorWithoutOffset(vs),
-					hasFallback: joinFallback,
-					fallback:    joinFallbackExpr,
-				})
+			if vs, ok := source.MostOuterOperation[*ast.VectorSelector](js.Src); ok {
+				selectors = appendSelectors(selectors, vs, joinFallbackExpr, joinFallback)
 			}
 		}
 		for _, us := range ls.Unless {
 			if !us.Src.Condition.Present {
 				continue
 			}
-			if vs, ok := source.MostOuterOperation[*promParser.VectorSelector](us.Src); ok {
-				selectors = append(selectors, selectorInfo{
-					selector:    selectorWithoutOffset(vs),
-					fallback:    "",
-					hasFallback: false,
-				})
+			if vs, ok := source.MostOuterOperation[*ast.VectorSelector](us.Src); ok {
+				selectors = appendSelectors(selectors, vs, "", false)
 			}
 		}
 	}
 	return selectors
 }
 
-func stripLabels(selector *promParser.VectorSelector) promParser.VectorSelector {
-	s := promParser.VectorSelector{
+func stripLabels(selector *ast.VectorSelector) ast.VectorSelector {
+	s := ast.VectorSelector{
 		Name:          selector.Name,
 		LabelMatchers: []*labels.Matcher{},
 	}
@@ -1111,7 +1135,7 @@ func stripLabels(selector *promParser.VectorSelector) promParser.VectorSelector 
 	return s
 }
 
-func isDisabled(rule parser.Rule, selector *promParser.VectorSelector) bool {
+func isDisabled(rule parser.Rule, selector *ast.VectorSelector) bool {
 	for _, disable := range comments.Only[comments.Disable](rule.Comments, comments.DisableType) {
 		if disable.Match == SeriesCheckName {
 			return true
@@ -1132,7 +1156,7 @@ func isDisabled(rule parser.Rule, selector *promParser.VectorSelector) bool {
 	return false
 }
 
-func isSnoozed(rule parser.Rule, selector *promParser.VectorSelector) bool {
+func isSnoozed(rule parser.Rule, selector *ast.VectorSelector) bool {
 	for _, snooze := range comments.Only[comments.Snooze](rule.Comments, comments.SnoozeType) {
 		if !snooze.Until.After(time.Now()) {
 			continue
@@ -1153,13 +1177,13 @@ func isSnoozed(rule parser.Rule, selector *promParser.VectorSelector) bool {
 	return false
 }
 
-func matchSelectorToMetric(selector *promParser.VectorSelector, metric string) (bool, bool) {
+func matchSelectorToMetric(selector *ast.VectorSelector, metric string) (bool, bool) {
 	// Try full string or name match first.
 	if metric == selector.Name || metric == selector.String() {
 		return true, true
 	}
 	// Then try matchers.
-	m, err := parser.PromQLParser.ParseMetricSelector(metric)
+	m, err := parser.PromQL.ParseMetricSelector(metric)
 	if err != nil {
 		// Ignore errors
 		return false, false
@@ -1334,7 +1358,7 @@ func newest(ranges []promapi.MetricTimeRange) (ts time.Time) {
 	return ts
 }
 
-func addNameSelectorIfNeeded(selector *promParser.VectorSelector, matchers []*labels.Matcher) {
+func addNameSelectorIfNeeded(selector *ast.VectorSelector, matchers []*labels.Matcher) {
 	if selector.Name != "" {
 		return
 	}

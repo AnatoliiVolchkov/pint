@@ -4,10 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	promParser "github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 )
 
@@ -127,7 +126,7 @@ func (c AggregationCheck) Check(_ context.Context, entry *discovery.Entry, _ []*
 		}
 		if !c.keep && src.CanHaveLabel(c.label) {
 			posrange := src.Position
-			if aggr, ok := source.MostOuterOperation[*promParser.AggregateExpr](src); ok {
+			if aggr, ok := source.MostOuterOperation[*ast.AggregateExpr](src); ok {
 				if aggr.Without {
 					if len(aggr.Grouping) == 0 {
 						// without() with empty grouping removes nothing.

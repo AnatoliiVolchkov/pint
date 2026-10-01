@@ -37,8 +37,8 @@ type GitBranchFinder struct {
 	baseBranch    string
 	filter        git.PathFilter
 	allowedOwners []*regexp.Regexp
-	maxCommits    int
 	opts          parser.Options
+	maxCommits    int
 }
 
 func (f GitBranchFinder) Find(ctx context.Context, allEntries []*Entry) (entries []*Entry, err error) {

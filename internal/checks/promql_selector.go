@@ -8,10 +8,10 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	promParser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 )
 
@@ -83,18 +83,18 @@ func (c SelectorCheck) Check(_ context.Context, entry *discovery.Entry, _ []*dis
 	return problems
 }
 
-func (c SelectorCheck) findSelector(callRe *regexp.Regexp, s *source.Source) (*promParser.VectorSelector, *promParser.Call) {
-	var call *promParser.Call
+func (c SelectorCheck) findSelector(callRe *regexp.Regexp, s *source.Source) (*ast.VectorSelector, *ast.Call) {
+	var call *ast.Call
 	for _, op := range slices.Backward(s.Operations) {
 		if callRe != nil && call == nil {
-			if cl, ok := op.Node.(*promParser.Call); ok {
+			if cl, ok := op.Node.(*ast.Call); ok {
 				if callRe.MatchString(cl.Func.Name) {
 					call = cl
 					continue
 				}
 			}
 		}
-		if vs, ok := op.Node.(*promParser.VectorSelector); ok {
+		if vs, ok := op.Node.(*ast.VectorSelector); ok {
 			if callRe == nil || call != nil {
 				return vs, call
 			}
@@ -112,14 +112,17 @@ func (c SelectorCheck) checkSource(keyRe, callRe *regexp.Regexp, s *source.Sourc
 	if vs.Name != "" && !keyRe.MatchString(vs.Name) {
 		return problems
 	}
-	for _, lm := range vs.LabelMatchers {
+	for _, lm := range vs.AllMatchers() {
 		if lm.Name == model.MetricNameLabel && !keyRe.MatchString(lm.Value) {
 			return problems
 		}
 	}
 
-	if !slices.ContainsFunc(vs.LabelMatchers, func(lm *labels.Matcher) bool {
-		return lm.Name == c.requiredName
+	// With MetricsQL `or` filters every group must use the required matcher.
+	if slices.ContainsFunc(vs.MatcherGroups(), func(group []*labels.Matcher) bool {
+		return !slices.ContainsFunc(group, func(lm *labels.Matcher) bool {
+			return lm.Name == c.requiredName
+		})
 	}) {
 		prefix := "This vector selector"
 		if call != nil {

@@ -9,12 +9,11 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	promParser "github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 )
@@ -69,7 +68,7 @@ func (c VectorMatchingCheck) Check(ctx context.Context, entry *discovery.Entry, 
 }
 
 func (c VectorMatchingCheck) checkNode(ctx context.Context, rule parser.Rule, expr *parser.PromQLExpr, node *parser.PromQLNode) (problems []Problem) {
-	binExpr, ok := node.Expr.(*promParser.BinaryExpr)
+	binExpr, ok := node.Expr.(*ast.BinaryExpr)
 	if !ok {
 		goto NEXT
 	}
@@ -81,10 +80,12 @@ func (c VectorMatchingCheck) checkNode(ctx context.Context, rule parser.Rule, ex
 		lhsSources := source.LabelsSource(expr.Value.Value, binExpr.LHS)
 		rhsSources := source.LabelsSource(expr.Value.Value, binExpr.RHS)
 
-		n, ok := removeConditions(binExpr).(*promParser.BinaryExpr)
+		n, ok := removeConditions(binExpr).(*ast.BinaryExpr)
 		if !ok || n.VectorMatching == nil ||
-			n.Op == promParser.LOR ||
-			n.Op == promParser.LUNLESS {
+			n.Op == ast.OpOr ||
+			n.Op == ast.OpUnless ||
+			n.Op == ast.OpIfNot ||
+			n.Op == ast.OpDefault {
 			goto NEXT
 		}
 
@@ -111,7 +112,8 @@ func (c VectorMatchingCheck) checkNode(ctx context.Context, rule parser.Rule, ex
 
 		var lhsVec, rhsVec bool
 		lhsMatchers := map[string]string{}
-		if lhs, ok := n.LHS.(*promParser.VectorSelector); ok {
+		// Selectors with MetricsQL `or` filters can match different label values.
+		if lhs, ok := n.LHS.(*ast.VectorSelector); ok && len(lhs.OrMatchers) == 0 {
 			lhsVec = true
 			for _, lm := range lhs.LabelMatchers {
 				if lm.Name != model.MetricNameLabel && lm.Type == labels.MatchEqual {
@@ -123,7 +125,7 @@ func (c VectorMatchingCheck) checkNode(ctx context.Context, rule parser.Rule, ex
 			}
 		}
 		rhsMatchers := map[string]string{}
-		if rhs, ok := n.RHS.(*promParser.VectorSelector); ok {
+		if rhs, ok := n.RHS.(*ast.VectorSelector); ok && len(rhs.OrMatchers) == 0 {
 			rhsVec = true
 			for _, lm := range rhs.LabelMatchers {
 				if lm.Name != model.MetricNameLabel && lm.Type == labels.MatchEqual {
@@ -178,7 +180,7 @@ func (c VectorMatchingCheck) checkNode(ctx context.Context, rule parser.Rule, ex
 		if n.VectorMatching.On {
 			for _, name := range n.VectorMatching.MatchingLabels {
 				if !leftLabels.hasName(name) && rightLabels.hasName(name) {
-					onPos := source.FindFuncPosition(expr.Value.Value, binPos, "on", []posrange.PositionRange{
+					onPos := source.FindFuncPosition(expr.Value.Value, binPos, "on", []ast.PositionRange{
 						lhsPos, rhsPos,
 					})
 					link := fmt.Sprintf("%s/query?g0.expr=%s&&g0.tab=table", leftURI, url.QueryEscape(n.LHS.String()))
@@ -205,7 +207,7 @@ func (c VectorMatchingCheck) checkNode(ctx context.Context, rule parser.Rule, ex
 					})
 				}
 				if leftLabels.hasName(name) && !rightLabels.hasName(name) {
-					onPos := source.FindFuncPosition(expr.Value.Value, binPos, "on", []posrange.PositionRange{
+					onPos := source.FindFuncPosition(expr.Value.Value, binPos, "on", []ast.PositionRange{
 						lhsPos, rhsPos,
 					})
 					link := fmt.Sprintf("%s/query?g0.expr=%s&&g0.tab=table", rightURI, url.QueryEscape(n.RHS.String()))
@@ -230,7 +232,7 @@ func (c VectorMatchingCheck) checkNode(ctx context.Context, rule parser.Rule, ex
 					})
 				}
 				if !leftLabels.hasName(name) && !rightLabels.hasName(name) {
-					pos := source.FindFuncPosition(expr.Value.Value, binPos, "on", []posrange.PositionRange{
+					pos := source.FindFuncPosition(expr.Value.Value, binPos, "on", []ast.PositionRange{
 						lhsPos, rhsPos,
 					})
 					link := fmt.Sprintf("%s/query?g0.expr=%s&&g0.tab=table", leftURI, url.QueryEscape(n.String()))
@@ -258,7 +260,7 @@ func (c VectorMatchingCheck) checkNode(ctx context.Context, rule parser.Rule, ex
 		} else if !leftLabels.overlaps(rightLabels) {
 			l, r := leftLabels.getFirstNonOverlap(rightLabels)
 			var lhsDiag, rhsDiag diags.Diagnostic
-			if n.VectorMatching.Card == promParser.CardOneToMany {
+			if n.VectorMatching.Card == ast.CardOneToMany {
 				rhsDiag = diags.Diagnostic{
 					Message: fmt.Sprintf(
 						"The right hand side of the query on %s returns labels: `%s`, which don't match the left hand side labels: `%s`. This query will never return any results.",
@@ -328,7 +330,7 @@ NEXT:
 	return problems
 }
 
-func canJoinStatically(lhsSources, rhsSources []*source.Source, vm *promParser.VectorMatching) bool {
+func canJoinStatically(lhsSources, rhsSources []*source.Source, vm *ast.VectorMatching) bool {
 	for _, ls := range lhsSources {
 		for _, rs := range rhsSources {
 			switch {
@@ -367,24 +369,32 @@ func canJoinStatically(lhsSources, rhsSources []*source.Source, vm *promParser.V
 // operations where one side is a number literal or empty selector.
 // "foo / bar > 0" becomes "foo / bar".
 // "min_over_time((foo > 0)[5m:1m]) / bar" becomes "min_over_time(foo[5m:1m]) / bar".
-func removeConditions(node promParser.Node) promParser.Node {
+func removeConditions(node ast.Node) ast.Node {
 	switch n := node.(type) {
-	case *promParser.AggregateExpr:
-		return &promParser.AggregateExpr{
-			Op:       n.Op,
-			Expr:     removeConditions(n.Expr).(promParser.Expr),
-			Param:    n.Param,
-			Grouping: n.Grouping,
-			Without:  n.Without,
-			PosRange: n.PosRange,
+	case *ast.AggregateExpr:
+		ag := *n
+		ag.Expr = removeConditions(n.Expr)
+		if len(n.Args) > 0 {
+			ag.Args = make([]ast.Node, 0, len(n.Args))
+			for _, arg := range n.Args {
+				switch {
+				case arg == n.Expr:
+					ag.Args = append(ag.Args, ag.Expr)
+				case arg != n.Param && (arg.Type() == ast.ValueTypeVector || arg.Type() == ast.ValueTypeMatrix):
+					ag.Args = append(ag.Args, removeConditions(arg))
+				default:
+					ag.Args = append(ag.Args, arg)
+				}
+			}
 		}
-	case *promParser.BinaryExpr:
+		return &ag
+	case *ast.BinaryExpr:
 		lhs := removeConditions(n.LHS)
 		rhs := removeConditions(n.RHS)
 		ln := isNumberOrEmpty(lhs)
 		rn := isNumberOrEmpty(rhs)
 		if ln && rn {
-			return &promParser.VectorSelector{}
+			return &ast.VectorSelector{}
 		}
 		if ln {
 			return rhs
@@ -392,71 +402,54 @@ func removeConditions(node promParser.Node) promParser.Node {
 		if rn {
 			return lhs
 		}
-		return &promParser.BinaryExpr{
-			Op:             n.Op,
-			LHS:            lhs.(promParser.Expr),
-			RHS:            rhs.(promParser.Expr),
-			VectorMatching: n.VectorMatching,
-			ReturnBool:     n.ReturnBool,
-		}
-	case *promParser.Call:
-		args := make(promParser.Expressions, 0, len(n.Args))
+		be := *n
+		be.LHS = lhs
+		be.RHS = rhs
+		return &be
+	case *ast.Call:
+		args := make([]ast.Node, 0, len(n.Args))
 		for i, e := range n.Args {
-			var vt promParser.ValueType
-			if i >= len(n.Func.ArgTypes) {
-				vt = n.Func.ArgTypes[len(n.Func.ArgTypes)-1]
-			} else {
-				vt = n.Func.ArgTypes[i]
-			}
-			switch vt {
-			case promParser.ValueTypeVector, promParser.ValueTypeMatrix:
-				args = append(args, removeConditions(e).(promParser.Expr))
-			case promParser.ValueTypeScalar, promParser.ValueTypeString, promParser.ValueTypeNone:
+			switch n.Func.ArgType(i) {
+			case ast.ValueTypeVector, ast.ValueTypeMatrix:
+				args = append(args, removeConditions(e))
+			case ast.ValueTypeScalar, ast.ValueTypeString, ast.ValueTypeNone:
 				args = append(args, e)
 			}
 		}
-		return &promParser.Call{
-			Func:     n.Func,
-			Args:     args,
-			PosRange: n.PosRange,
-		}
-	case *promParser.SubqueryExpr:
-		return &promParser.SubqueryExpr{
-			Expr:           removeConditions(n.Expr).(promParser.Expr),
-			Range:          n.Range,
-			OriginalOffset: n.OriginalOffset,
-			Offset:         n.Offset,
-			Timestamp:      n.Timestamp,
-			StartOrEnd:     n.StartOrEnd,
-			Step:           n.Step,
-			EndPos:         n.EndPos,
-		}
-	case *promParser.ParenExpr:
-		inner := removeConditions(n.Expr).(promParser.Expr)
+		call := *n
+		call.Args = args
+		return &call
+	case *ast.SubqueryExpr:
+		sq := *n
+		sq.Expr = removeConditions(n.Expr)
+		return &sq
+	case *ast.OffsetExpr:
+		oe := *n
+		oe.Expr = removeConditions(n.Expr)
+		return &oe
+	case *ast.ParenExpr:
+		inner := removeConditions(n.Expr)
 		switch inner.(type) {
-		case *promParser.NumberLiteral, *promParser.StringLiteral, *promParser.VectorSelector, *promParser.MatrixSelector:
+		case *ast.NumberLiteral, *ast.StringLiteral, *ast.VectorSelector, *ast.MatrixSelector:
 			return inner
 		}
-		return &promParser.ParenExpr{
-			Expr:     inner,
-			PosRange: n.PosRange,
-		}
-	case *promParser.UnaryExpr:
-		return &promParser.UnaryExpr{
-			Op:       n.Op,
-			Expr:     removeConditions(n.Expr).(promParser.Expr),
-			StartPos: n.StartPos,
-		}
+		pe := *n
+		pe.Expr = inner
+		return &pe
+	case *ast.UnaryExpr:
+		ue := *n
+		ue.Expr = removeConditions(n.Expr)
+		return &ue
 	default:
 		return node
 	}
 }
 
-func isNumberOrEmpty(node promParser.Node) bool {
-	if _, ok := node.(*promParser.NumberLiteral); ok {
+func isNumberOrEmpty(node ast.Node) bool {
+	if _, ok := node.(*ast.NumberLiteral); ok {
 		return true
 	}
-	v, ok := node.(*promParser.VectorSelector)
+	v, ok := node.(*ast.VectorSelector)
 	if !ok {
 		return false
 	}

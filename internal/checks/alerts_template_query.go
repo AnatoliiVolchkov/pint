@@ -5,23 +5,22 @@ import (
 	"maps"
 	"text/template/parse"
 
-	"github.com/prometheus/prometheus/promql/parser/posrange"
-
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 )
 
 // templateQuery is a query string and where it is in the template.
 type templateQuery struct {
 	expr string
-	pos  posrange.PositionRange
+	pos  ast.PositionRange
 }
 
 // templateQueryLabel is a label name and where it is in the template.
 type templateQueryLabel struct {
 	name string
-	pos  posrange.PositionRange
+	pos  ast.PositionRange
 }
 
 // templateQueryUse is a query and the labels read from its results.
@@ -32,9 +31,9 @@ type templateQueryUse struct {
 
 // checkTemplateQueries checks queries passed to the query function for syntax
 // errors and for labels that the query can't return.
-func (c TemplateCheck) checkTemplateQueries(rule parser.Rule, label *parser.YamlKeyValue, meta templateMeta) (problems []Problem) {
+func (c TemplateCheck) checkTemplateQueries(lang ast.Language, rule parser.Rule, label *parser.YamlKeyValue, meta templateMeta) (problems []Problem) {
 	for _, use := range meta.uses {
-		query, err := parser.DecodeExpr(use.query.expr)
+		query, err := parser.DecodeExpr(lang, use.query.expr)
 		if err != nil {
 			problems = append(problems, Problem{
 				Anchor: AnchorAfter,
@@ -194,9 +193,9 @@ func chainUses(pipe *parse.PipeNode, scope queryScope) (uses []templateQueryUse)
 				query: q,
 				labels: []templateQueryLabel{{
 					name: n.Field[1],
-					pos: posrange.PositionRange{
-						Start: posrange.Pos(start),
-						End:   posrange.Pos(start + len(field)),
+					pos: ast.PositionRange{
+						Start: ast.Pos(start),
+						End:   ast.Pos(start + len(field)),
 					},
 				}},
 			})
@@ -219,12 +218,12 @@ func queryFromPipe(pipe *parse.PipeNode, scope queryScope) (templateQuery, bool)
 			return queryStringFromCommand(pipe.Cmds[i-1], scope)
 		}
 	}
-	return templateQuery{expr: "", pos: posrange.PositionRange{Start: 0, End: 0}}, false
+	return templateQuery{expr: "", pos: ast.PositionRange{Start: 0, End: 0}}, false
 }
 
 func queryStringFromPipe(pipe *parse.PipeNode, scope queryScope) (templateQuery, bool) {
 	if len(pipe.Cmds) != 1 {
-		return templateQuery{expr: "", pos: posrange.PositionRange{Start: 0, End: 0}}, false
+		return templateQuery{expr: "", pos: ast.PositionRange{Start: 0, End: 0}}, false
 	}
 	return queryStringFromCommand(pipe.Cmds[0], scope)
 }
@@ -245,7 +244,7 @@ func queryStringFromCommand(cmd *parse.CommandNode, scope queryScope) (templateQ
 			return templateQuery{expr: fmt.Sprintf(n.Text, args...), pos: stringNodePos(n)}, true
 		}
 	}
-	return templateQuery{expr: "", pos: posrange.PositionRange{Start: 0, End: 0}}, false
+	return templateQuery{expr: "", pos: ast.PositionRange{Start: 0, End: 0}}, false
 }
 
 // queryStringFromNode reads the query from one node: a string, or a variable
@@ -260,7 +259,7 @@ func queryStringFromNode(node parse.Node, scope queryScope) (templateQuery, bool
 			return q, ok
 		}
 	}
-	return templateQuery{expr: "", pos: posrange.PositionRange{Start: 0, End: 0}}, false
+	return templateQuery{expr: "", pos: ast.PositionRange{Start: 0, End: 0}}, false
 }
 
 // labelsFromPipe finds labels read from a query result, written as
@@ -291,9 +290,9 @@ func resultLabelFields(cmd *parse.CommandNode) (labels []templateQueryLabel) {
 		start := int(n.Pos) + 1 - len(prefix) - templateDefsLen
 		labels = append(labels, templateQueryLabel{
 			name: n.Ident[1],
-			pos: posrange.PositionRange{
-				Start: posrange.Pos(start),
-				End:   posrange.Pos(start + len(prefix) + len(n.Ident[1])),
+			pos: ast.PositionRange{
+				Start: ast.Pos(start),
+				End:   ast.Pos(start + len(prefix) + len(n.Ident[1])),
 			},
 		})
 	}
@@ -301,10 +300,10 @@ func resultLabelFields(cmd *parse.CommandNode) (labels []templateQueryLabel) {
 }
 
 // stringNodePos returns where a string is in the template, quotes included.
-func stringNodePos(n *parse.StringNode) posrange.PositionRange {
-	return posrange.PositionRange{
-		Start: posrange.Pos(int(n.Pos) - templateDefsLen),
-		End:   posrange.Pos(int(n.Pos) + len(n.Quoted) - templateDefsLen),
+func stringNodePos(n *parse.StringNode) ast.PositionRange {
+	return ast.PositionRange{
+		Start: ast.Pos(int(n.Pos) - templateDefsLen),
+		End:   ast.Pos(int(n.Pos) + len(n.Quoted) - templateDefsLen),
 	}
 }
 

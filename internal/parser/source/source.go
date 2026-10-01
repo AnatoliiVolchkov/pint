@@ -9,8 +9,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	promParser "github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
+
+	"github.com/cloudflare/pint/internal/parser/ast"
 )
 
 var guaranteedLabelsMatches = []labels.MatchType{labels.MatchEqual, labels.MatchRegexp}
@@ -95,12 +95,12 @@ func (lpt LabelPromiseType) MarshalYAML() (any, error) {
 type LabelTransform struct {
 	Reason   string
 	Kind     LabelPromiseType
-	Fragment posrange.PositionRange
+	Fragment ast.PositionRange
 }
 
 type DeadInfo struct {
 	Reason   string
-	Fragment posrange.PositionRange
+	Fragment ast.PositionRange
 }
 
 type DeadLabelKind uint8
@@ -130,14 +130,14 @@ type DeadLabel struct {
 	Name          string
 	Reason        string
 	LabelReason   string
-	UsageFragment posrange.PositionRange
-	LabelFragment posrange.PositionRange
+	UsageFragment ast.PositionRange
+	LabelFragment ast.PositionRange
 	Kind          DeadLabelKind
 }
 
 type ReturnInfo struct {
 	LogicalExpr    string
-	ValuePosition  posrange.PositionRange
+	ValuePosition  ast.PositionRange
 	ReturnedNumber float64 // If AlwaysReturns=true this is the number that's returned
 	AlwaysReturns  bool    // True if this source always returns results.
 	KnownReturn    bool    // True if we always know the return value.
@@ -145,14 +145,14 @@ type ReturnInfo struct {
 }
 
 type Condition struct {
-	Op         promParser.ItemType `yaml:"op,omitempty"`
-	Value      float64             `yaml:"value,omitempty"`
-	Present    bool                `yaml:"present,omitempty"`
-	KnownValue bool                `yaml:"knownValue,omitempty"`
+	Op         ast.Op  `yaml:"op,omitempty"`
+	Value      float64 `yaml:"value,omitempty"`
+	Present    bool    `yaml:"present,omitempty"`
+	KnownValue bool    `yaml:"knownValue,omitempty"`
 }
 
 type Operation struct {
-	Node      promParser.Node
+	Node      ast.Node
 	Operation string
 	Arguments []string
 }
@@ -171,7 +171,7 @@ func (so Operation) MarshalYAML() (any, error) {
 
 type Operations []Operation
 
-func MostOuterOperation[T promParser.Node](s *Source) (T, bool) {
+func MostOuterOperation[T ast.Node](s *Source) (T, bool) {
 	for _, op := range slices.Backward(s.Operations) {
 		if o, ok := op.Node.(T); ok {
 			return o, true
@@ -189,11 +189,11 @@ type Join struct {
 	Fill           *Fill // Fill values for unmatched series (binop fill modifiers).
 	DeadInfo       *DeadInfo
 	Src            *Source     // The source we're joining with.
+	Op             ast.Op      // The binary operation used for this join.
 	DeadLabels     []DeadLabel // Per-pairing dead labels from checkJoinedLabels/checkIncludedLabels.
 	MatchingLabels []string
 	AddedLabels    []string
-	Op             promParser.ItemType // The binary operation used for this join.
-	Depth          int                 // Zero if this is a direct join, non-zero otherwise. sum(foo * bar) would be in-direct join.
+	Depth          int // Zero if this is a direct join, non-zero otherwise. sum(foo * bar) would be in-direct join.
 	IsOn           bool
 }
 
@@ -203,7 +203,7 @@ func (j Join) MarshalYAML() (any, error) {
 		"matchinglabels": j.MatchingLabels,
 		"addedlabels":    j.AddedLabels,
 		"src":            j.Src,
-		"op":             promParser.ItemTypeStr[j.Op],
+		"op":             j.Op.String(),
 		"depth":          j.Depth,
 		"ison":           j.IsOn,
 	}
@@ -247,21 +247,21 @@ const (
 )
 
 type Indirect struct {
-	Src  *Source             `yaml:"src"`
-	Op   promParser.ItemType `yaml:"op"`
-	Side Side                `yaml:"side"`
+	Src  *Source `yaml:"src"`
+	Op   ast.Op  `yaml:"op"`
+	Side Side    `yaml:"side"`
 }
 
 type FeatureRequirement struct {
-	Feature   string                   `yaml:"feature"`
-	Name      string                   `yaml:"name"`
-	Fragments []posrange.PositionRange `yaml:"fragments"`
+	Feature   string              `yaml:"feature"`
+	Name      string              `yaml:"name"`
+	Fragments []ast.PositionRange `yaml:"fragments"`
 }
 
 type Source struct {
 	Labels     map[string]LabelTransform `yaml:"labels,omitempty"`
 	DeadInfo   *DeadInfo                 `yaml:"deadInfo,omitempty"`
-	Returns    promParser.ValueType      `yaml:"returns"`
+	Returns    ast.ValueType             `yaml:"returns"`
 	DeadLabels []DeadLabel               `yaml:"deadLabels,omitempty"`
 	Operations Operations                `yaml:"operations,omitempty"`
 	// Any other sources this source joins with.
@@ -269,13 +269,13 @@ type Source struct {
 	// Any other sources this source is suppressed by.
 	Unless []Unless `yaml:"unless,omitempty"`
 	// Any other sources used indirectly, not contributing labels.
-	Indirect      []Indirect             `yaml:"indirect,omitempty"`
-	NeedsFeatures []FeatureRequirement   `yaml:"needsFeatures,omitempty"`
-	UsedLabels    []string               `yaml:"usedLabels,omitempty"`
-	ReturnInfo    ReturnInfo             `yaml:"returnInfo,omitempty"`
-	Condition     Condition              `yaml:"condition,omitempty"`
-	Position      posrange.PositionRange `yaml:"position"`
-	Type          Type                   `yaml:"type"`
+	Indirect      []Indirect           `yaml:"indirect,omitempty"`
+	NeedsFeatures []FeatureRequirement `yaml:"needsFeatures,omitempty"`
+	UsedLabels    []string             `yaml:"usedLabels,omitempty"`
+	Condition     Condition            `yaml:"condition,omitempty"`
+	ReturnInfo    ReturnInfo           `yaml:"returnInfo,omitempty"`
+	Position      ast.PositionRange    `yaml:"position"`
+	Type          Type                 `yaml:"type"`
 	// Labels are fixed and only allowed labels can be present.
 	FixedLabels       bool              `yaml:"fixedLabels,omitempty"`
 	RangeSelectorMode RangeSelectorMode `yaml:"rangeSelectorMode,omitempty"`
@@ -287,7 +287,7 @@ type Source struct {
 // PromQL element that doesn't require any feature flag, so we skip it.
 // When a match is found, the query position is recorded so that diagnostics
 // can later highlight the exact fragment that requires the flag.
-func (s *Source) requireFeature(name string, pos posrange.PositionRange) {
+func (s *Source) requireFeature(name string, pos ast.PositionRange) {
 	// Only elements listed in the feature version map require a feature flag.
 	// Everything else is standard PromQL and can be ignored.
 	fv, ok := LookupFeatureVersion(name)
@@ -305,7 +305,7 @@ func (s *Source) requireFeature(name string, pos posrange.PositionRange) {
 	s.NeedsFeatures = append(s.NeedsFeatures, FeatureRequirement{
 		Feature:   fv.Flag,
 		Name:      name,
-		Fragments: []posrange.PositionRange{pos},
+		Fragments: []ast.PositionRange{pos},
 	})
 }
 
@@ -344,14 +344,14 @@ func (s Source) TransformedLabels(kinds ...LabelPromiseType) []string {
 	return names
 }
 
-func (s Source) LabelExcludeReason(name string) (string, posrange.PositionRange) {
+func (s Source) LabelExcludeReason(name string) (string, ast.PositionRange) {
 	if l, ok := s.Labels[name]; ok && l.Kind == ImpossibleLabel {
 		return l.Reason, l.Fragment
 	}
 	return s.Labels[""].Reason, s.Labels[""].Fragment
 }
 
-func (s *Source) excludeAllLabels(expr, reason string, fragment, allFragment posrange.PositionRange, except []string) {
+func (s *Source) excludeAllLabels(expr, reason string, fragment, allFragment ast.PositionRange, except []string) {
 	// Everything that was included until now but will be removed needs an explicit stamp to mark it as gone.
 	for name, l := range s.Labels {
 		if slices.Contains(except, name) {
@@ -400,7 +400,7 @@ func (s *Source) excludeAllLabels(expr, reason string, fragment, allFragment pos
 	s.FixedLabels = true
 }
 
-func (s *Source) excludeLabel(reason string, fragment posrange.PositionRange, name string) {
+func (s *Source) excludeLabel(reason string, fragment ast.PositionRange, name string) {
 	s.Labels[name] = LabelTransform{
 		Kind:     ImpossibleLabel,
 		Reason:   reason,
@@ -411,7 +411,7 @@ func (s *Source) excludeLabel(reason string, fragment posrange.PositionRange, na
 	})
 }
 
-func (s *Source) joinLabels(expr string, within posrange.PositionRange, op promParser.ItemType, names []string, outside []posrange.PositionRange) {
+func (s *Source) joinLabels(expr string, within ast.PositionRange, op ast.Op, names []string, outside []ast.PositionRange) {
 	for _, name := range names {
 		if l, ok := s.Labels[name]; ok && l.Kind == GuaranteedLabel {
 			s.DeadLabels = append(s.DeadLabels, DeadLabel{
@@ -420,7 +420,7 @@ func (s *Source) joinLabels(expr string, within posrange.PositionRange, op promP
 				Reason: "Query is trying to join the `" + name + "` label that is already present on the other side of the query.",
 				UsageFragment: findArgumentPosition(
 					expr,
-					FindFuncPosition(expr, within, promParser.ItemTypeStr[op], outside),
+					FindFuncPosition(expr, within, op.String(), outside),
 					name,
 				),
 				LabelReason:   l.Reason,
@@ -432,18 +432,18 @@ func (s *Source) joinLabels(expr string, within posrange.PositionRange, op promP
 			Kind: PossibleLabel,
 			Reason: fmt.Sprintf(
 				"Query is using `%s(%s)`, all labels included inside `%s(...)` will be joined to the results on the other side of the query.",
-				promParser.ItemTypeStr[op], strings.Join(names, ", "), promParser.ItemTypeStr[op],
+				op.String(), strings.Join(names, ", "), op.String(),
 			),
 			Fragment: findArgumentPosition(
 				expr,
-				FindFuncPosition(expr, within, promParser.ItemTypeStr[op], outside),
+				FindFuncPosition(expr, within, op.String(), outside),
 				name,
 			),
 		}
 	}
 }
 
-func (s *Source) includeLabel(expr, reason string, fragment posrange.PositionRange, name string) {
+func (s *Source) includeLabel(expr, reason string, fragment ast.PositionRange, name string) {
 	if l, ok := s.Labels[name]; ok && l.Kind == GuaranteedLabel {
 		return
 	}
@@ -454,7 +454,7 @@ func (s *Source) includeLabel(expr, reason string, fragment posrange.PositionRan
 	}
 }
 
-func (s *Source) guaranteeLabel(reason string, fragment posrange.PositionRange, names ...string) {
+func (s *Source) guaranteeLabel(reason string, fragment ast.PositionRange, names ...string) {
 	for _, name := range names {
 		s.Labels[name] = LabelTransform{
 			Kind:     GuaranteedLabel,
@@ -464,7 +464,7 @@ func (s *Source) guaranteeLabel(reason string, fragment posrange.PositionRange, 
 	}
 }
 
-func findDeadIncludedLabels(s *Source, expr string, pos posrange.PositionRange, names []string) []DeadLabel {
+func findDeadIncludedLabels(s *Source, expr string, pos ast.PositionRange, names []string) []DeadLabel {
 	var dead []DeadLabel
 	for _, name := range names {
 		if !s.CanHaveLabel(name) {
@@ -482,19 +482,19 @@ func findDeadIncludedLabels(s *Source, expr string, pos posrange.PositionRange, 
 	return dead
 }
 
-func (s *Source) checkIncludedLabels(expr string, pos posrange.PositionRange, names []string) {
+func (s *Source) checkIncludedLabels(expr string, pos ast.PositionRange, names []string) {
 	s.DeadLabels = append(s.DeadLabels, findDeadIncludedLabels(s, expr, pos, names)...)
 }
 
-func (s *Source) checkAggregationLabels(expr string, n *promParser.AggregateExpr) {
-	var pos posrange.PositionRange
+func (s *Source) checkAggregationLabels(expr string, n *ast.AggregateExpr) {
+	var pos ast.PositionRange
 	switch {
 	case len(n.Grouping) == 0:
-		pos = FindFuncNamePosition(expr, n.PosRange, promParser.ItemTypeStr[n.Op])
+		pos = FindFuncNamePosition(expr, n.PosRange, n.Op.String())
 	case n.Without:
-		pos = FindFuncPosition(expr, n.PosRange, promParser.ItemTypeStr[promParser.WITHOUT], nil)
+		pos = FindFuncPosition(expr, n.PosRange, ast.OpWithout.String(), nil)
 	default:
-		pos = FindFuncPosition(expr, n.PosRange, promParser.ItemTypeStr[promParser.BY], nil)
+		pos = FindFuncPosition(expr, n.PosRange, ast.OpBy.String(), nil)
 	}
 
 	for _, j := range s.Joins {
@@ -540,8 +540,8 @@ func (s *Source) findLabelTransform(name string) *LabelTransform {
 	return nil
 }
 
-func (s *Source) checkJoinedLabels(expr string, n *promParser.BinaryExpr, dst *Source) (dead []DeadLabel) {
-	pos := findBinOpsOperatorPosition(expr, n, promParser.ItemTypeStr[n.Op])
+func (s *Source) checkJoinedLabels(expr string, n *ast.BinaryExpr, dst *Source) (dead []DeadLabel) {
+	pos := findBinOpsOperatorPosition(expr, n, n.Op.String())
 	for _, j := range s.Joins {
 		for _, name := range j.AddedLabels {
 			if slices.Contains(n.VectorMatching.Include, name) {
@@ -614,24 +614,24 @@ func (s *Source) WalkSources(fn Visitor) {
 	innerWalk(fn, s, nil, nil)
 }
 
-func LabelsSource(expr string, node promParser.Node) (src []*Source) {
+func LabelsSource(expr string, node ast.Node) (src []*Source) {
 	return walkNode(expr, node)
 }
 
-func walkNode(expr string, node promParser.Node) (src []*Source) {
+func walkNode(expr string, node ast.Node) (src []*Source) {
 	switch n := node.(type) {
-	case *promParser.AggregateExpr:
+	case *ast.AggregateExpr:
 		src = append(src, walkAggregation(expr, n)...)
 
-	case *promParser.BinaryExpr:
+	case *ast.BinaryExpr:
 		src = append(src, parseBinOps(expr, n)...)
 
-	case *promParser.Call:
+	case *ast.Call:
 		src = append(src, parseCall(expr, n)...)
 
-	case *promParser.MatrixSelector:
+	case *ast.MatrixSelector:
 		for _, s := range walkNode(expr, n.VectorSelector) {
-			s.Returns = promParser.ValueTypeMatrix
+			s.Returns = ast.ValueTypeMatrix
 			// Prepend Matrix operation
 			s.Operations = append(
 				Operations{
@@ -647,7 +647,7 @@ func walkNode(expr string, node promParser.Node) (src []*Source) {
 			src = append(src, s)
 		}
 
-	case *promParser.SubqueryExpr:
+	case *ast.SubqueryExpr:
 		for _, s := range walkNode(expr, n.Expr) {
 			// Prepend Subquery operation
 			s.Operations = append(
@@ -667,11 +667,11 @@ func walkNode(expr string, node promParser.Node) (src []*Source) {
 			src = append(src, s)
 		}
 
-	case *promParser.NumberLiteral:
+	case *ast.NumberLiteral:
 		s := new(Source)
 		s.Labels = map[string]LabelTransform{}
 		s.Type = NumberSource
-		s.Returns = promParser.ValueTypeScalar
+		s.Returns = ast.ValueTypeScalar
 		s.ReturnInfo.KnownReturn = true
 		s.ReturnInfo.ReturnedNumber = n.Val
 		s.ReturnInfo.AlwaysReturns = true
@@ -680,37 +680,41 @@ func walkNode(expr string, node promParser.Node) (src []*Source) {
 		s.Position = n.PosRange
 		src = append(src, s)
 
-	case *promParser.ParenExpr:
+	case *ast.ParenExpr:
 		src = append(src, walkNode(expr, n.Expr)...)
 
-	case *promParser.StringLiteral:
+	case *ast.OffsetExpr:
+		// MetricsQL offset or @ modifier applied to an arbitrary expression.
+		src = append(src, walkNode(expr, n.Expr)...)
+
+	case *ast.StringLiteral:
 		s := new(Source)
 		s.Labels = map[string]LabelTransform{}
 		s.Type = StringSource
-		s.Returns = promParser.ValueTypeString
+		s.Returns = ast.ValueTypeString
 		s.ReturnInfo.AlwaysReturns = true
 		s.excludeAllLabels(expr, "This query returns a string value with no labels.", n.PosRange, n.PosRange, nil)
 		s.Position = n.PosRange
 		src = append(src, s)
 
-	case *promParser.UnaryExpr:
+	case *ast.UnaryExpr:
 		src = append(src, walkNode(expr, n.Expr)...)
 
-	// case *promParser.StepInvariantExpr:
+	// case *ast.StepInvariantExpr:
 	// Not possible to get this from the parser.
 
-	case *promParser.VectorSelector:
+	case *ast.VectorSelector:
 		s := new(Source)
 		s.Labels = map[string]LabelTransform{}
 		s.Type = SelectorSource
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 		switch {
 		case n.Anchored:
 			s.RangeSelectorMode = RangeSelectorAnchored
-			s.requireFeature(promParser.ItemTypeStr[promParser.ANCHORED], n.PosRange)
+			s.requireFeature(ast.OpAnchored.String(), n.PosRange)
 		case n.Smoothed:
 			s.RangeSelectorMode = RangeSelectorSmoothed
-			s.requireFeature(promParser.ItemTypeStr[promParser.SMOOTHED], n.PosRange)
+			s.requireFeature(ast.OpSmoothed.String(), n.PosRange)
 		}
 		s.requireDurationExprFeatures(n.OriginalOffsetExpr)
 		s.requireStartOrEndFeature(expr, n.StartOrEnd, n.PosRange)
@@ -746,70 +750,130 @@ func appendToSlice(dst []string, values ...string) []string {
 	return dst
 }
 
-func labelsFromSelectors(matches []labels.MatchType, selector *promParser.VectorSelector) (names []string) {
+func labelsFromSelectors(matches []labels.MatchType, selector *ast.VectorSelector) (names []string) {
 	if selector == nil {
 		return nil
 	}
 	// Any label used in positive filters is gurnateed to be present.
-	for _, lm := range selector.LabelMatchers {
-		if lm.Name == model.MetricNameLabel {
+	// With MetricsQL `or` filters it must be used in all filter groups.
+	return namesInAllGroups(selector, func(lm *labels.Matcher) bool {
+		return slices.Contains(matches, lm.Type)
+	})
+}
+
+func labelsWithEmptyValueSelector(selector *ast.VectorSelector) (names []string) {
+	return namesInAllGroups(selector, func(lm *labels.Matcher) bool {
+		return lm.Type == labels.MatchEqual && lm.Value == ""
+	})
+}
+
+func namesInAllGroups(selector *ast.VectorSelector, match func(*labels.Matcher) bool) (names []string) {
+	for i, group := range selector.MatcherGroups() {
+		var groupNames []string
+		for _, lm := range group {
+			if lm.Name == model.MetricNameLabel {
+				continue
+			}
+			if match(lm) {
+				groupNames = appendToSlice(groupNames, lm.Name)
+			}
+		}
+		if i == 0 {
+			names = groupNames
 			continue
 		}
-		if !slices.Contains(matches, lm.Type) {
-			continue
-		}
-		names = appendToSlice(names, lm.Name)
+		names = slices.DeleteFunc(names, func(name string) bool {
+			return !slices.Contains(groupNames, name)
+		})
 	}
 	return names
 }
 
-func labelsWithEmptyValueSelector(selector *promParser.VectorSelector) (names []string) {
-	for _, lm := range selector.LabelMatchers {
-		if lm.Name == model.MetricNameLabel {
-			continue
-		}
-		if lm.Type == labels.MatchEqual && lm.Value == "" {
-			names = appendToSlice(names, lm.Name)
-		}
-	}
-	return names
+// MetricsQL aggregations that return some of the input time series with all their labels.
+var labelPreservingAggregations = []ast.Op{
+	"any",
+	"bottomk_avg", "bottomk_last", "bottomk_max", "bottomk_median", "bottomk_min",
+	"outliers_iqr", "outliers_mad", "outliersk",
+	"share",
+	"topk_avg", "topk_last", "topk_max", "topk_median", "topk_min",
+	"zscore",
 }
 
-func walkAggregation(expr string, n *promParser.AggregateExpr) (src []*Source) {
+// aggregationExprs returns all expressions aggregated by n.
+// MetricsQL allows to pass multiple series arguments, for example sum(foo, bar).
+func aggregationExprs(n *ast.AggregateExpr) []ast.Node {
+	if len(n.Args) == 0 {
+		return []ast.Node{n.Expr}
+	}
+	exprs := make([]ast.Node, 0, len(n.Args))
+	for _, arg := range n.Args {
+		if arg == n.Param {
+			continue
+		}
+		if arg == n.Expr || arg.Type() == ast.ValueTypeVector || arg.Type() == ast.ValueTypeMatrix {
+			exprs = append(exprs, arg)
+		}
+	}
+	return exprs
+}
+
+func aggregationArgs(n *ast.AggregateExpr) (args []string) {
+	if len(n.Args) == 0 {
+		if n.Param != nil {
+			args = append(args, n.Param.String())
+		}
+		return args
+	}
+	exprs := aggregationExprs(n)
+	for _, arg := range n.Args {
+		if !slices.Contains(exprs, arg) {
+			args = append(args, arg.String())
+		}
+	}
+	return args
+}
+
+func walkNodes(expr string, nodes []ast.Node) (src []*Source) {
+	for _, node := range nodes {
+		src = append(src, walkNode(expr, node)...)
+	}
+	return src
+}
+
+func walkAggregation(expr string, n *ast.AggregateExpr) (src []*Source) {
 	var s *Source
 
-	var args []string
-	if n.Param != nil {
-		args = append(args, n.Param.String())
-	}
+	args := aggregationArgs(n)
 
-	switch n.Op {
-	case promParser.COUNT_VALUES:
+	switch {
+	case n.Op == ast.OpCountValues:
 		for _, s = range parseAggregation(expr, n) {
 			s.Operations = append(s.Operations, Operation{
-				Operation: promParser.ItemTypeStr[n.Op],
+				Operation: n.Op.String(),
 				Node:      n,
 				Arguments: args,
 			})
 			// Param is the label to store the count value in.
-			s.guaranteeLabel(
-				"This label will be added to the results by the count_values() call.",
-				n.PosRange,
-				n.Param.(*promParser.StringLiteral).Val,
-			)
+			if sl, ok := n.Param.(*ast.StringLiteral); ok {
+				s.guaranteeLabel(
+					"This label will be added to the results by the count_values() call.",
+					n.PosRange,
+					sl.Val,
+				)
+			}
 			if n.Without || !slices.Contains(n.Grouping, model.MetricNameLabel) {
 				s.excludeLabel("Aggregation removes metric name.", n.PosRange, model.MetricNameLabel)
 			}
 			src = append(src, s)
 		}
-	case promParser.TOPK, promParser.BOTTOMK:
-		for _, s = range walkNode(expr, n.Expr) {
+	case n.Op == ast.OpTopK, n.Op == ast.OpBottomK, slices.Contains(labelPreservingAggregations, n.Op):
+		for _, s = range walkNodes(expr, aggregationExprs(n)) {
 			for i := range s.Joins {
 				s.Joins[i].Depth++
 			}
 			s.Type = AggregateSource
 			s.Operations = append(s.Operations, Operation{
-				Operation: promParser.ItemTypeStr[n.Op],
+				Operation: n.Op.String(),
 				Node:      n,
 				Arguments: args,
 			})
@@ -818,7 +882,7 @@ func walkAggregation(expr string, n *promParser.AggregateExpr) (src []*Source) {
 	default:
 		for _, s = range parseAggregation(expr, n) {
 			s.Operations = append(s.Operations, Operation{
-				Operation: promParser.ItemTypeStr[n.Op],
+				Operation: n.Op.String(),
 				Node:      n,
 				Arguments: args,
 			})
@@ -826,8 +890,16 @@ func walkAggregation(expr string, n *promParser.AggregateExpr) (src []*Source) {
 				s.excludeLabel("Aggregation removes metric name.", n.PosRange, model.MetricNameLabel)
 			}
 			{
-				name := promParser.ItemTypeStr[n.Op]
+				name := n.Op.String()
 				s.requireFeature(name, FindFuncNamePosition(expr, n.PosRange, name))
+			}
+			switch n.Op { // nolint: exhaustive
+			case "histogram":
+				s.guaranteeLabel("This label will be added to the results by the histogram() call.", n.PosRange, "vmrange")
+			case "quantiles":
+				if sl, ok := n.Args[0].(*ast.StringLiteral); ok {
+					s.guaranteeLabel("This label will be added to the results by the quantiles() call.", n.PosRange, sl.Val)
+				}
 			}
 			src = append(src, s)
 		}
@@ -835,9 +907,9 @@ func walkAggregation(expr string, n *promParser.AggregateExpr) (src []*Source) {
 	return src
 }
 
-func parseAggregation(expr string, n *promParser.AggregateExpr) (src []*Source) {
+func parseAggregation(expr string, n *ast.AggregateExpr) (src []*Source) {
 	var s *Source
-	for _, s = range walkNode(expr, n.Expr) {
+	for _, s = range walkNodes(expr, aggregationExprs(n)) {
 		// If we have sum(foo * bar) then we start with:
 		// - source: foo
 		//   joins: bar
@@ -854,10 +926,10 @@ func parseAggregation(expr string, n *promParser.AggregateExpr) (src []*Source) 
 			for _, name := range n.Grouping {
 				s.excludeLabel(
 					fmt.Sprintf("Query is using aggregation with `%s(%s)`, all labels included inside `%s(...)` will be removed from the results.",
-						promParser.ItemTypeStr[promParser.WITHOUT], strings.Join(n.Grouping, ", "), promParser.ItemTypeStr[promParser.WITHOUT]),
+						ast.OpWithout.String(), strings.Join(n.Grouping, ", "), ast.OpWithout.String()),
 					findArgumentPosition(
 						expr,
-						FindFuncPosition(expr, n.PosRange, promParser.ItemTypeStr[promParser.WITHOUT], nil),
+						FindFuncPosition(expr, n.PosRange, ast.OpWithout.String(), nil),
 						name,
 					),
 					name,
@@ -865,7 +937,7 @@ func parseAggregation(expr string, n *promParser.AggregateExpr) (src []*Source) 
 			}
 		} else {
 			if len(n.Grouping) == 0 {
-				funcNamePos := FindFuncNamePosition(expr, n.PosRange, promParser.ItemTypeStr[n.Op])
+				funcNamePos := FindFuncNamePosition(expr, n.PosRange, n.Op.String())
 				s.excludeAllLabels(
 					expr,
 					"Query is using aggregation that removes all labels.",
@@ -877,50 +949,50 @@ func parseAggregation(expr string, n *promParser.AggregateExpr) (src []*Source) 
 				s.UsedLabels = appendToSlice(s.UsedLabels, n.Grouping...)
 				s.checkIncludedLabels(
 					expr,
-					FindFuncPosition(expr, n.PosRange, promParser.ItemTypeStr[promParser.BY], nil),
+					FindFuncPosition(expr, n.PosRange, ast.OpBy.String(), nil),
 					n.Grouping,
 				)
 				s.excludeAllLabels(
 					expr,
 					fmt.Sprintf("Query is using aggregation with `%s(%s)`, only labels included inside `%s(...)` will be present on the results.",
-						promParser.ItemTypeStr[promParser.BY], strings.Join(n.Grouping, ", "), promParser.ItemTypeStr[promParser.BY]),
-					FindFuncPosition(expr, n.PosRange, promParser.ItemTypeStr[promParser.BY], nil),
-					FindFuncNamePosition(expr, n.PosRange, promParser.ItemTypeStr[promParser.BY]),
+						ast.OpBy.String(), strings.Join(n.Grouping, ", "), ast.OpBy.String()),
+					FindFuncPosition(expr, n.PosRange, ast.OpBy.String(), nil),
+					FindFuncNamePosition(expr, n.PosRange, ast.OpBy.String()),
 					n.Grouping,
 				)
 			}
 		}
 		s.Type = AggregateSource
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 		src = append(src, s)
 	}
 	return src
 }
 
-func parsePromQLFunc(s *Source, expr string, n *promParser.Call) *Source {
+func parsePromQLFunc(s *Source, expr string, n *ast.Call) *Source {
 	s.requireFeature(n.Func.Name, FindFuncNamePosition(expr, n.PositionRange(), n.Func.Name))
 	switch n.Func.Name {
 	case "abs", "sgn",
 		"acos", "acosh", "asin", "asinh", "atan", "atanh",
 		"cos", "cosh", "sin", "sinh", "tan", "tanh":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "ceil", "floor", "round":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "changes", "resets":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "clamp", "clamp_max", "clamp_min":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "absent", "absent_over_time":
-		s.Returns = promParser.ValueTypeVector
-		vs, _ := MostOuterOperation[*promParser.VectorSelector](s)
+		s.Returns = ast.ValueTypeVector
+		vs, _ := MostOuterOperation[*ast.VectorSelector](s)
 		names := labelsFromSelectors([]labels.MatchType{labels.MatchEqual}, vs)
 		funcNamePos := FindFuncNamePosition(expr, n.PosRange, n.Func.Name)
 		s.excludeAllLabels(
@@ -954,10 +1026,10 @@ If you're hoping to get instance specific labels this way and alert when some ta
 		"stdvar_over_time",
 		"sum_over_time":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "days_in_month", "day_of_month", "day_of_week", "day_of_year", "hour", "minute", "month", "year":
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 		// No labels if we don't pass any arguments.
 		// Otherwise no change to labels.
 		if len(n.Args) == 0 {
@@ -974,11 +1046,11 @@ If you're hoping to get instance specific labels this way and alert when some ta
 
 	case "deg", "rad", "ln", "log10", "log2", "sqrt", "exp":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "delta", "idelta", "increase", "deriv", "irate", "rate":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "histogram_avg",
 		"histogram_count",
@@ -989,38 +1061,42 @@ If you're hoping to get instance specific labels this way and alert when some ta
 		"histogram_stdvar",
 		"histogram_sum":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
+		if _, ok := stringArg(n, 0); ok {
+			// MetricsQL histogram_quantiles("phiLabel", phi1, ..., buckets).
+			return parseMetricsQLFunc(s, expr, n)
+		}
 
 	case "double_exponential_smoothing", "holt_winters", "predict_linear":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "label_join":
 		// One label added to the results.
 		// label_join(v instant-vector, dst_label string, separator string, src_label_1 string, src_label_2 string, ...)
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 		s.guaranteeLabel(
 			fmt.Sprintf("This label will be added to the result by a %s() call.", n.Func.Name),
 			n.PosRange,
-			n.Args[1].(*promParser.StringLiteral).Val,
+			n.Args[1].(*ast.StringLiteral).Val,
 		)
 		for i := 3; i < len(n.Args); i++ {
-			s.UsedLabels = appendToSlice(s.UsedLabels, n.Args[i].(*promParser.StringLiteral).Val)
+			s.UsedLabels = appendToSlice(s.UsedLabels, n.Args[i].(*ast.StringLiteral).Val)
 		}
 
 	case "label_replace":
 		// One label added to the results.
 		// label_replace(v instant-vector, dst_label string, replacement string, src_label string, regex string)
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 		s.guaranteeLabel(
 			fmt.Sprintf("This label will be added to the result by a %s() call.", n.Func.Name),
 			n.PosRange,
-			n.Args[1].(*promParser.StringLiteral).Val,
+			n.Args[1].(*ast.StringLiteral).Val,
 		)
-		s.UsedLabels = appendToSlice(s.UsedLabels, n.Args[3].(*promParser.StringLiteral).Val)
+		s.UsedLabels = appendToSlice(s.UsedLabels, n.Args[3].(*ast.StringLiteral).Val)
 
 	case "pi":
-		s.Returns = promParser.ValueTypeScalar
+		s.Returns = ast.ValueTypeScalar
 		s.ReturnInfo.AlwaysReturns = true
 		s.ReturnInfo.KnownReturn = true
 		s.ReturnInfo.ReturnedNumber = math.Pi
@@ -1034,7 +1110,7 @@ If you're hoping to get instance specific labels this way and alert when some ta
 		)
 
 	case "min_of", "max_of", "scalar":
-		s.Returns = promParser.ValueTypeScalar
+		s.Returns = ast.ValueTypeScalar
 		s.ReturnInfo.AlwaysReturns = true
 		funcPos := FindFuncPosition(expr, n.PositionRange(), n.Func.Name, nil)
 		s.excludeAllLabels(
@@ -1047,10 +1123,10 @@ If you're hoping to get instance specific labels this way and alert when some ta
 
 	case "sort", "sort_desc", "sort_by_label", "sort_by_label_desc":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "time", "start", "end", "range", "step":
-		s.Returns = promParser.ValueTypeScalar
+		s.Returns = ast.ValueTypeScalar
 		s.ReturnInfo.AlwaysReturns = true
 		s.ReturnInfo.ValuePosition = n.PosRange
 		s.excludeAllLabels(
@@ -1068,15 +1144,15 @@ If you're hoping to get instance specific labels this way and alert when some ta
 		"ts_of_max_over_time",
 		"ts_of_min_over_time":
 		// No change to labels.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "info":
 		// info() joins labels from an info-series onto the input vector.
 		// The joined labels are dynamic so we treat this as no label change.
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 
 	case "vector":
-		s.Returns = promParser.ValueTypeVector
+		s.Returns = ast.ValueTypeVector
 		s.ReturnInfo.AlwaysReturns = true
 		s.ReturnInfo.ValuePosition = n.PosRange
 		for _, vs := range walkNode(expr, n.Args[0]) {
@@ -1095,18 +1171,17 @@ If you're hoping to get instance specific labels this way and alert when some ta
 		)
 
 	default:
-		// Unsupported function
-		return new(Source)
+		return parseMetricsQLFunc(s, expr, n)
 	}
 	return s
 }
 
-func parseCall(expr string, n *promParser.Call) (src []*Source) {
+func parseCall(expr string, n *ast.Call) (src []*Source) {
 	var args []string
-	var exprs []promParser.Expr
+	var exprs []ast.Node
 	var indirect []Indirect
 
-	var vt promParser.ValueType
+	var vt ast.ValueType
 	for i, e := range n.Args {
 		if i >= len(n.Func.ArgTypes) {
 			vt = n.Func.ArgTypes[len(n.Func.ArgTypes)-1]
@@ -1115,14 +1190,14 @@ func parseCall(expr string, n *promParser.Call) (src []*Source) {
 		}
 
 		switch vt {
-		case promParser.ValueTypeVector, promParser.ValueTypeMatrix:
+		case ast.ValueTypeVector, ast.ValueTypeMatrix:
 			exprs = append(exprs, e)
-		case promParser.ValueTypeNone, promParser.ValueTypeScalar, promParser.ValueTypeString:
+		case ast.ValueTypeNone, ast.ValueTypeScalar, ast.ValueTypeString:
 			args = append(args, e.String())
 			for _, s := range walkNode(expr, e) {
 				indirect = append(indirect, Indirect{
 					Src:  s,
-					Op:   0,
+					Op:   "",
 					Side: LHS,
 				})
 			}
@@ -1164,7 +1239,7 @@ func parseCall(expr string, n *promParser.Call) (src []*Source) {
 	return src
 }
 
-func fillFromMatching(vm *promParser.VectorMatching) *Fill {
+func fillFromMatching(vm *ast.VectorMatching) *Fill {
 	if vm.FillValues.LHS == nil && vm.FillValues.RHS == nil {
 		return nil
 	}
@@ -1178,7 +1253,7 @@ func fillFromMatching(vm *promParser.VectorMatching) *Fill {
 	return &f
 }
 
-func (s *Source) requireDurationExprFeatures(de *promParser.DurationExpr) {
+func (s *Source) requireDurationExprFeatures(de *ast.DurationExpr) {
 	if de == nil {
 		return
 	}
@@ -1186,31 +1261,31 @@ func (s *Source) requireDurationExprFeatures(de *promParser.DurationExpr) {
 	walkDurationExprFeatures(s, de)
 }
 
-func (s *Source) requireStartOrEndFeature(expr string, startOrEnd promParser.ItemType, pos posrange.PositionRange) {
-	switch startOrEnd {
-	case promParser.START:
+func (s *Source) requireStartOrEndFeature(expr string, startOrEnd ast.Op, pos ast.PositionRange) {
+	switch startOrEnd { // nolint: exhaustive
+	case ast.OpStart:
 		s.requireFeature("start", FindFuncPosition(expr, pos, "start", nil))
-	case promParser.END:
+	case ast.OpEnd:
 		s.requireFeature("end", FindFuncPosition(expr, pos, "end", nil))
 	}
 }
 
-func walkDurationExprFeatures(s *Source, de *promParser.DurationExpr) {
-	switch de.Op {
-	case promParser.RANGE:
+func walkDurationExprFeatures(s *Source, de *ast.DurationExpr) {
+	switch de.Op { // nolint: exhaustive
+	case ast.OpRange:
 		s.requireFeature("range", de.PositionRange())
-	case promParser.STEP:
+	case ast.OpStep:
 		s.requireFeature("step", de.PositionRange())
 	}
-	if lhs, ok := de.LHS.(*promParser.DurationExpr); ok {
+	if lhs, ok := de.LHS.(*ast.DurationExpr); ok {
 		walkDurationExprFeatures(s, lhs)
 	}
-	if rhs, ok := de.RHS.(*promParser.DurationExpr); ok {
+	if rhs, ok := de.RHS.(*ast.DurationExpr); ok {
 		walkDurationExprFeatures(s, rhs)
 	}
 }
 
-func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
+func parseBinOps(expr string, n *ast.BinaryExpr) (src []*Source) {
 	pos := n.PositionRange()
 	src = make([]*Source, 0, 2)
 	switch {
@@ -1225,11 +1300,11 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 			for _, rs := range rhs {
 				var side, other *Source
 				switch {
-				case ls.Returns == promParser.ValueTypeVector, ls.Returns == promParser.ValueTypeMatrix:
+				case ls.Returns == ast.ValueTypeVector, ls.Returns == ast.ValueTypeMatrix:
 					// Use labels from LHS
 					side = ls
 					other = rs
-				case rs.Returns == promParser.ValueTypeVector, rs.Returns == promParser.ValueTypeMatrix:
+				case rs.Returns == ast.ValueTypeVector, rs.Returns == ast.ValueTypeMatrix:
 					// Use labels from RHS
 					side = rs
 					other = ls
@@ -1268,20 +1343,20 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 		// foo{} + on(...)       bar{}
 		// foo{} * ignoring(...) bar{}
 		// foo{} /               bar{}
-	case n.VectorMatching.Card == promParser.CardOneToOne:
+	case n.VectorMatching.Card == ast.CardOneToOne:
 		rhs := walkNode(expr, n.RHS)
 		for _, ls := range walkNode(expr, n.LHS) {
 			if n.VectorMatching.On {
 				ls.UsedLabels = appendToSlice(ls.UsedLabels, n.VectorMatching.MatchingLabels...)
 				ls.checkIncludedLabels(expr, pos, n.VectorMatching.MatchingLabels)
-				funcPos := FindFuncPosition(expr, pos, promParser.ItemTypeStr[promParser.ON], []posrange.PositionRange{
+				funcPos := FindFuncPosition(expr, pos, ast.OpOn.String(), []ast.PositionRange{
 					n.LHS.PositionRange(), n.RHS.PositionRange(),
 				})
 				ls.excludeAllLabels(
 					expr,
 					fmt.Sprintf(
 						"Query is using %s vector matching with `%s(%s)`, only labels included inside `%s(...)` will be present on the results.",
-						n.VectorMatching.Card, promParser.ItemTypeStr[promParser.ON], strings.Join(n.VectorMatching.MatchingLabels, ", "), promParser.ItemTypeStr[promParser.ON],
+						n.VectorMatching.Card, ast.OpOn.String(), strings.Join(n.VectorMatching.MatchingLabels, ", "), ast.OpOn.String(),
 					),
 					funcPos,
 					funcPos,
@@ -1293,11 +1368,11 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 					ls.excludeLabel(
 						fmt.Sprintf(
 							"Query is using %s vector matching with `%s(%s)`, all labels included inside `%s(...)` will be removed on the results.",
-							n.VectorMatching.Card, promParser.ItemTypeStr[promParser.IGNORING], strings.Join(n.VectorMatching.MatchingLabels, ", "), promParser.ItemTypeStr[promParser.IGNORING],
+							n.VectorMatching.Card, ast.OpIgnoring.String(), strings.Join(n.VectorMatching.MatchingLabels, ", "), ast.OpIgnoring.String(),
 						),
 						findArgumentPosition(
 							expr,
-							FindFuncPosition(expr, pos, promParser.ItemTypeStr[promParser.IGNORING], []posrange.PositionRange{
+							FindFuncPosition(expr, pos, ast.OpIgnoring.String(), []ast.PositionRange{
 								n.LHS.PositionRange(), n.RHS.PositionRange(),
 							}),
 							name,
@@ -1334,7 +1409,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 					IsOn:           n.VectorMatching.On,
 				})
 				if fill != nil {
-					name := promParser.ItemTypeStr[promParser.FILL]
+					name := ast.OpFill.String()
 					ls.requireFeature(name, findBinOpsOperatorPosition(expr, n, name))
 				}
 			}
@@ -1346,10 +1421,10 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 
 		// foo{} + on(...)       group_right(...) bar{}
 		// foo{} + ignoring(...) group_right(...) bar{}
-	case n.VectorMatching.Card == promParser.CardOneToMany:
+	case n.VectorMatching.Card == ast.CardOneToMany:
 		lhs := walkNode(expr, n.LHS)
 		for _, rs := range walkNode(expr, n.RHS) {
-			rs.joinLabels(expr, pos, promParser.GROUP_RIGHT, n.VectorMatching.Include, []posrange.PositionRange{
+			rs.joinLabels(expr, pos, ast.OpGroupRight, n.VectorMatching.Include, []ast.PositionRange{
 				n.LHS.PositionRange(), n.RHS.PositionRange(),
 			})
 			// If we have:
@@ -1367,7 +1442,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 						),
 						findArgumentPosition(
 							expr,
-							FindFuncPosition(expr, pos, promParser.ItemTypeStr[promParser.ON], []posrange.PositionRange{
+							FindFuncPosition(expr, pos, ast.OpOn.String(), []ast.PositionRange{
 								n.LHS.PositionRange(), n.RHS.PositionRange(),
 							}),
 							name,
@@ -1382,7 +1457,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 				deadLabels := findDeadIncludedLabels(
 					ls,
 					expr,
-					FindFuncPosition(expr, pos, promParser.ItemTypeStr[promParser.GROUP_RIGHT], []posrange.PositionRange{
+					FindFuncPosition(expr, pos, ast.OpGroupRight.String(), []ast.PositionRange{
 						n.LHS.PositionRange(),
 						n.RHS.PositionRange(),
 					}),
@@ -1409,7 +1484,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 					IsOn:           n.VectorMatching.On,
 				})
 				if fill != nil {
-					name := promParser.ItemTypeStr[promParser.FILL]
+					name := ast.OpFill.String()
 					rs.requireFeature(name, findBinOpsOperatorPosition(expr, n, name))
 				}
 			}
@@ -1420,10 +1495,10 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 
 		// foo{} + on(...)       group_left(...) bar{}
 		// foo{} + ignoring(...) group_left(...) bar{}
-	case n.VectorMatching.Card == promParser.CardManyToOne:
+	case n.VectorMatching.Card == ast.CardManyToOne:
 		rhs := walkNode(expr, n.RHS)
 		for _, ls := range walkNode(expr, n.LHS) {
-			ls.joinLabels(expr, pos, promParser.GROUP_LEFT, n.VectorMatching.Include, []posrange.PositionRange{
+			ls.joinLabels(expr, pos, ast.OpGroupLeft, n.VectorMatching.Include, []ast.PositionRange{
 				n.LHS.PositionRange(), n.RHS.PositionRange(),
 			})
 			if n.VectorMatching.On {
@@ -1438,7 +1513,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 						),
 						findArgumentPosition(
 							expr,
-							FindFuncPosition(expr, pos, promParser.ItemTypeStr[promParser.ON], []posrange.PositionRange{
+							FindFuncPosition(expr, pos, ast.OpOn.String(), []ast.PositionRange{
 								n.LHS.PositionRange(), n.RHS.PositionRange(),
 							}),
 							name,
@@ -1453,7 +1528,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 				deadLabels := findDeadIncludedLabels(
 					rs,
 					expr,
-					FindFuncPosition(expr, pos, promParser.ItemTypeStr[promParser.GROUP_LEFT], []posrange.PositionRange{
+					FindFuncPosition(expr, pos, ast.OpGroupLeft.String(), []ast.PositionRange{
 						n.LHS.PositionRange(),
 						n.RHS.PositionRange(),
 					}),
@@ -1480,7 +1555,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 					IsOn:           n.VectorMatching.On,
 				})
 				if fill != nil {
-					name := promParser.ItemTypeStr[promParser.FILL]
+					name := ast.OpFill.String()
 					ls.requireFeature(name, findBinOpsOperatorPosition(expr, n, name))
 				}
 			}
@@ -1508,7 +1583,8 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 		// 'foo or ignoring(a) bar' means we ignore the 'a' label when comparing foo{} and bar{} results,
 		// so (for example) bar{} results with 'a' labels present where foo{} doesn't have any 'a' label
 		// will still be excluded if all other labels match.
-	case n.VectorMatching.Card == promParser.CardManyToMany:
+	case n.VectorMatching.Card == ast.CardManyToMany:
+		setOp := setOperator(n.Op)
 		var lhsCanBeEmpty bool // true if any of the LHS query can produce empty results.
 		rhs := walkNode(expr, n.RHS)
 		for _, ls := range walkNode(expr, n.LHS) {
@@ -1527,7 +1603,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 						),
 						findArgumentPosition(
 							expr,
-							FindFuncPosition(expr, pos, promParser.ItemTypeStr[promParser.ON], []posrange.PositionRange{
+							FindFuncPosition(expr, pos, ast.OpOn.String(), []ast.PositionRange{
 								n.LHS.PositionRange(), n.RHS.PositionRange(),
 							}),
 							name,
@@ -1554,10 +1630,10 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 					}
 				}
 				switch {
-				case n.Op == promParser.LUNLESS:
+				case setOp == ast.OpUnless:
 					if n.VectorMatching.On && len(n.VectorMatching.MatchingLabels) == 0 && rs.ReturnInfo.AlwaysReturns && !rs.Condition.Present {
 						ls.DeadInfo = &DeadInfo{
-							Reason:   "This query will never return anything because the `unless` query always returns something.",
+							Reason:   "This query will never return anything because the `" + n.Op.String() + "` query always returns something.",
 							Fragment: rs.Position,
 						}
 					}
@@ -1567,7 +1643,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 						MatchingLabels: n.VectorMatching.MatchingLabels,
 						IsOn:           n.VectorMatching.On,
 					})
-				case n.Op != promParser.LOR:
+				case setOp != ast.OpOr:
 					ls.Joins = append(ls.Joins, Join{
 						Src:            rs,
 						Fill:           nil,
@@ -1582,7 +1658,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 				}
 				ls.DeadLabels = append(ls.DeadLabels, rs.checkJoinedLabels(expr, n, ls)...)
 			}
-			if n.Op == promParser.LAND && rhsConditional {
+			if setOp == ast.OpAnd && rhsConditional {
 				ls.Condition = Condition{
 					Present:    true,
 					Op:         n.Op,
@@ -1592,7 +1668,7 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 			}
 			src = append(src, ls)
 		}
-		if n.Op == promParser.LOR {
+		if setOp == ast.OpOr {
 			for _, rs := range rhs {
 				// If LHS can NOT be empty then RHS is dead code.
 				if !lhsCanBeEmpty {
@@ -1608,7 +1684,21 @@ func parseBinOps(expr string, n *promParser.BinaryExpr) (src []*Source) {
 	return src
 }
 
-func checkConditions(s *Source, op promParser.ItemType, isBool bool) (condition Condition, isReturnBool bool) {
+// setOperator maps MetricsQL set-like operators to the PromQL operator with the same effect on labels.
+func setOperator(op ast.Op) ast.Op {
+	switch op { // nolint: exhaustive
+	case ast.OpIf:
+		return ast.OpAnd
+	case ast.OpIfNot:
+		return ast.OpUnless
+	case ast.OpDefault:
+		return ast.OpOr
+	default:
+		return op
+	}
+}
+
+func checkConditions(s *Source, op ast.Op, isBool bool) (condition Condition, isReturnBool bool) {
 	if !s.Condition.Present && isBool {
 		isReturnBool = isBool
 	}
@@ -1643,9 +1733,9 @@ func checkConditions(s *Source, op promParser.ItemType, isBool bool) (condition 
 	return condition, isReturnBool
 }
 
-func canJoin(ls, rs *Source, vm *promParser.VectorMatching) (bool, string, posrange.PositionRange) {
+func canJoin(ls, rs *Source, vm *ast.VectorMatching) (bool, string, ast.PositionRange) {
 	var side string
-	if vm.Card == promParser.CardOneToMany {
+	if vm.Card == ast.CardOneToMany {
 		side = "left"
 	} else {
 		side = "right"
@@ -1653,7 +1743,7 @@ func canJoin(ls, rs *Source, vm *promParser.VectorMatching) (bool, string, posra
 
 	switch {
 	case vm.On && len(vm.MatchingLabels) == 0: // ls on() unless rs
-		return true, "", posrange.PositionRange{}
+		return true, "", ast.PositionRange{}
 	case vm.On: // ls on(...) unless rs
 		for _, name := range vm.MatchingLabels {
 			if ls.CanHaveLabel(name) && !rs.CanHaveLabel(name) {
@@ -1681,10 +1771,10 @@ func canJoin(ls, rs *Source, vm *promParser.VectorMatching) (bool, string, posra
 			}
 		}
 	}
-	return true, "", posrange.PositionRange{}
+	return true, "", ast.PositionRange{}
 }
 
-func describeDeadCode(expr string, ls, rs *Source, op *promParser.BinaryExpr, match string) *DeadInfo {
+func describeDeadCode(expr string, ls, rs *Source, op *ast.BinaryExpr, match string) *DeadInfo {
 	var lse, rse string
 	if ls.ReturnInfo.LogicalExpr != "" {
 		lse = ls.ReturnInfo.LogicalExpr
@@ -1718,49 +1808,49 @@ func describeDeadCode(expr string, ls, rs *Source, op *promParser.BinaryExpr, ma
 	}
 }
 
-func calculateStaticReturn(expr string, ls, rs *Source, op *promParser.BinaryExpr) (ret ReturnInfo, deadinfo *DeadInfo) {
+func calculateStaticReturn(expr string, ls, rs *Source, op *ast.BinaryExpr) (ret ReturnInfo, deadinfo *DeadInfo) {
 	ret = ls.ReturnInfo
-	switch op.Op {
-	case promParser.EQLC:
+	switch op.Op { // nolint: exhaustive
+	case ast.OpEql:
 		if ls.ReturnInfo.ReturnedNumber != rs.ReturnInfo.ReturnedNumber {
 			deadinfo = describeDeadCode(expr, ls, rs, op, "==")
 		}
-	case promParser.NEQ:
+	case ast.OpNeq:
 		if ls.ReturnInfo.ReturnedNumber == rs.ReturnInfo.ReturnedNumber {
 			deadinfo = describeDeadCode(expr, ls, rs, op, "!=")
 		}
-	case promParser.LTE:
+	case ast.OpLte:
 		if ls.ReturnInfo.ReturnedNumber > rs.ReturnInfo.ReturnedNumber {
 			deadinfo = describeDeadCode(expr, ls, rs, op, "<=")
 		}
-	case promParser.LSS:
+	case ast.OpLss:
 		if ls.ReturnInfo.ReturnedNumber >= rs.ReturnInfo.ReturnedNumber {
 			deadinfo = describeDeadCode(expr, ls, rs, op, "<")
 		}
-	case promParser.GTE:
+	case ast.OpGte:
 		if ls.ReturnInfo.ReturnedNumber < rs.ReturnInfo.ReturnedNumber {
 			deadinfo = describeDeadCode(expr, ls, rs, op, ">=")
 		}
-	case promParser.GTR:
+	case ast.OpGtr:
 		if ls.ReturnInfo.ReturnedNumber <= rs.ReturnInfo.ReturnedNumber {
 			deadinfo = describeDeadCode(expr, ls, rs, op, ">")
 		}
-	case promParser.ADD:
+	case ast.OpAdd:
 		ret.ReturnedNumber = ls.ReturnInfo.ReturnedNumber + rs.ReturnInfo.ReturnedNumber
 		ret.LogicalExpr = formatDesc(expr, ls, rs, "+")
-	case promParser.SUB:
+	case ast.OpSub:
 		ret.ReturnedNumber = ls.ReturnInfo.ReturnedNumber - rs.ReturnInfo.ReturnedNumber
 		ret.LogicalExpr = formatDesc(expr, ls, rs, "-")
-	case promParser.MUL:
+	case ast.OpMul:
 		ret.ReturnedNumber = ls.ReturnInfo.ReturnedNumber * rs.ReturnInfo.ReturnedNumber
 		ret.LogicalExpr = formatDesc(expr, ls, rs, "*")
-	case promParser.DIV:
+	case ast.OpDiv:
 		ret.ReturnedNumber = ls.ReturnInfo.ReturnedNumber / rs.ReturnInfo.ReturnedNumber
 		ret.LogicalExpr = formatDesc(expr, ls, rs, "/")
-	case promParser.MOD:
+	case ast.OpMod:
 		ret.ReturnedNumber = math.Mod(ls.ReturnInfo.ReturnedNumber, rs.ReturnInfo.ReturnedNumber)
 		ret.LogicalExpr = formatDesc(expr, ls, rs, "%")
-	case promParser.POW:
+	case ast.OpPow:
 		ret.ReturnedNumber = math.Pow(ls.ReturnInfo.ReturnedNumber, rs.ReturnInfo.ReturnedNumber)
 		ret.LogicalExpr = formatDesc(expr, ls, rs, "^")
 	}

@@ -6,11 +6,11 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	promParser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 )
@@ -130,6 +130,10 @@ func exprCanOverlap(a, b parser.PromQLExpr) bool {
 	if len(aSelectors) != 1 || len(bSelectors) != 1 {
 		return false
 	}
+	// Or with a single group of matchers, MetricsQL `or` filters are not supported.
+	if len(aSelectors[0].OrMatchers) > 0 || len(bSelectors[0].OrMatchers) > 0 {
+		return false
+	}
 
 	aName := metricName(aSelectors[0])
 	bName := metricName(bSelectors[0])
@@ -140,16 +144,16 @@ func exprCanOverlap(a, b parser.PromQLExpr) bool {
 	return !selectorsMismatch(aSelectors[0], bSelectors[0])
 }
 
-func vectorSelectors(expr parser.PromQLExpr) (selectors []*promParser.VectorSelector) {
+func vectorSelectors(expr parser.PromQLExpr) (selectors []*ast.VectorSelector) {
 	for _, s := range expr.Source() {
-		if vs, ok := source.MostOuterOperation[*promParser.VectorSelector](s); ok {
+		if vs, ok := source.MostOuterOperation[*ast.VectorSelector](s); ok {
 			selectors = append(selectors, vs)
 		}
 	}
 	return selectors
 }
 
-func metricName(vs *promParser.VectorSelector) string {
+func metricName(vs *ast.VectorSelector) string {
 	if vs.Name != "" {
 		return vs.Name
 	}
@@ -161,7 +165,7 @@ func metricName(vs *promParser.VectorSelector) string {
 	return ""
 }
 
-func selectorsMismatch(a, b *promParser.VectorSelector) bool {
+func selectorsMismatch(a, b *ast.VectorSelector) bool {
 	for _, am := range a.LabelMatchers {
 		if am.Name == model.MetricNameLabel {
 			continue

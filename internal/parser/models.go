@@ -15,6 +15,7 @@ import (
 
 	"github.com/cloudflare/pint/internal/comments"
 	"github.com/cloudflare/pint/internal/diags"
+	"github.com/cloudflare/pint/internal/parser/ast"
 )
 
 func resolveNode(node *yaml.Node) *yaml.Node {
@@ -249,9 +250,10 @@ func (pqle *PromQLExpr) IsIdentical(b PromQLExpr) bool {
 	return pqle.Value.Value == b.Value.Value
 }
 
-func newPromQLExpr(node *yaml.Node, offsetLine, offsetColumn int, contentLines []string, minColumn int) *PromQLExpr {
+func newPromQLExpr(lang ast.Language, node *yaml.Node, offsetLine, offsetColumn int, contentLines []string, minColumn int) *PromQLExpr {
 	return &PromQLExpr{
 		Value:       newYamlNode(node, offsetLine, offsetColumn, contentLines, minColumn),
+		lang:        lang,
 		syntaxError: nil,
 		query:       nil,
 		mu:          &sync.Mutex{},

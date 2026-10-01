@@ -6,9 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	promParser "github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/cloudflare/pint/internal/output"
+	"github.com/cloudflare/pint/internal/parser/ast"
 )
 
 func countDigits(n int) (c int) {
@@ -83,7 +82,7 @@ const (
 )
 
 type Diagnostic struct {
-	Expr        promParser.Node `yaml:"-"`
+	Expr        ast.Node `yaml:"-"`
 	Message     string
 	Pos         PositionRanges `yaml:"-"`
 	FirstColumn int            // 1-indexed
