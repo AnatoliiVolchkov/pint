@@ -1,0 +1,1326 @@
+
+[TestMetricsQLSyntaxCheck/rollup_without_lookbehind_window - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/WITH_template - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/or_label_filters - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/keep_metric_names_and_default - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/step_relative_window_and_histogram_quantiles - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/syntax_error - 1]
+- description: syntax error
+  content: |
+    - record: foo
+      expr: sum(foo) by (
+  output: |
+    2 |   expr: sum(foo) by (
+                            ^ ModifierExpr: identList: unexpected token ""; want "ident"; unparsed data: ""
+  problem:
+    reporter: promql/syntax
+    summary: MetricsQL syntax error
+    details: '[Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.'
+    diagnostics:
+        - message: 'ModifierExpr: identList: unexpected token ""; want "ident"; unparsed data: ""'
+          firstcolumn: 14
+          lastcolumn: 13
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 3
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/unknown_function - 1]
+- description: unknown function
+  content: |
+    - record: foo
+      expr: not_a_function(foo)
+  output: |
+    2 |   expr: not_a_function(foo)
+                ^^^^^^^^^^^^^^^^^^^ unsupported function "not_a_function"
+  problem:
+    reporter: promql/syntax
+    summary: MetricsQL syntax error
+    details: '[Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.'
+    diagnostics:
+        - message: unsupported function "not_a_function"
+          firstcolumn: 1
+          lastcolumn: 19
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 3
+    anchor: 0
+
+---
+
+[TestMetricsQLAlertsForCheck/valid_for - 1]
+[]
+
+---
+
+[TestMetricsQLAlertsForCheck/negative_for - 1]
+- description: negative for
+  content: |
+    - alert: foo
+      expr: rate(foo) > 0
+      for: -5m
+  output: |
+    3 |   for: -5m
+               ^^^ not a valid duration string: "-5m"
+  problem:
+    reporter: alerts/for
+    summary: invalid duration
+    details: Supported time durations are documented [here](https://prometheus.io/docs/prometheus/latest/querying/basics/#time-durations).
+    diagnostics:
+        - message: 'not a valid duration string: "-5m"'
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLComparisonCheck/comparison_inside_WITH - 1]
+[]
+
+---
+
+[TestMetricsQLComparisonCheck/comparison_with_if - 1]
+[]
+
+---
+
+[TestMetricsQLComparisonCheck/no_comparison - 1]
+- description: no comparison
+  content: |
+    - alert: foo
+      expr: rate(foo)
+  output: |
+    2 |   expr: rate(foo)
+                     ^^^
+                     This query doesn't have any condition and so this alert will always fire if it matches
+                     anything.
+  problem:
+    reporter: alerts/comparison
+    summary: always firing alert
+    details: |-
+        Prometheus alerting rules will trigger an alert for each query that returns *any* result.
+        Unless you do want an alert to always fire you should write your query in a way that returns results only when some condition is met.
+        In most cases this can be achieved by having some condition in the query expression.
+        For example `up == 0` or `rate(error_total[2m]) > 0`.
+        Be careful as some PromQL operations will cause the query to always return the results, for example using the [bool modifier](https://prometheus.io/docs/prometheus/latest/querying/operators/#comparison-binary-operators).
+    diagnostics:
+        - message: This query doesn't have any condition and so this alert will always fire if it matches anything.
+          firstcolumn: 6
+          lastcolumn: 8
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/label_removed_by_aggregation - 1]
+- description: label removed by aggregation
+  content: |4
+
+    - alert: foo
+      expr: sum(rate(foo)) by (job) > 0
+      annotations:
+        summary: '{{ $labels.instance }}'
+  output: |
+    3 |   expr: sum(rate(foo)) by (job) > 0
+                               ^^
+                               Query is using aggregation with `by(job)`, only labels included inside
+                               `by(...)` will be present on the results.
+      |   [...]
+    5 |     summary: '{{ $labels.instance }}'
+                                ^^^^^^^^^
+                                The template is using `instance` label but the query results won't have this
+                                label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `instance` label but the query results won't have this label.
+          firstcolumn: 11
+          lastcolumn: 19
+          kind: 0
+        - message: Query is using aggregation with `by(job)`, only labels included inside `by(...)` will be present on the results.
+          firstcolumn: 16
+          lastcolumn: 17
+          kind: 1
+    lines:
+        first: 2
+        last: 5
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/label_added_by_label_set - 1]
+[]
+
+---
+
+[TestMetricsQLTemplateCheck/label_removed_by_label_del - 1]
+- description: label removed by label_del
+  content: |4
+
+    - alert: foo
+      expr: label_del(foo, "instance") > 0
+      annotations:
+        summary: '{{ $labels.instance }}'
+  output: |
+    3 |   expr: label_del(foo, "instance") > 0
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^ This label is removed by a label_del() call.
+      |   [...]
+    5 |     summary: '{{ $labels.instance }}'
+                                ^^^^^^^^^
+                                The template is using `instance` label but the query results won't have this
+                                label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `instance` label but the query results won't have this label.
+          firstcolumn: 11
+          lastcolumn: 19
+          kind: 0
+        - message: This label is removed by a label_del() call.
+          firstcolumn: 1
+          lastcolumn: 26
+          kind: 1
+    lines:
+        first: 2
+        last: 5
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/MetricsQL_template_query - 1]
+[]
+
+---
+
+[TestMetricsQLTemplateCheck/invalid_template_query - 1]
+- description: invalid template query
+  content: |4
+
+    - alert: foo
+      expr: up == 0
+      annotations:
+        summary: '{{ with query "sum(foo" }}{{ . | first | value }}{{ end }}'
+  output: |
+    5 |     summary: '{{ with query "sum(foo" }}{{ . | first | value }}{{ end }}'
+                              ^^^^^^^^^^^^^^^
+                              Template failed to parse with this error: `120: executing "summary" at <query
+                              "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")";
+                              unparsed data: ""`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `120: executing "summary" at <query "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")"; unparsed data: ""`.'
+          firstcolumn: 9
+          lastcolumn: 23
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 3
+    anchor: 0
+
+---
+
+[TestMetricsQLFragileCheck/topk_max_in_alert - 1]
+- description: topk_max in alert
+  content: |
+    - alert: foo
+      expr: topk_max(10, rate(foo)) > 0
+  output: |
+    2 |   expr: topk_max(10, rate(foo)) > 0
+                                  ^^^
+                                  Using `topk_max` to select time series might return different set of time
+                                  series on every query, which would cause flapping alerts.
+  problem:
+    reporter: promql/fragile
+    summary: fragile query
+    details: |-
+        Alerts are identified by labels, two alerts with identical sets of labels are identical.
+        If two alerts have the same name but the rest of labels isn't 100% identical then they are two different alerts.
+        If the same alert query returns results that over time have different labels on them then previous alert instances will resolve and new alerts will be fired.
+        This can happen when using one of the aggregation operation like topk or bottomk as they can return a different time series each time they are evaluated.
+    diagnostics:
+        - message: Using `topk_max` to select time series might return different set of time series on every query, which would cause flapping alerts.
+          firstcolumn: 19
+          lastcolumn: 21
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLFragileCheck/outliersk_in_alert - 1]
+- description: outliersk in alert
+  content: |
+    - alert: foo
+      expr: outliersk(3, rate(foo)) > 0
+  output: |
+    2 |   expr: outliersk(3, rate(foo)) > 0
+                                  ^^^
+                                  Using `outliersk` to select time series might return different set of time
+                                  series on every query, which would cause flapping alerts.
+  problem:
+    reporter: promql/fragile
+    summary: fragile query
+    details: |-
+        Alerts are identified by labels, two alerts with identical sets of labels are identical.
+        If two alerts have the same name but the rest of labels isn't 100% identical then they are two different alerts.
+        If the same alert query returns results that over time have different labels on them then previous alert instances will resolve and new alerts will be fired.
+        This can happen when using one of the aggregation operation like topk or bottomk as they can return a different time series each time they are evaluated.
+    diagnostics:
+        - message: Using `outliersk` to select time series might return different set of time series on every query, which would cause flapping alerts.
+          firstcolumn: 19
+          lastcolumn: 21
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLFragileCheck/topk_in_recording_rule - 1]
+[]
+
+---
+
+[TestMetricsQLRegexpCheck/static_regexp_in_or_filter - 1]
+- description: static regexp in or filter
+  content: |
+    - record: foo
+      expr: 'foo{job=~"bar" or instance=~"a.+"}'
+  output: |
+    2 |   expr: 'foo{job=~"bar" or instance=~"a.+"}'
+                     ^^^^^^^^^^
+                     Unnecessary regexp match on static string `job=~"bar"`, use `job="bar"` instead.
+  problem:
+    reporter: promql/regexp
+    summary: redundant regexp
+    details: See [Prometheus documentation](https://prometheus.io/docs/prometheus/latest/querying/basics/#time-series-selectors) for details on how vector selectors work.
+    diagnostics:
+        - message: Unnecessary regexp match on static string `job=~"bar"`, use `job="bar"` instead.
+          firstcolumn: 5
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLRegexpCheck/valid_regexps_in_or_filter - 1]
+[]
+
+---
+
+[TestMetricsQLImpossibleCheck/vector(0)_>_0_inside_WITH - 1]
+- description: vector(0) > 0 inside WITH
+  content: |
+    - alert: foo
+      expr: 'WITH (z = vector(0)) z > 0'
+  output: |
+    2 |   expr: 'WITH (z = vector(0)) z > 0'
+                                      ^
+                                      `z > 0` always evaluates to `0 > 0` which is not possible, so it will
+                                      never return anything.
+  problem:
+    reporter: promql/impossible
+    summary: dead code in query
+    details: ""
+    diagnostics:
+        - message: '`z > 0` always evaluates to `0 > 0` which is not possible, so it will never return anything.'
+          firstcolumn: 22
+          lastcolumn: 22
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLImpossibleCheck/possible_query - 1]
+[]
+
+---
+
+[TestMetricsQLNaNCheck/division - 1]
+- description: division
+  content: |
+    - record: foo
+      expr: sum(foo / bar)
+  output: |
+    2 |   expr: sum(foo / bar)
+                          ^^^ This aggregation can return Inf if any series for `bar` evaluates to zero.
+  problem:
+    reporter: promql/nan
+    summary: unsafe division in aggregation
+    details: |-
+        Division by zero produces `+Inf` in MetricsQL, `NaN` results are treated as missing values.
+
+        Even if only one out of many input series is `Inf`, the entire aggregation result
+        becomes `Inf`, making all other valid series irrelevant.
+        To avoid this, filter out zero-valued divisor series before division, for example:
+        `sum(foo / (bar > 0))`
+        See [promql/nan](https://cloudflare.github.io/pint/checks/promql/nan.html) for more details.
+    diagnostics:
+        - message: This aggregation can return Inf if any series for `bar` evaluates to zero.
+          firstcolumn: 11
+          lastcolumn: 13
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLNaNCheck/modulo - 1]
+[]
+
+---
+
+[TestMetricsQLGroupIntervalCheck/interval_above_5m - 1]
+- description: interval above 5m
+  content: |4
+
+    - name: test
+      interval: 10m
+      rules:
+      - alert: foo
+        expr: rate(foo) > 0
+  output: |
+    3 |   interval: 10m
+                    ^^^
+                    Using group interval > 5m will cause gaps in recording rule results and flapping alerts.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: ""
+    diagnostics:
+        - message: Using group interval > 5m will cause gaps in recording rule results and flapping alerts.
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLAggregationCheck/job_removed_inside_WITH - 1]
+- description: job removed inside WITH
+  content: |
+    - record: foo
+      expr: 'WITH (x = sum(rate(foo)) without(job)) x'
+  output: |
+    2 |   expr: 'WITH (x = sum(rate(foo)) without(job)) x'
+                                                        ^
+                                                        `job` label is required and should be preserved when
+                                                        aggregating all rules.
+                                                        Query is using aggregation with `without(job)`, all
+                                                        labels included inside `without(...)` will be
+                                                        removed from the results.
+  problem:
+    reporter: promql/aggregate
+    summary: required label is being removed via aggregation
+    details: ""
+    diagnostics:
+        - message: '`job` label is required and should be preserved when aggregating all rules.'
+          firstcolumn: 40
+          lastcolumn: 40
+          kind: 0
+        - message: Query is using aggregation with `without(job)`, all labels included inside `without(...)` will be removed from the results.
+          firstcolumn: 40
+          lastcolumn: 40
+          kind: 1
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLAggregationCheck/job_kept_by_limit - 1]
+[]
+
+---
+
+[TestMetricsQLSelectorCheck/or_filter_without_required_label - 1]
+- description: or filter without required label
+  content: |
+    - record: foo
+      expr: 'foo{job="a" or instance="b"}'
+  output: |
+    2 |   expr: 'foo{job="a" or instance="b"}'
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 This vector selector must specify `job` label. Please add a `{job="..."} matcher.
+  problem:
+    reporter: promql/selector
+    summary: required matcher missing
+    details: 'Rule comment: comment'
+    diagnostics:
+        - message: This vector selector must specify `job` label. Please add a `{job="..."} matcher.
+          firstcolumn: 1
+          lastcolumn: 28
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSelectorCheck/or_filter_with_required_label - 1]
+[]
+
+---
+
+[TestMetricsQLRuleChecks/annotation - 1]
+- description: annotation
+  content: |
+    - alert: foo
+      expr: 'WITH (x = rate(foo)) x > 0'
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        link: http://127.0.0.1:1
+  output: |
+    7 |     link: http://127.0.0.1:1
+            ^^^ `summary` annotation is required.
+  problem:
+    reporter: alerts/annotation
+    summary: required annotation not set
+    details: ""
+    diagnostics:
+        - message: '`summary` annotation is required.'
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 1
+        last: 7
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLRuleChecks/label - 1]
+- description: label
+  content: |
+    - alert: foo
+      expr: 'WITH (x = rate(foo)) x > 0'
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        link: http://127.0.0.1:1
+  output: |
+    5 |     severity: warning
+                      ^^^^^^^ `severity` label value must match `^critical$`.
+  problem:
+    reporter: rule/label
+    summary: invalid label value
+    details: ""
+    diagnostics:
+        - message: '`severity` label value must match `^critical$`.'
+          firstcolumn: 1
+          lastcolumn: 7
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLRuleChecks/reject - 1]
+- description: reject
+  content: |
+    - alert: foo
+      expr: 'WITH (x = rate(foo)) x > 0'
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        link: http://127.0.0.1:1
+  output: |
+    5 |     severity: warning
+            ^^^^^^^^ key is not allowed to match `^severity$`.
+  problem:
+    reporter: rule/reject
+    summary: key not allowed
+    details: ""
+    diagnostics:
+        - message: key is not allowed to match `^severity$`.
+          firstcolumn: 1
+          lastcolumn: 8
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLRuleChecks/report - 1]
+- description: report
+  content: |
+    - alert: foo
+      expr: 'WITH (x = rate(foo)) x > 0'
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        link: http://127.0.0.1:1
+  output: |
+    1 | - alert: foo
+                 ^^^ problem reported
+  problem:
+    reporter: rule/report
+    summary: problem reported by config rule
+    details: ""
+    diagnostics:
+        - message: problem reported
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 1
+        last: 7
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLRuleChecks/for - 1]
+- description: for
+  content: |
+    - alert: foo
+      expr: 'WITH (x = rate(foo)) x > 0'
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        link: http://127.0.0.1:1
+  output: |
+    3 |   for: 1m
+               ^^ This alert rule must have a `for` field with a minimum duration of 5m.
+  problem:
+    reporter: rule/for
+    summary: duration required
+    details: ""
+    diagnostics:
+        - message: This alert rule must have a `for` field with a minimum duration of 5m.
+          firstcolumn: 1
+          lastcolumn: 2
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLRuleChecks/name - 1]
+- description: name
+  content: |
+    - alert: foo
+      expr: 'WITH (x = rate(foo)) x > 0'
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        link: http://127.0.0.1:1
+  output: |
+    1 | - alert: foo
+                 ^^^ alerting rule name must match `^total:.+$`.
+  problem:
+    reporter: rule/name
+    summary: name not allowed
+    details: ""
+    diagnostics:
+        - message: alerting rule name must match `^total:.+$`.
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 1
+        last: 1
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLRuleChecks/link - 1]
+- description: link
+  content: |
+    - alert: foo
+      expr: 'WITH (x = rate(foo)) x > 0'
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        link: http://127.0.0.1:1
+  output: |
+    7 |     link: http://127.0.0.1:1
+                  ^^^^^^^^^^^^^^^^^^
+                  GET request for http://127.0.0.1:1 returned an error: Get "http://127.0.0.1:1": dial tcp
+                  127.0.0.1:1: connect: connection refused.
+  problem:
+    reporter: rule/link
+    summary: link check failed
+    details: ""
+    diagnostics:
+        - message: 'GET request for http://127.0.0.1:1 returned an error: Get "http://127.0.0.1:1": dial tcp 127.0.0.1:1: connect: connection refused.'
+          firstcolumn: 1
+          lastcolumn: 18
+          kind: 0
+    lines:
+        first: 7
+        last: 7
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLRuleDependencyCheck/removed_rule_used_in_or_filter - 1]
+- description: removed rule used in or filter
+  content: |
+    - record: foo
+      expr: sum(rate(bar))
+  output: |
+    1 | - record: foo
+                  ^^^ The metric generated by this rule is used by 1 other rule(s).
+  problem:
+    reporter: rule/dependency
+    summary: rule results used by another rule
+    details: |
+        If you remove the recording rule generating `foo`, and there is no other source of this metric, then any other rule depending on it will break.
+        List of found rules that are using `foo`:
+
+        - `alert` at `alerts.yaml:2`
+    diagnostics:
+        - message: The metric generated by this rule is used by 1 other rule(s).
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 1
+        last: 1
+    severity: 1
+    anchor: 1
+
+---
+
+[TestMetricsQLRuleDuplicateCheck/duplicated_rule - 1]
+- description: duplicated rule
+  content: |
+    - record: foo
+      expr: rollup_rate(foo[5m])
+  output: |
+    1 | - record: foo
+                  ^^^ Duplicated rule, identical rule found at fake.yml:2.
+  problem:
+    reporter: rule/duplicate
+    summary: duplicated recording rule
+    details: ""
+    diagnostics:
+        - message: Duplicated rule, identical rule found at fake.yml:2.
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 1
+        last: 2
+    severity: 2
+    anchor: 0
+- description: duplicated rule
+  content: |
+    - record: foo
+      expr: rollup_rate(foo[5m])
+  output: |
+    1 | - record: foo
+                  ^^^ Duplicated rule, identical rule found at fake.yml:4.
+  problem:
+    reporter: rule/duplicate
+    summary: duplicated recording rule
+    details: ""
+    diagnostics:
+        - message: Duplicated rule, identical rule found at fake.yml:4.
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 1
+        last: 2
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLRuleDuplicateCheck/or_filters_never_overlap - 1]
+[]
+
+---
+
+[TestMetricsQLAlertsAbsentCheck/absent()_without_for - 1]
+- description: absent() without for
+  content: |
+    - alert: foo
+      expr: 'absent(foo{job="a" or job="b"})'
+  output: |
+    2 |   expr: 'absent(foo{job="a" or job="b"})'
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 Using `absent()` might cause false positive alerts when Prometheus restarts.
+  problem:
+    reporter: alerts/absent
+    summary: absent() based alert without for
+    details: |-
+        When Prometheus restarts this alert rule might be evaluated before your service is scraped, which can cause false positives from absent() call.
+        Adding a `for` option that is at least 2x scrape interval will prevent this from happening.
+    diagnostics:
+        - message: Using `absent()` might cause false positive alerts when Prometheus restarts.
+          firstcolumn: 1
+          lastcolumn: 31
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLAlertsAbsentCheck/absent()_with_for_and_custom_scrape_interval - 1]
+[]
+
+---
+
+[TestMetricsQLAlertsCountCheck/alerts_count - 1]
+- description: alerts count
+  content: |
+    - alert: foo
+      expr: 'rate(foo) > 0'
+  output: |
+    2 |   expr: 'rate(foo) > 0'
+                 ^^^^^^^^^^^^^
+                 `prom` Prometheus server at https://simple.example.com would trigger 289 alert(s) in the
+                 last 1d.
+  problem:
+    reporter: alerts/count
+    summary: alert count estimate
+    details: To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=rate%28foo%29+%3E+0&g0.tab=0&g0.range_input=1d).
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com would trigger 289 alert(s) in the last 1d.'
+          firstcolumn: 1
+          lastcolumn: 13
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 0
+    anchor: 0
+
+---
+
+[TestMetricsQLAlertsExternalLabelsCheck/configured_external_label - 1]
+[]
+
+---
+
+[TestMetricsQLAlertsExternalLabelsCheck/missing_external_label - 1]
+- description: missing external label
+  content: |
+    - alert: foo
+      expr: rate(foo) > 0
+      annotations:
+        summary: '{{ $externalLabels.region }}'
+  output: |
+    4 |     summary: '{{ $externalLabels.region }}'
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                      The template is using `region` external label but `prom` Prometheus server at
+                      https://simple.example.com doesn't have this label configured in
+                      global:external_labels.
+  problem:
+    reporter: alerts/external_labels
+    summary: invalid label
+    details: '[Click here](https://simple.example.com/config) to see `prom` Prometheus runtime configuration.'
+    diagnostics:
+        - message: The template is using `region` external label but `prom` Prometheus server at https://simple.example.com doesn't have this label configured in global:external_labels.
+          firstcolumn: 1
+          lastcolumn: 28
+          kind: 0
+    lines:
+        first: 4
+        last: 4
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLLabelsConflictCheck/conflict_with_external_labels - 1]
+- description: conflict with external labels
+  content: |
+    - record: foo
+      expr: rate(foo)
+      labels:
+        cluster: dev
+  output: |
+    4 |     cluster: dev
+            ^^^^^^^
+            `prom` Prometheus server at https://simple.example.com external_labels already has
+            cluster="demo" label set, please choose a different name for this label to avoid any conflicts.
+  problem:
+    reporter: labels/conflict
+    summary: conflicting labels
+    details: '[Click here](https://simple.example.com/config) to see `prom` Prometheus runtime configuration.'
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com external_labels already has cluster="demo" label set, please choose a different name for this label to avoid any conflicts.'
+          firstcolumn: 1
+          lastcolumn: 7
+          kind: 0
+    lines:
+        first: 4
+        last: 4
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLCounterCheck/counter_without_rate - 1]
+- description: counter without rate
+  content: |
+    - record: foo
+      expr: 'WITH (x = foo) x > 1'
+  output: |
+    2 |   expr: 'WITH (x = foo) x > 1'
+                                ^
+                                `foo` is a counter according to metrics metadata from `prom` Prometheus
+                                server at https://simple.example.com, it can be dangerous to use its value
+                                directly.
+  problem:
+    reporter: promql/counter
+    summary: direct counter read
+    details: |-
+        [Counters](https://prometheus.io/docs/concepts/metric_types/#counter) track the number of events over time and so the value of a counter can only grow and never decrease.
+        This means that the absolute value of a counter doesn't matter, it will be a random number that depends on the number of events that happened since your application was started.
+        To use the value of a counter in PromQL you most likely want to calculate the rate of events using the [rate()](https://prometheus.io/docs/prometheus/latest/querying/functions/#rate) function, or any other function that is safe to use with counters.
+        Once you calculate the rate you can use that result in other functions or aggregations that are not counter safe, like [sum()](https://prometheus.io/docs/prometheus/latest/querying/operators/#aggregation-operators).
+    diagnostics:
+        - message: '`foo` is a counter according to metrics metadata from `prom` Prometheus server at https://simple.example.com, it can be dangerous to use its value directly.'
+          firstcolumn: 16
+          lastcolumn: 16
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLCounterCheck/counter_with_rollup_rate - 1]
+[]
+
+---
+
+[TestMetricsQLCounterCheck/metadata_placeholder_response - 1]
+[]
+
+---
+
+[TestMetricsQLFeaturesCheck/PromQL_experimental_function_with_VictoriaMetrics - 1]
+[]
+
+---
+
+[TestMetricsQLFeaturesCheck/MetricsQL_function - 1]
+[]
+
+---
+
+[TestMetricsQLOffsetCheck/offset_within_retention - 1]
+[]
+
+---
+
+[TestMetricsQLOffsetCheck/offset_beyond_retention - 1]
+- description: offset beyond retention
+  content: |
+    - record: foo
+      expr: rate(foo) offset 40d
+  output: |
+    2 |   expr: rate(foo) offset 40d
+                          ^^^^^^^^^^
+                          `rate(foo) offset 40d` selector is using a 40d offset, but `prom` Prometheus
+                          server at https://simple.example.com is configured to only keep 31d of metrics
+                          history.
+  problem:
+    reporter: promql/offset
+    summary: query offset beyond configured retention
+    details: ""
+    diagnostics:
+        - message: '`rate(foo) offset 40d` selector is using a 40d offset, but `prom` Prometheus server at https://simple.example.com is configured to only keep 31d of metrics history.'
+          firstcolumn: 11
+          lastcolumn: 20
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLOffsetCheck/offset_beyond_retention_in_days - 1]
+- description: offset beyond retention in days
+  content: |
+    - record: foo
+      expr: 'WITH (x = foo offset 14d) x'
+  output: |
+    2 |   expr: 'WITH (x = foo offset 14d) x'
+                                          ^^
+                                          `foo offset 2w` selector is using a 2w offset, but `prom`
+                                          Prometheus server at https://simple.example.com is configured to
+                                          only keep 1w of metrics history.
+  problem:
+    reporter: promql/offset
+    summary: query offset beyond configured retention
+    details: ""
+    diagnostics:
+        - message: '`foo offset 2w` selector is using a 2w offset, but `prom` Prometheus server at https://simple.example.com is configured to only keep 1w of metrics history.'
+          firstcolumn: 26
+          lastcolumn: 27
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLOffsetCheck/vmselect_uses_default_retention - 1]
+- description: vmselect uses default retention
+  content: |
+    - record: foo
+      expr: foo offset 40d
+  output: |
+    2 |   expr: foo offset 40d
+                    ^^^^^^^^^^
+                    `foo offset 40d` selector is using a 40d offset, but `prom` Prometheus server at
+                    https://simple.example.com is configured to only keep 31d of metrics history.
+  problem:
+    reporter: promql/offset
+    summary: query offset beyond configured retention
+    details: ""
+    diagnostics:
+        - message: '`foo offset 40d` selector is using a 40d offset, but `prom` Prometheus server at https://simple.example.com is configured to only keep 31d of metrics history.'
+          firstcolumn: 5
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLRangeQueryCheck/range_beyond_retention - 1]
+- description: range beyond retention
+  content: |
+    - record: foo
+      expr: rate(foo[30d])
+  output: |
+    2 |   expr: rate(foo[30d])
+                     ^^^^^^^^
+                     `foo[30d]` selector is trying to query Prometheus for 30d worth of metrics, but `prom`
+                     Prometheus server at https://simple.example.com is configured to only keep 1w of
+                     metrics history.
+  problem:
+    reporter: promql/range_query
+    summary: query beyond configured retention
+    details: ""
+    diagnostics:
+        - message: '`foo[30d]` selector is trying to query Prometheus for 30d worth of metrics, but `prom` Prometheus server at https://simple.example.com is configured to only keep 1w of metrics history.'
+          firstcolumn: 6
+          lastcolumn: 13
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLRangeQueryCheck/range_within_retention - 1]
+[]
+
+---
+
+[TestMetricsQLRateCheck/rate_without_lookbehind_window - 1]
+[]
+
+---
+
+[TestMetricsQLRateCheck/rate_with_step_relative_window - 1]
+[]
+
+---
+
+[TestMetricsQLRateCheck/rate_<_2x_default_scrape_interval - 1]
+- description: rate < 2x default scrape interval
+  content: |
+    - record: foo
+      expr: rate(foo[1m])
+  output: |
+    2 |   expr: rate(foo[1m])
+                ^^^^^^^^^^^^^
+                Duration for `rate()` must be at least 2 x scrape_interval, `prom` Prometheus server at
+                https://simple.example.com is using `1m` scrape_interval.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: |-
+        Using [rate](https://prometheus.io/docs/prometheus/latest/querying/functions/#rate) and [irate](https://prometheus.io/docs/prometheus/latest/querying/functions/#irate) function comes with a few requirements:
+
+        - The metric you calculate (i)rate from must be a counter or a native histogram.
+        - The time window of the (i)rate function must have at least 2 samples.
+
+        The type of your metric is defined by the application that exports that metric.
+        The number of samples depends on how often your application is being scraped by Prometheus.
+        Each scrape produces a sample, so if your application is scraped every minute then the minimal time window you can use is two minutes.
+    diagnostics:
+        - message: Duration for `rate()` must be at least 2 x scrape_interval, `prom` Prometheus server at https://simple.example.com is using `1m` scrape_interval.
+          firstcolumn: 1
+          lastcolumn: 13
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLRateCheck/rate_with_configured_scrape_interval - 1]
+[]
+
+---
+
+[TestMetricsQLSeriesCheck/missing_series_in_WITH_template - 1]
+- description: missing series in WITH template
+  content: |
+    - record: foo
+      expr: 'WITH (x = notfound) sum(x)'
+  output: |
+    2 |   expr: 'WITH (x = notfound) sum(x)'
+                                         ^
+                                         `prom` Prometheus server at https://simple.example.com didn't have
+                                         any series for the `notfound` metric in the last 1w.
+  problem:
+    reporter: promql/series
+    summary: query on nonexistent series
+    details: '[Click here](https://cloudflare.github.io/pint/checks/promql/series.html#common-problems) to see a list of common problems that might cause this.'
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com didn''t have any series for the `notfound` metric in the last 1w.'
+          firstcolumn: 25
+          lastcolumn: 25
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLSeriesCheck/or_filter_is_split_into_selectors - 1]
+[]
+
+---
+
+[TestMetricsQLVectorMatchingCheck/one_to_one_matching - 1]
+- description: one to one matching
+  content: |
+    - record: foo
+      expr: foo_with_notfound / bar
+  output: |
+    2 |   expr: foo_with_notfound / bar
+                                    ^^^
+                                    The right hand side of the query on `prom` Prometheus server at
+                                    https://simple.example.com returns labels: `[instance]`.
+                ^^^^^^^^^^^^^^^^^
+                The left hand side of the query on `prom` Prometheus server at https://simple.example.com
+                returns labels: `[instance, notfound]`, which don't match the right hand side labels:
+                `[instance]`. This query will never return any results.
+  problem:
+    reporter: promql/vector_matching
+    summary: impossible binary operation
+    details: |-
+        Trying to match two different time series together will only work if both have the exact same set of labels.
+        You can match time series with different labels by using special keywords and follow the rules set by PromQL.
+        [Click here](https://prometheus.io/docs/prometheus/latest/querying/operators/#vector-matching) to read PromQL documentation that explains it.
+    diagnostics:
+        - message: 'The left hand side of the query on `prom` Prometheus server at https://simple.example.com returns labels: `[instance, notfound]`, which don''t match the right hand side labels: `[instance]`. This query will never return any results.'
+          firstcolumn: 1
+          lastcolumn: 17
+          kind: 0
+        - message: 'The right hand side of the query on `prom` Prometheus server at https://simple.example.com returns labels: `[instance]`.'
+          firstcolumn: 21
+          lastcolumn: 23
+          kind: 1
+    lines:
+        first: 2
+        last: 2
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLVectorMatchingCheck/default_operator - 1]
+[]
+
+---
+
+[TestMetricsQLCostCheck/series_count - 1]
+- description: series count
+  content: |
+    - record: foo
+      expr: sum(rate(foo))
+  output: |
+    2 |   expr: sum(rate(foo))
+                ^^^^^^^^^^^^^^ `prom` Prometheus server at https://simple.example.com returned 7 result(s).
+  problem:
+    reporter: query/cost
+    summary: query cost estimate
+    details: ""
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com returned 7 result(s).'
+          firstcolumn: 1
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 0
+    anchor: 0
+
+---
+
+[TestMetricsQLCostCheck/sample_limits_are_not_supported - 1]
+- description: sample limits are not supported
+  content: |
+    - record: foo
+      expr: sum(rate(foo))
+  output: |
+    2 |   expr: sum(rate(foo))
+                ^^^^^^^^^^^^^^
+                `prom` Prometheus server at https://simple.example.com is a VictoriaMetrics server which
+                doesn't report the number of queried samples, `maxTotalSamples` and `maxPeakSamples` limits
+                can't be enforced.
+  problem:
+    reporter: query/cost
+    summary: unsupported query cost limit
+    details: ""
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com is a VictoriaMetrics server which doesn''t report the number of queried samples, `maxTotalSamples` and `maxPeakSamples` limits can''t be enforced.'
+          firstcolumn: 1
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLCostCheck/evaluation_duration - 1]
+- description: evaluation duration
+  content: |
+    - record: foo
+      expr: sum(rate(foo))
+  output: |
+    2 |   expr: sum(rate(foo))
+                ^^^^^^^^^^^^^^
+                `prom` Prometheus server at https://simple.example.com took 2s500ms when executing this
+                query, which is more than the configured limit of 1s.
+  problem:
+    reporter: query/cost
+    summary: query is too expensive
+    details: ""
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com took 2s500ms when executing this query, which is more than the configured limit of 1s.'
+          firstcolumn: 1
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 2
+    anchor: 0
+
+---

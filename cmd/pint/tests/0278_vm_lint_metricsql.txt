@@ -1,0 +1,90 @@
+http response vm ^/flags$ 200 -retentionPeriod="7d"
+http response vm /api/v1/metadata 200 {"status":"success","data":{}}
+http response vm /api/v1/query_range 200 {"status":"success","data":{"resultType":"matrix","result":[]}}
+http response vm /api/v1/query 200 {"status":"success","isPartial":false,"data":{"resultType":"vector","result":[]},"stats":{"seriesFetched":"0","executionTimeMsec":0}}
+http start vm 127.0.0.1:7278
+
+! exec pint --no-color lint rules
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=4 workers=10 online=true
+level=WARN msg="No results for Prometheus uptime metric, you might have set uptime config option to a missing metric, please check your config" name=vm metric=up
+level=WARN msg="Using dummy Prometheus uptime metric results with no gaps" name=vm metric=up
+level=WARN msg="No results for Prometheus uptime metric, you might have set uptime config option to a missing metric, please check your config" name=vm metric=up
+level=WARN msg="Using dummy Prometheus uptime metric results with no gaps" name=vm metric=up
+level=WARN msg="No results for Prometheus uptime metric, you might have set uptime config option to a missing metric, please check your config" name=vm metric=up
+level=WARN msg="Using dummy Prometheus uptime metric results with no gaps" name=vm metric=up
+Bug: query on nonexistent series (promql/series)
+  ---> rules/1.yml:5 -> `job:http_requests:rate` [+1 duplicates]
+5 |     expr: 'WITH (r = rate(http_requests_total)) sum(r) by (job)'
+                                                        ^
+          `vm` Prometheus server at http://127.0.0.1:7278
+          didn't have any series for the `http_requests_total`
+          metric in the last 1w.
+
+Bug: template uses non-existent label (alerts/template)
+  ---> rules/1.yml:6-9 -> `Down`
+7 |     expr: 'sum(up{job="a" or job="b"}) by (job) == 0'
+                                           ^^
+                                           Query is using aggregation with `by(job)`, only labels
+                                           included inside `by(...)` will be present on the results.
+  |     [...]
+9 |       summary: '{{ $labels.instance }} is down'
+                              ^^^^^^^^^
+                              The template is using `instance` label but the query results won't have
+                              this label.
+
+Bug: query on nonexistent series (promql/series)
+  ---> rules/1.yml:7 -> `Down` [+1 duplicates]
+7 |     expr: 'sum(up{job="a" or job="b"}) by (job) == 0'
+                   ^^^^^^^^^^^^^^^^^^^^^^
+                   `vm` Prometheus server at http://127.0.0.1:7278 didn't have any series for the `up`
+                   metric in the last 1w.
+
+Warning: query beyond configured retention (promql/range_query)
+  ---> rules/1.yml:11 -> `long`
+11 |     expr: rate(http_requests_total[14d])
+                    ^^^^^^^^^^^^^^^^^^^^^^^^
+                    `http_requests_total[14d]` selector is trying to query Prometheus for 2w worth of
+                    metrics, but `vm` Prometheus server at http://127.0.0.1:7278 is configured to only
+                    keep 1w of metrics history.
+
+Fatal: MetricsQL syntax error (promql/syntax)
+  ---> rules/1.yml:13 -> `broken`
+13 |     expr: sum(foo) by (
+                           ^
+                           ModifierExpr: identList: unexpected token ""; want "ident"; unparsed data: ""
+
+level=INFO msg="Some problems are duplicated between rules and all the duplicates were hidden, pass `--show-duplicates` to see them" total=7 duplicates=2 shown=5
+level=INFO msg="Problems found" Fatal=1 Bug=5 Warning=1
+level=ERROR msg="Execution completed with error(s)" err="found 6 problem(s) with severity Bug or higher"
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: job:http_requests:rate
+    expr: 'WITH (r = rate(http_requests_total)) sum(r) by (job)'
+  - alert: Down
+    expr: 'sum(up{job="a" or job="b"}) by (job) == 0'
+    annotations:
+      summary: '{{ $labels.instance }} is down'
+  - record: long
+    expr: rate(http_requests_total[14d])
+  - record: broken
+    expr: sum(foo) by (
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri      = "http://127.0.0.1:7278"
+  backend  = "victoriametrics"
+  timeout  = "5s"
+  required = true
+}

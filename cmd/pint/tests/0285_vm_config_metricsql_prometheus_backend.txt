@@ -1,0 +1,18 @@
+! exec pint --no-color lint rules
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=ERROR msg="Execution completed with error(s)" err="failed to load config file \".pint.hcl\": prometheus server \"prom\" is using \"prometheus\" backend which doesn't support metricsql, set backend = \"victoriametrics\" or use query_language = \"promql\""
+-- rules/1.yml --
+- record: foo
+  expr: sum(rate(foo))
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "prom" {
+  uri = "http://127.0.0.1:7285"
+}

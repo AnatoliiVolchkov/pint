@@ -1,0 +1,39 @@
+! exec pint --no-color --offline lint rules
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=WARN msg="VictoriaMetrics server is configured but rules will be parsed as PromQL, set query_language = \"metricsql\" in the parser block to allow MetricsQL syntax" name=vm
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=3 workers=10 online=false
+level=INFO msg="Offline mode, skipping Prometheus discovery"
+Fatal: PromQL syntax error (promql/syntax)
+  ---> rules/1.yml:5 -> `job:http_requests:rate`
+5 |     expr: 'WITH (r = rate(http_requests_total)) sum(r) by (job)'
+                       ^ unexpected "="
+
+Fatal: PromQL syntax error (promql/syntax)
+  ---> rules/1.yml:7 -> `or`
+7 |     expr: 'up{job="a" or job="b"}'
+                          ^^ unexpected identifier "or" in label matching, expected "," or "}"
+
+level=INFO msg="Problems found" Fatal=2
+level=ERROR msg="Execution completed with error(s)" err="found 2 problem(s) with severity Bug or higher"
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: job:http_requests:rate
+    expr: 'WITH (r = rate(http_requests_total)) sum(r) by (job)'
+  - record: or
+    expr: 'up{job="a" or job="b"}'
+  - record: ok
+    expr: sum(rate(http_requests_total[5m])) by (job)
+
+-- .pint.hcl --
+prometheus "vm" {
+  uri     = "http://127.0.0.1:7279"
+  backend = "victoriametrics"
+}

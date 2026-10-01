@@ -1,0 +1,32 @@
+exec pint --no-color parse --query-language=metricsql 'WITH (r = rate(foo{job="a" or job="b"}) keep_metric_names) sum(r) by (job)'
+! stderr .
+cmp stdout stdout.txt
+
+! exec pint --no-color parse 'sum(rate(foo))'
+! stdout .
+stderr 'expected type range vector'
+
+-- stdout.txt --
+++ node: sum by (job) (rate(foo{job="a" or job="b"}) keep_metric_names)
+  AggregateExpr:
+    * Type: vector
+    * Op: sum
+    * Expr: rate(foo{job="a" or job="b"}) keep_metric_names
+    * Param: <nil>
+    * Grouping: [job]
+    * Without: false
+      ++ node: rate(foo{job="a" or job="b"}) keep_metric_names
+        Call:
+          * Type: vector
+          * Func: rate
+          * Args: foo{job="a" or job="b"}
+          * KeepMetricNames: true
+            ++ node: foo{job="a" or job="b"}
+              Expressions:
+                ++ node: foo{job="a" or job="b"}
+                  MatrixSelector:
+                    * Type: matrix
+                    * VectorSelector: foo{job="a" or job="b"}
+                    * Range: 0s
+                    * Implicit: true
+                    * StepRelative: true

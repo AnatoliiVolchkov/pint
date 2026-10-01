@@ -1,0 +1,42 @@
+http response vm ^/flags$ 200 -retentionPeriod="1"
+http response vm /api/v1/metadata 200 {"status":"success","data":{}}
+http response vm /api/v1/query_range 200 {"status":"success","data":{"resultType":"matrix","result":[]}}
+http response vm /api/v1/query 200 {"status":"success","isPartial":false,"data":{"resultType":"vector","result":[{"metric":{},"value":[1666873962.795,"1"]}]},"stats":{"seriesFetched":"1","executionTimeMsec":0}}
+http start vm 127.0.0.1:7282
+
+exec bash -x ./test.sh &
+
+exec pint --no-color watch --listen=127.0.0.1:6282 --pidfile=pint.pid glob rules
+cmp curl.txt metrics.txt
+
+-- test.sh --
+sleep 3
+curl -s http://127.0.0.1:6282/metrics | grep '^pint_problem{' > curl.txt
+cat pint.pid | xargs kill
+
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: ok
+    expr: 'WITH (r = rate(foo)) sum(r) by (job)'
+  - alert: Down
+    expr: 'sum(up{job="a" or job="b"}) by (job) == 0'
+    annotations:
+      summary: '{{ $labels.instance }} is down'
+  - record: broken
+    expr: sum(foo) by (
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri     = "http://127.0.0.1:7282"
+  backend = "victoriametrics"
+  timeout = "5s"
+}
+
+-- metrics.txt --
+pint_problem{filename="rules/1.yml",kind="alerting",name="Down",owner="",problem="template uses non-existent label: The template is using `instance` label but the query results won't have this label.",reporter="alerts/template",severity="bug"} 1
+pint_problem{filename="rules/1.yml",kind="recording",name="broken",owner="",problem="MetricsQL syntax error: ModifierExpr: identList: unexpected token \"\"; want \"ident\"; unparsed data: \"\"",reporter="promql/syntax",severity="fatal"} 1
