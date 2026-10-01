@@ -6,3 +6,6 @@
 
 /.vscode/
 /.devin/
+
+/go.work
+/go.work.sum

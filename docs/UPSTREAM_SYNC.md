@@ -112,6 +112,70 @@ gh pr create --repo AnatoliiVolchkov/pint --base main --head "$BRANCH" \
 Merge the pull request with a **merge commit** (not squash, not rebase) so upstream
 history stays intact and future merges only see new upstream commits.
 
+## MetricsQL dependency
+
+pint imports `github.com/VictoriaMetrics/metricsql` unchanged and pins our private fork
+to an exact tag with a `replace` directive in `go.mod`:
+
+```
+replace github.com/VictoriaMetrics/metricsql => github.com/AnatoliiVolchkov/metricsql v0.87.5-pint.3
+```
+
+`go.sum` records its checksum, so builds are reproducible. The private module is never
+fetched through `proxy.golang.org` or verified against `sum.golang.org`:
+
+```sh
+go env -w GOPRIVATE='github.com/AnatoliiVolchkov/*'
+# git must be able to read https://github.com/AnatoliiVolchkov/metricsql, e.g. via `gh auth setup-git`
+GOWORK=off go build ./cmd/pint
+```
+
+Updating the pin after a new metricsql release (see metricsql `docs/UPSTREAM_SYNC.md`):
+
+```sh
+go mod edit -replace github.com/VictoriaMetrics/metricsql=github.com/AnatoliiVolchkov/metricsql@v0.87.5-pint.N
+go mod tidy
+GOWORK=off go test ./...
+git commit -am "Update metricsql to v0.87.5-pint.N"
+```
+
+If upstream metricsql has a newer release than the one our fork is based on, sync the fork
+first, release a new `-pint.N` tag from its `main`, then bump the `require` line too:
+
+```sh
+go mod edit -require github.com/VictoriaMetrics/metricsql@vX.Y.Z
+```
+
+### Developing pint and metricsql together
+
+To change both repositories without tagging metricsql after every edit, check them out
+side by side and use a Go workspace:
+
+```sh
+mkdir workspace && cd workspace
+git clone https://github.com/AnatoliiVolchkov/pint.git
+git clone https://github.com/AnatoliiVolchkov/metricsql.git
+cd pint
+cp go.work.example go.work     # uses . and ../metricsql, gitignored
+go build ./...                 # builds against ../metricsql
+GOWORK=off go build ./...      # builds against the pinned tag, like CI
+```
+
+`go.work` is never committed and CI always runs with `GOWORK=off`.
+
+### CI access to the private module
+
+Workflows that build pint use `.github/actions/private-go-modules`, which sets
+`GOPRIVATE=github.com/AnatoliiVolchkov/*` and configures git to authenticate requests for
+`https://github.com/AnatoliiVolchkov/metricsql` with the `METRICSQL_READ_TOKEN` secret.
+Create the token once:
+
+1. GitHub, Settings, Developer settings, Fine-grained personal access tokens,
+   Generate new token: resource owner `AnatoliiVolchkov`, repository access "Only select
+   repositories" with `AnatoliiVolchkov/metricsql`, repository permission Contents: Read-only
+   (Metadata: Read-only is added automatically), choose an expiry.
+2. `gh secret set METRICSQL_READ_TOKEN -R AnatoliiVolchkov/pint` and paste the token.
+
 ## Automated sync
 
 `.github/workflows/upstream-sync.yml` runs `.github/scripts/upstream-sync.sh` every Monday

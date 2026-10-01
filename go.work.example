@@ -1,0 +1,17 @@
+// Local development with pint and metricsql checked out side by side:
+//
+//   workspace/
+//     pint/       github.com/AnatoliiVolchkov/pint
+//     metricsql/  github.com/AnatoliiVolchkov/metricsql
+//
+// cp go.work.example go.work   (go.work is gitignored)
+//
+// The go command then builds pint against ../metricsql and ignores the
+// github.com/AnatoliiVolchkov/metricsql replace in go.mod. Use GOWORK=off to build
+// against the pinned version exactly like CI does.
+go 1.27.1
+
+use (
+	.
+	../metricsql
+)
