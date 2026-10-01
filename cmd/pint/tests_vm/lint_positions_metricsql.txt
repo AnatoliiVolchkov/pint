@@ -1,0 +1,46 @@
+# Diagnostics must point at the right YAML line and query fragment, including repeated
+# metric names, WITH template use-sites and block scalars starting with `-`.
+! exec pint --no-color lint rules
+! stdout .
+stderr 'level=INFO msg="Problems found" Fatal=1 Bug=2'
+
+# The second selector of the same metric is missing, not the first one.
+stderr 'Bug: query on nonexistent series \(promql/series\)\n  ---> rules/1.yml:5 -> `missing_web`\n'
+stderr '\n5 \|     expr: ''\.\.\. / sum\(rate\(pint_vm_e2e_requests_total\{job="web"\}\[5m\]\)\)''\n {57}\^{9}\n'
+stderr 'there are no series matching `\{job="web"\}` in the last 1w'
+
+# The aggregation comes from a WITH template, the diagnostic points at its use-site.
+stderr 'Bug: template uses non-existent label \(alerts/template\)\n  ---> rules/1.yml:6-11 -> `TemplateLabel`\n'
+stderr '\n 9 \|       s\(pint_vm_e2e_up\) == 0\n {11}\^{17}\n {11}Query is using aggregation with `by\(job\)`'
+stderr '\n11 \|       summary: ''\{\{ \$labels\.instance \}\} is down''\n {31}\^{9}\n'
+
+# A block scalar whose content starts with `-` must not shift positions.
+stderr 'Fatal: MetricsQL syntax error \(promql/syntax\)\n  ---> rules/1.yml:14 -> `broken`\n'
+stderr '\n14 \|       -rate\(pint_vm_e2e_requests_total\[5m\]\) \+ foo bar\n {55}\^{3} unparsed data left: "bar"\n'
+
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: missing_web
+    expr: 'sum(rate(pint_vm_e2e_requests_total{job="api"}[5m])) / sum(rate(pint_vm_e2e_requests_total{job="web"}[5m]))'
+  - alert: TemplateLabel
+    expr: |
+      WITH (s(x) = sum(x) by (job))
+      s(pint_vm_e2e_up) == 0
+    annotations:
+      summary: '{{ $labels.instance }} is down'
+  - record: broken
+    expr: |-
+      -rate(pint_vm_e2e_requests_total[5m]) + foo bar
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri     = ENV_PINT_VM_URL
+  backend = "victoriametrics"
+  uptime  = "pint_vm_e2e_up"
+  timeout = "30s"
+}

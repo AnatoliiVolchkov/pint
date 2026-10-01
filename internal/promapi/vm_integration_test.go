@@ -2,6 +2,12 @@ package promapi_test
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,6 +49,79 @@ func TestVictoriaMetricsIntegration(t *testing.T) {
 			t.Run("api", func(t *testing.T) {
 				testVMIntegration(t, newVMIntegrationGroup(t, tg.QueryURL), metric)
 			})
+		})
+	}
+}
+
+type recordedRequest struct {
+	method, path string
+	status       int
+}
+
+// recordingProxy forwards requests to target and records them.
+func recordingProxy(t *testing.T, target string) (string, func() []recordedRequest) {
+	t.Helper()
+	u, err := url.Parse(target)
+	require.NoError(t, err)
+	var mtx sync.Mutex
+	var reqs []recordedRequest
+	proxy := httputil.NewSingleHostReverseProxy(&url.URL{Scheme: u.Scheme, Host: u.Host})
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		mtx.Lock()
+		defer mtx.Unlock()
+		reqs = append(reqs, recordedRequest{method: resp.Request.Method, path: resp.Request.URL.Path, status: resp.StatusCode})
+		return nil
+	}
+	srv := httptest.NewServer(proxy)
+	t.Cleanup(srv.Close)
+	return srv.URL + u.Path, func() []recordedRequest {
+		mtx.Lock()
+		defer mtx.Unlock()
+		return slices.Clone(reqs)
+	}
+}
+
+// TestVictoriaMetricsAPI checks the exact endpoints pint calls on single-node and
+// cluster VictoriaMetrics and that VictoriaMetrics serves all of them.
+func TestVictoriaMetricsAPI(t *testing.T) {
+	env := vmtest.Start(t)
+	for _, tg := range env.Targets() {
+		t.Run(tg.Name, func(t *testing.T) {
+			metric := fmt.Sprintf("pint_vm_api_%s_%s", tg.Name, env.RunID)
+			tg.Import(t, 15*time.Second, vmtest.Series{Metric: metric + `{job="a"}`, Values: vmtest.Counter(40, 0, 15)})
+
+			uri, requests := recordingProxy(t, tg.QueryURL)
+			fg := newVMIntegrationGroup(t, uri)
+			_, err := fg.Config(t.Context(), 0).Wait()
+			require.NoError(t, err)
+			_, err = fg.Flags(t.Context()).Wait()
+			require.NoError(t, err)
+			_, _ = fg.BuildInfo(t.Context()).Wait()
+			_, _ = fg.Metadata(t.Context(), metric).Wait()
+			qr, err := fg.Query(t.Context(), "count("+metric+")").Wait()
+			require.NoError(t, err)
+			require.Len(t, qr.Series, 1)
+			rr, err := fg.RangeQuery(t.Context(), metric, promapi.NewRelativeRange(10*time.Minute, time.Minute)).Wait()
+			require.NoError(t, err)
+			require.Len(t, rr.Series.Ranges, 1)
+
+			prefix := ""
+			if tg.Name == "cluster" {
+				prefix = "/select/0/prometheus"
+			}
+			got := map[string]int{}
+			for _, r := range requests() {
+				got[r.method+" "+r.path] = r.status
+			}
+			want := map[string]int{
+				// /flags is served by the VictoriaMetrics root, also on vmselect.
+				"GET /flags":                                 http.StatusOK,
+				"POST " + prefix + "/api/v1/query":           http.StatusOK,
+				"POST " + prefix + "/api/v1/query_range":     http.StatusOK,
+				"GET " + prefix + "/api/v1/metadata":         http.StatusOK,
+				"GET " + prefix + "/api/v1/status/buildinfo": http.StatusOK,
+			}
+			require.Equal(t, want, got, "requests sent to %s", tg.Name)
 		})
 	}
 }

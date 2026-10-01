@@ -1,0 +1,37 @@
+# pint watch reports no problems for valid MetricsQL rules.
+exec bash -x ./test.sh &
+
+exec pint --no-color watch --listen=127.0.0.1:6392 --pidfile=pint.pid --interval=1h glob rules
+grep '^pint_check_iterations_total 1$' metrics.txt
+grep '^pint_last_run_checks_done [1-9][0-9]*$' metrics.txt
+! grep '^pint_problem\{' metrics.txt
+! stderr 'Query returned an error'
+
+-- test.sh --
+for i in $(seq 1 60); do
+  curl -s http://127.0.0.1:6392/metrics > metrics.txt
+  grep -q '^pint_check_iterations_total 1$' metrics.txt && break
+  sleep 1
+done
+cat pint.pid | xargs kill
+
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: job:pint_vm_e2e_requests:rate5m
+    expr: 'sum(rate(pint_vm_e2e_requests_total{job="api"}[5m])) by (job)'
+  - alert: InstanceDown
+    expr: 'pint_vm_e2e_up{job="api" or instance="a"} == 0'
+    for: 5m
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri     = ENV_PINT_VM_URL
+  backend = "victoriametrics"
+  uptime  = "pint_vm_e2e_up"
+  timeout = "30s"
+}

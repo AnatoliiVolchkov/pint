@@ -1,0 +1,48 @@
+# Valid MetricsQL rules over existing series must not produce any problem.
+exec pint --no-color lint rules
+! stdout .
+stderr 'level=INFO msg="Checking Prometheus rules" entries=6 workers=10 online=true'
+! stderr 'Problems found'
+! stderr 'level=(WARN|ERROR)'
+! stderr 'Bug:|Fatal:|Warning:'
+
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: job:pint_vm_e2e_requests:rate5m
+    expr: 'sum(rate(pint_vm_e2e_requests_total{job="api"}[5m])) by (job)'
+  - record: job:pint_vm_e2e_requests:rollup
+    expr: 'WITH (f(m) = rollup_rate(m[5m])) sum(f(pint_vm_e2e_requests_total{job="api" or instance="a"})) by (job)'
+  - record: job:pint_vm_e2e_up:abs
+    expr: 'abs(pint_vm_e2e_up{job="api"}) keep_metric_names'
+  - alert: InstanceDown
+    expr: 'pint_vm_e2e_up{job="api"} == 0'
+    for: 5m
+    labels:
+      severity: page
+    annotations:
+      summary: '{{ $labels.instance }} is down'
+  - alert: TooManyRequests
+    expr: |
+      sum(rate(pint_vm_e2e_requests_total{job="api"}[5m])) by (job, instance)
+        > 1000
+    for: 10m
+    annotations:
+      summary: '{{ $labels.instance }} gets {{ $value | humanize }} requests per second'
+  - record: job:pint_vm_e2e_requests:ratio
+    expr: |-
+      sum(rate(pint_vm_e2e_requests_total{instance="a"}[5m])) by (job)
+      /
+      sum(rate(pint_vm_e2e_requests_total[5m])) by (job)
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri     = ENV_PINT_VM_URL
+  backend = "victoriametrics"
+  uptime  = "pint_vm_e2e_up"
+  timeout = "30s"
+}
