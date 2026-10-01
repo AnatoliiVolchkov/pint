@@ -26,6 +26,28 @@ func TestTemplateCheck(t *testing.T) {
 			prometheus:  noProm,
 		},
 		{
+			// Prometheus only passes query labels to annotation templates.
+			description: "alertname and rule labels in annotations",
+			content:     "- alert: foo\n  expr: sum(foo) by (job) > 0\n  labels:\n    severity: warning\n  annotations:\n    summary: '{{ $labels.alertname }} {{ $labels.severity }}'\n",
+			checker:     newTemplateCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "vmalert template variables are not available in Prometheus",
+			content:     "- alert: foo\n  expr: foo > 0\n  annotations:\n    summary: '{{ $expr }}'\n",
+			checker:     newTemplateCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "vmalert template functions are not available in Prometheus",
+			content:     "- alert: foo\n  expr: foo > 0\n  annotations:\n    summary: '{{ $labels.instance | quotesEscape }}'\n",
+			checker:     newTemplateCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
 			description: "invalid syntax in annotations",
 			content:     "- alert: Foo Is Down\n  expr: up{job=\"foo\"} == 0\n  annotations:\n    summary: 'Instance {{ $label.instance }} down'\n",
 			checker:     newTemplateCheck,

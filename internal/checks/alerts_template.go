@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -22,6 +24,7 @@ import (
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
 	"github.com/cloudflare/pint/internal/parser/ast"
+	"github.com/cloudflare/pint/internal/parser/metricsql"
 	"github.com/cloudflare/pint/internal/parser/source"
 )
 
@@ -40,6 +43,21 @@ var (
 	}
 	templateDefsString = strings.Join(templateDefs, "")
 	templateDefsLen    = len(templateDefsString)
+
+	// vmalert defines more variables than Prometheus, see tplHeaders in
+	// https://github.com/VictoriaMetrics/VictoriaMetrics/blob/master/app/vmalert/notifier/alert.go
+	vmalertTemplateDefs = []string{
+		"{{$type := .Type}}",
+		"{{$expr := .Expr}}",
+		"{{$alertID := .AlertID}}",
+		"{{$groupID := .GroupID}}",
+		"{{$activeAt := .ActiveAt}}",
+		"{{$for := .For}}",
+		"{{$isPartial := .IsPartial}}",
+	}
+	// Positions inside templates are calculated by subtracting templateDefsLen,
+	// templateDialect.shift() corrects them for the longer vmalert header.
+	vmalertTemplateDefsString = templateDefsString + strings.Join(vmalertTemplateDefs, "")
 
 	templateFuncMap = textTemplate.FuncMap{
 		"args":               dummyFuncMap,
@@ -74,16 +92,90 @@ var (
 		"value":              dummyFuncMap,
 	}
 
-	templatePool = sync.Pool{
+	// vmalertTemplateFuncs are template functions that vmalert provides on top of the
+	// functions it shares with Prometheus, see
+	// https://github.com/VictoriaMetrics/VictoriaMetrics/blob/master/app/vmalert/templates/template.go
+	vmalertTemplateFuncs = textTemplate.FuncMap{
+		"crlfEscape": func(s string) string {
+			return strings.NewReplacer("\r", `\r`, "\n", `\n`).Replace(s)
+		},
+		"formatTime": func(layout string, _ any) (string, error) {
+			return layout, nil
+		},
+		"htmlEscape": textTemplate.HTMLEscapeString,
+		"jsonEscape": strconv.Quote,
+		"parseDurationTime": func(s string) (time.Duration, error) {
+			d, err := model.ParseDuration(s)
+			return time.Duration(d), err
+		},
+		"pathEscape":  url.PathEscape,
+		"queryEscape": url.QueryEscape,
+		"quotesEscape": func(s string) string {
+			return strings.ReplaceAll(s, `"`, `\"`)
+		},
+	}
+
+	templatePool        = newTemplatePool(templateFuncMap)
+	vmalertTemplatePool = newTemplatePool(vmalertFuncMap())
+)
+
+func newTemplatePool(funcs textTemplate.FuncMap) *sync.Pool {
+	return &sync.Pool{
 		New: func() any {
 			t := textTemplate.
 				New(TemplateCheckName).
-				Funcs(templateFuncMap).
+				Funcs(funcs).
 				Option(dummyFuncMap("missingkey=zero")) // this is only so that dummyFuncMap is called at least once
 			return t
 		},
 	}
+}
+
+func vmalertFuncMap() textTemplate.FuncMap {
+	funcs := maps.Clone(templateFuncMap)
+	maps.Copy(funcs, vmalertTemplateFuncs)
+	return funcs
+}
+
+// templateDialect selects template variables and functions available to rule templates.
+// Prometheus is used for PromQL rules, vmalert for MetricsQL rules.
+type templateDialect struct {
+	pool    *sync.Pool
+	defs    string
+	vmalert bool
+}
+
+var (
+	prometheusTemplates = templateDialect{pool: templatePool, defs: templateDefsString, vmalert: false}
+	vmalertTemplates    = templateDialect{pool: vmalertTemplatePool, defs: vmalertTemplateDefsString, vmalert: true}
 )
+
+// shift returns how many more bytes this dialect header has compared to templateDefsString.
+func (d templateDialect) shift() int {
+	return len(d.defs) - templateDefsLen
+}
+
+func templateDialectFor(lang ast.Language) templateDialect {
+	if lang != nil && lang.Name() == metricsql.Name {
+		return vmalertTemplates
+	}
+	return prometheusTemplates
+}
+
+// vmalertTemplateData mirrors the data vmalert passes to templates (notifier.AlertTplData).
+type vmalertTemplateData struct {
+	ActiveAt       time.Time
+	Labels         map[string]string
+	ExternalLabels map[string]string
+	ExternalURL    string
+	Type           string
+	Expr           string
+	Value          float64
+	AlertID        uint64
+	GroupID        uint64
+	For            time.Duration
+	IsPartial      bool
+}
 
 func dummyFuncMap(q string) string {
 	return q
@@ -127,28 +219,47 @@ func (c TemplateCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*d
 
 	src := entry.Rule.AlertingRule.Expr.Source()
 	lang := entry.Rule.AlertingRule.Expr.Language()
-	data := promTemplate.AlertTemplateData(map[string]string{}, map[string]string{}, "", promql.Sample{})
+	dialect := templateDialectFor(lang)
+	var data any
+	if dialect.vmalert {
+		data = vmalertTemplateData{} // nolint: exhaustruct_v5
+	} else {
+		data = promTemplate.AlertTemplateData(map[string]string{}, map[string]string{}, "", promql.Sample{})
+	}
 
 	for _, label := range entry.Labels().Items {
-		meta := analyzeTemplate(label.Value.Value)
+		meta := analyzeTemplate(dialect, label.Value.Value)
 		if syntaxErr, ok := c.checkSyntax(ctx, lang, label, data); ok {
 			problems = append(problems, syntaxErr)
 		} else {
 			problems = append(problems, c.checkTemplateQueries(lang, entry.Rule, label, meta)...)
 		}
 		problems = append(problems, c.checkValueInLabels(label, meta)...)
-		problems = append(problems, c.checkQueryLabels(entry.Group, entry.Rule, label, src, meta)...)
+		problems = append(problems, c.checkQueryLabels(entry.Group, entry.Rule, label, src, meta, nil)...)
+	}
+
+	// vmalert adds alertname, alertgroup and all rule labels to the labels available
+	// in annotation templates, Prometheus only passes labels returned by the query.
+	var annotationLabels map[string]struct{}
+	if dialect.vmalert {
+		annotationLabels = map[string]struct{}{
+			model.AlertNameLabel: {},
+			"alertgroup":         {},
+		}
+		for _, label := range entry.Labels().Items {
+			annotationLabels[label.Key.Value] = struct{}{}
+		}
 	}
 
 	if entry.Rule.AlertingRule.Annotations != nil {
 		for _, annotation := range entry.Rule.AlertingRule.Annotations.Items {
-			meta := analyzeTemplate(annotation.Value.Value)
+			meta := analyzeTemplate(dialect, annotation.Value.Value)
 			if syntaxErr, ok := c.checkSyntax(ctx, lang, annotation, data); ok {
 				problems = append(problems, syntaxErr)
 			} else {
 				problems = append(problems, c.checkTemplateQueries(lang, entry.Rule, annotation, meta)...)
 			}
-			problems = append(problems, c.checkQueryLabels(entry.Group, entry.Rule, annotation, src, meta)...)
+			problems = append(problems, c.checkQueryLabels(entry.Group, entry.Rule, annotation, src, meta, annotationLabels)...)
 			problems = append(problems, c.checkHumanizeIsNeeded(entry.Rule.AlertingRule.Expr, annotation, meta)...)
 		}
 	}
@@ -347,7 +458,7 @@ var (
 
 // newTemplateError builds a templateError from a raw template error,
 // normalizing the message and extracting column positions when possible.
-func newTemplateError(rawErr error, name, text string) templateError {
+func newTemplateError(rawErr error, name, text string, defsLen int) templateError {
 	te := templateError{
 		msg:      normalizeTemplateError(name, rawErr).Error(),
 		firstCol: 1,
@@ -363,10 +474,10 @@ func newTemplateError(rawErr error, name, text string) templateError {
 	lineNum, _ := strconv.Atoi(m[2])
 	offset, _ := strconv.Atoi(m[3])
 
-	// templateDefsString is prepended to text and has no newlines,
+	// The template header is prepended to text and has no newlines,
 	// so only line 1 offsets need adjustment.
 	if lineNum == 1 {
-		offset -= templateDefsLen
+		offset -= defsLen
 	}
 
 	// Find the byte position of the target line in user text.
@@ -393,9 +504,10 @@ func newTemplateError(rawErr error, name, text string) templateError {
 // execution fails it returns a templateError with the normalized message
 // and, when possible, the exact column range where the error occurred.
 func checkTemplateSyntax(ctx context.Context, lang ast.Language, name, text string, data any) error {
+	dialect := templateDialectFor(lang)
 	tmpl := promTemplate.NewTemplateExpander(
 		ctx,
-		templateDefsString+text,
+		dialect.defs+text,
 		name,
 		data,
 		model.Time(timestamp.FromTime(time.Now())),
@@ -403,13 +515,16 @@ func checkTemplateSyntax(ctx context.Context, lang ast.Language, name, text stri
 		nil,
 		nil,
 	)
+	if dialect.vmalert {
+		tmpl.Funcs(vmalertTemplateFuncs)
+	}
 
 	if err := tmpl.ParseTest(); err != nil {
-		return newTemplateError(maybeExpandError(err), name, text)
+		return newTemplateError(maybeExpandError(err), name, text, len(dialect.defs))
 	}
 
 	if _, err := tmpl.Expand(); err != nil {
-		return newTemplateError(maybeExpandError(err), name, text)
+		return newTemplateError(maybeExpandError(err), name, text, len(dialect.defs))
 	}
 
 	return nil
@@ -426,11 +541,11 @@ type templateMeta struct {
 
 // parseTemplate parses a label or annotation value and calls fn with the
 // result. ok is false if it can't be parsed.
-func parseTemplate(text string, fn func(*textTemplate.Template)) (ok bool) {
-	t := templatePool.Get().(*textTemplate.Template)
-	defer templatePool.Put(t)
+func parseTemplate(dialect templateDialect, text string, fn func(*textTemplate.Template)) (ok bool) {
+	t := dialect.pool.Get().(*textTemplate.Template)
+	defer dialect.pool.Put(t)
 
-	tt, err := t.Parse(templateDefsString + text)
+	tt, err := t.Parse(dialect.defs + text)
 	if err != nil {
 		return false
 	}
@@ -438,9 +553,9 @@ func parseTemplate(text string, fn func(*textTemplate.Template)) (ok bool) {
 	return true
 }
 
-func analyzeTemplate(text string) templateMeta {
+func analyzeTemplate(dialect templateDialect, text string) templateMeta {
 	var meta templateMeta
-	ok := parseTemplate(text, func(tt *textTemplate.Template) {
+	ok := parseTemplate(dialect, text, func(tt *textTemplate.Template) {
 		aliases := aliasesForTemplate(tt)
 		vars := make([]tmplVar, 0, len(tt.Root.Nodes))
 		for _, node := range tt.Root.Nodes {
@@ -456,6 +571,15 @@ func analyzeTemplate(text string) templateMeta {
 			hasValue:    hasValue(tt, aliases),
 			hasHumanize: hasHumanize(tt, aliases),
 			isValid:     true,
+		}
+		if shift := dialect.shift(); shift != 0 {
+			shiftTemplateVars(meta.vars, shift)
+			for i := range meta.uses {
+				meta.uses[i].query.pos = shiftPositionRange(meta.uses[i].query.pos, shift)
+				for j := range meta.uses[i].labels {
+					meta.uses[i].labels[j].pos = shiftPositionRange(meta.uses[i].labels[j].pos, shift)
+				}
+			}
 		}
 	})
 	if !ok {
@@ -579,6 +703,16 @@ type tmplVar struct {
 	column int
 }
 
+func shiftTemplateVars(vars []tmplVar, shift int) {
+	for i := range vars {
+		vars[i].column -= shift
+	}
+}
+
+func shiftPositionRange(pr ast.PositionRange, shift int) ast.PositionRange {
+	return ast.PositionRange{Start: pr.Start - ast.Pos(shift), End: pr.End - ast.Pos(shift)}
+}
+
 func getVariables(node parse.Node) (vars []tmplVar) {
 	switch n := node.(type) {
 	case *parse.ActionNode:
@@ -606,14 +740,15 @@ func getVariables(node parse.Node) (vars []tmplVar) {
 	return vars
 }
 
-func findTemplateVariables(_, text string) (vars []tmplVar, aliases aliasMap, ok bool) {
+func findTemplateVariables(dialect templateDialect, text string) (vars []tmplVar, aliases aliasMap, ok bool) {
 	aliases.aliases = map[string]map[string]struct{}{}
-	ok = parseTemplate(text, func(tt *textTemplate.Template) {
+	ok = parseTemplate(dialect, text, func(tt *textTemplate.Template) {
 		for _, node := range tt.Root.Nodes {
 			getAliases(node, &aliases)
 			vars = append(vars, getVariables(node)...)
 		}
 	})
+	shiftTemplateVars(vars, dialect.shift())
 	return vars, aliases, ok
 }
 
@@ -644,7 +779,9 @@ func (c TemplateCheck) nonExistentLabelProblem(rule parser.Rule, issue, context 
 	}
 }
 
-func (c TemplateCheck) checkQueryLabels(group *parser.Group, rule parser.Rule, label *parser.YamlKeyValue, src []*source.Source, a templateMeta) (problems []Problem) {
+// checkQueryLabels reports templates using labels that the query results won't have.
+// extraLabels are labels added by the rule evaluator that are always available.
+func (c TemplateCheck) checkQueryLabels(group *parser.Group, rule parser.Rule, label *parser.YamlKeyValue, src []*source.Source, a templateMeta, extraLabels map[string]struct{}) (problems []Problem) {
 	if !a.isValid {
 		return nil
 	}
@@ -663,6 +800,9 @@ func (c TemplateCheck) checkQueryLabels(group *parser.Group, rule parser.Rule, l
 		done[name] = struct{}{}
 
 		if group != nil && group.Labels != nil && group.Labels.GetValue(name) != nil {
+			continue
+		}
+		if _, ok := extraLabels[name]; ok {
 			continue
 		}
 		reason, fragment, ok := missingLabel(src, name)

@@ -1,0 +1,57 @@
+! exec pint --no-color lint rules
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Checking Prometheus rules" entries=2 workers=10 online=true
+Bug: template uses non-existent label (alerts/template)
+  ---> rules/1.yml:12-17 -> `MissingLabel`
+13 |     expr: sum(up{job="node"}) by (instance) == 0
+                                   ^^^^^^^^^^^^^
+                                   Query is using aggregation with `by(instance)`, only labels included
+                                   inside `by(...)` will be present on the results.
+   |     [...]
+17 |       summary: '{{ $labels.alertname }} on {{ $labels.job }}'
+                                                          ^^^^
+       The template is using `job` label but the query results
+       won't have this label.
+
+Bug: template uses non-existent label (alerts/template)
+  ---> rules/1.yml:12-17 -> `MissingLabel`
+13 |     expr: sum(up{job="node"}) by (instance) == 0
+                                   ^^
+                                   Query is using aggregation with `by(instance)`, only labels included
+                                   inside `by(...)` will be present on the results.
+14 |     labels:
+15 |       copy: '{{ $labels.alertname }}'
+                            ^^^^^^^^^^
+                            The template is using `alertname` label but the query results won't have this
+                            label.
+
+level=INFO msg="Problems found" Bug=2
+level=ERROR msg="Execution completed with error(s)" err="found 2 problem(s) with severity Bug or higher"
+-- rules/1.yml --
+groups:
+- name: vmalert
+  rules:
+  - alert: Down
+    expr: sum(up{job="node"}) by (instance) == 0
+    labels:
+      severity: critical
+    annotations:
+      summary: '{{ $labels.alertname }} in {{ $labels.alertgroup }} ({{ $labels.severity }}) on {{ $labels.instance }}'
+      graph: 'https://vm/vmui/#/?g0.expr={{ $expr | queryEscape }}'
+      description: 'alert {{ $alertID }} active since {{ $activeAt }} for {{ $for }}, {{ $labels.instance | quotesEscape }}'
+  - alert: MissingLabel
+    expr: sum(up{job="node"}) by (instance) == 0
+    labels:
+      copy: '{{ $labels.alertname }}'
+    annotations:
+      summary: '{{ $labels.alertname }} on {{ $labels.job }}'
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}

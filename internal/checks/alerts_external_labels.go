@@ -66,8 +66,9 @@ func (c AlertsExternalLabelsCheck) Check(ctx context.Context, entry *discovery.E
 		return problems
 	}
 
+	dialect := templateDialectFor(entry.Rule.AlertingRule.Expr.Language())
 	for _, label := range entry.Labels().Items {
-		for _, name := range checkExternalLabels(label.Key.Value, label.Value.Value, cfg.Config.Global.ExternalLabels) {
+		for _, name := range checkExternalLabels(dialect, label.Value.Value, cfg.Config.Global.ExternalLabels) {
 			problems = append(problems, Problem{
 				Anchor: AnchorAfter,
 				Lines: diags.LineRange{
@@ -94,7 +95,7 @@ func (c AlertsExternalLabelsCheck) Check(ctx context.Context, entry *discovery.E
 
 	if entry.Rule.AlertingRule.Annotations != nil {
 		for _, annotation := range entry.Rule.AlertingRule.Annotations.Items {
-			for _, name := range checkExternalLabels(annotation.Key.Value, annotation.Value.Value, cfg.Config.Global.ExternalLabels) {
+			for _, name := range checkExternalLabels(dialect, annotation.Value.Value, cfg.Config.Global.ExternalLabels) {
 				problems = append(problems, Problem{
 					Anchor: AnchorAfter,
 					Lines: diags.LineRange{
@@ -123,8 +124,8 @@ func (c AlertsExternalLabelsCheck) Check(ctx context.Context, entry *discovery.E
 	return problems
 }
 
-func checkExternalLabels(name, text string, externalLabels map[string]string) (labels []string) {
-	vars, aliases, ok := findTemplateVariables(name, text)
+func checkExternalLabels(dialect templateDialect, text string, externalLabels map[string]string) (labels []string) {
+	vars, aliases, ok := findTemplateVariables(dialect, text)
 	if !ok {
 		return nil
 	}

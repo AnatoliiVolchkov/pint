@@ -145,6 +145,120 @@ func TestMetricsQLComparisonCheck(t *testing.T) {
 func TestMetricsQLTemplateCheck(t *testing.T) {
 	runTests(t, withMetricsQL([]checkTest{
 		{
+			// vmalert adds alertname, alertgroup and rule labels before expanding annotations.
+			description: "vmalert labels in annotations",
+			content: `
+- alert: foo
+  expr: sum(rate(foo)) by (job) > 0
+  labels:
+    severity: warning
+  annotations:
+    summary: '{{ $labels.alertname }} {{ $labels.alertgroup }} {{ $labels.severity }} {{ $labels.job }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+		},
+		{
+			// Labels returned by the query are still validated.
+			description: "vmalert labels in annotations with missing query label",
+			content: `
+- alert: foo
+  expr: sum(rate(foo)) by (job) > 0
+  labels:
+    severity: warning
+  annotations:
+    summary: '{{ $labels.alertname }} {{ $labels.instance }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			// Label templates are expanded before vmalert adds alertname.
+			description: "alertname in label template",
+			content: `
+- alert: foo
+  expr: sum(rate(foo)) by (job) > 0
+  labels:
+    copy: '{{ $labels.alertname }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			description: "vmalert template variables",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    summary: '{{ $expr }} {{ $type }} {{ $alertID }} {{ $groupID }} {{ $activeAt.Unix }} {{ $for }} {{ $isPartial }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+		},
+		{
+			description: "vmalert template functions",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    summary: '{{ $labels.instance | quotesEscape }} {{ $labels.instance | jsonEscape }} {{ $labels.instance | htmlEscape }} {{ $labels.instance | crlfEscape }}'
+    graph: 'https://vm/vmui/#/?g0.expr={{ $expr | queryEscape }}&path={{ "a b" | pathEscape }}'
+    since: '{{ (parseDurationTime "1h").Seconds }} {{ formatTime "2006" $activeAt }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+		},
+		{
+			description: "vmalert template variable with bad field",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    summary: 'x {{ $activeAt.Foo }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			description: "unknown template function",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    summary: '{{ $labels.instance | fooEscape }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			description: "vmalert template variable position in label check",
+			content: `
+- alert: foo
+  expr: sum(foo) by (job) > 0
+  annotations:
+    summary: '{{ $expr }} {{ $labels.instance }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			description: "template query position with vmalert header",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    summary: '{{ $expr }} {{ with query "sum(foo) by (job)" }}{{ . | first | label "instance" }}{{ end }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
 			description: "label removed by aggregation",
 			content: `
 - alert: foo

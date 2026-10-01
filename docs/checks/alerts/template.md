@@ -10,6 +10,17 @@ This check validates templates used in annotations and labels for alerting rules
 See [Prometheus docs](https://prometheus.io/docs/prometheus/latest/configuration/template_reference/)
 for details of supported template syntax.
 
+When `query_language` is set to `metricsql` templates are validated the way
+[vmalert](https://docs.victoriametrics.com/victoriametrics/vmalert/#templating) expands them:
+
+- vmalert template variables (`$expr`, `$type`, `$alertID`, `$groupID`, `$activeAt`,
+  `$for` and `$isPartial`) and functions (`quotesEscape`, `jsonEscape`, `htmlEscape`,
+  `crlfEscape`, `pathEscape`, `queryEscape`, `formatTime` and `parseDurationTime`)
+  can be used.
+- Annotation templates can use the `alertname` and `alertgroup` labels and all labels
+  set in the rule `labels` section, vmalert adds them before expanding annotations.
+  Label templates can only use labels returned by the query.
+
 This check will also inspect all alert rules and warn if any of them
 use query return values inside alert labels.
 Two alerts are identical if they have identical labels, so using

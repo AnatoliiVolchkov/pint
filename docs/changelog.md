@@ -19,6 +19,9 @@
 
 ### Fixed
 
+- [alerts/template](checks/alerts/template.md) check no longer reports vmalert
+  template variables and functions as syntax errors, or `alertname`, `alertgroup`
+  and rule labels used in annotations as missing labels, when using MetricsQL.
 - [promql/rate](checks/promql/rate.md) check requires `rate()`, `irate()` and
   `deriv()` time ranges to be at least 1x `scrape_interval` when using MetricsQL,
   VictoriaMetrics uses the last sample before the time range. `rate_prometheus()`

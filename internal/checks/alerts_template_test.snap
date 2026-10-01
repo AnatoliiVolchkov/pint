@@ -272,6 +272,82 @@
 
 ---
 
+[TestTemplateCheck/alertname_and_rule_labels_in_annotations - 1]
+- description: alertname and rule labels in annotations
+  content: |
+    - alert: foo
+      expr: sum(foo) by (job) > 0
+      labels:
+        severity: warning
+      annotations:
+        summary: '{{ $labels.alertname }} {{ $labels.severity }}'
+  output: |
+    2 |   expr: sum(foo) by (job) > 0
+                         ^^
+                         Query is using aggregation with `by(job)`, only labels included inside `by(...)`
+                         will be present on the results.
+      |   [...]
+    6 |     summary: '{{ $labels.alertname }} {{ $labels.severity }}'
+                                ^^^^^^^^^^
+                                The template is using `alertname` label but the query results won't have
+                                this label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `alertname` label but the query results won't have this label.
+          firstcolumn: 11
+          lastcolumn: 20
+          kind: 0
+        - message: Query is using aggregation with `by(job)`, only labels included inside `by(...)` will be present on the results.
+          firstcolumn: 10
+          lastcolumn: 11
+          kind: 1
+    lines:
+        first: 1
+        last: 6
+    severity: 2
+    anchor: 0
+- description: alertname and rule labels in annotations
+  content: |
+    - alert: foo
+      expr: sum(foo) by (job) > 0
+      labels:
+        severity: warning
+      annotations:
+        summary: '{{ $labels.alertname }} {{ $labels.severity }}'
+  output: |
+    2 |   expr: sum(foo) by (job) > 0
+                         ^^
+                         Query is using aggregation with `by(job)`, only labels included inside `by(...)`
+                         will be present on the results.
+      |   [...]
+    6 |     summary: '{{ $labels.alertname }} {{ $labels.severity }}'
+                                                        ^^^^^^^^^
+             The template is using `severity` label but the query
+             results won't have this label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `severity` label but the query results won't have this label.
+          firstcolumn: 35
+          lastcolumn: 43
+          kind: 0
+        - message: Query is using aggregation with `by(job)`, only labels included inside `by(...)` will be present on the results.
+          firstcolumn: 10
+          lastcolumn: 11
+          kind: 1
+    lines:
+        first: 1
+        last: 6
+    severity: 2
+    anchor: 0
+
+---
+
 [TestTemplateCheck/annotation_label_from_number - 1]
 - description: annotation label from number
   content: |
@@ -2711,6 +2787,61 @@
 
 [TestTemplateCheck/valid_syntax_in_labels - 1]
 []
+
+---
+
+[TestTemplateCheck/vmalert_template_functions_are_not_available_in_Prometheus - 1]
+- description: vmalert template functions are not available in Prometheus
+  content: |
+    - alert: foo
+      expr: foo > 0
+      annotations:
+        summary: '{{ $labels.instance | quotesEscape }}'
+  output: |
+    4 |     summary: '{{ $labels.instance | quotesEscape }}'
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                      Template failed to parse with this error: `function "quotesEscape" not defined`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `function "quotesEscape" not defined`.'
+          firstcolumn: 1
+          lastcolumn: 37
+          kind: 0
+    lines:
+        first: 4
+        last: 4
+    severity: 3
+    anchor: 0
+
+---
+
+[TestTemplateCheck/vmalert_template_variables_are_not_available_in_Prometheus - 1]
+- description: vmalert template variables are not available in Prometheus
+  content: |
+    - alert: foo
+      expr: foo > 0
+      annotations:
+        summary: '{{ $expr }}'
+  output: |
+    4 |     summary: '{{ $expr }}'
+                      ^^^^^^^^^^^ Template failed to parse with this error: `undefined variable "$expr"`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `undefined variable "$expr"`.'
+          firstcolumn: 1
+          lastcolumn: 11
+          kind: 0
+    lines:
+        first: 4
+        last: 4
+    severity: 3
+    anchor: 0
 
 ---
 

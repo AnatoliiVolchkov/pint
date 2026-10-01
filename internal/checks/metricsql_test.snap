@@ -244,7 +244,7 @@
   output: |
     5 |     summary: '{{ with query "sum(foo" }}{{ . | first | value }}{{ end }}'
                               ^^^^^^^^^^^^^^^
-                              Template failed to parse with this error: `120: executing "summary" at <query
+                              Template failed to parse with this error: `274: executing "summary" at <query
                               "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")";
                               unparsed data: ""`.
   problem:
@@ -252,7 +252,7 @@
     summary: template syntax error
     details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
     diagnostics:
-        - message: 'Template failed to parse with this error: `120: executing "summary" at <query "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")"; unparsed data: ""`.'
+        - message: 'Template failed to parse with this error: `274: executing "summary" at <query "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")"; unparsed data: ""`.'
           firstcolumn: 9
           lastcolumn: 23
           kind: 0
@@ -261,6 +261,235 @@
         last: 5
     severity: 3
     anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/alertname_in_label_template - 1]
+- description: alertname in label template
+  content: |4
+
+    - alert: foo
+      expr: sum(rate(foo)) by (job) > 0
+      labels:
+        copy: '{{ $labels.alertname }}'
+  output: |
+    3 |   expr: sum(rate(foo)) by (job) > 0
+                               ^^
+                               Query is using aggregation with `by(job)`, only labels included inside
+                               `by(...)` will be present on the results.
+    4 |   labels:
+    5 |     copy: '{{ $labels.alertname }}'
+                             ^^^^^^^^^^
+                             The template is using `alertname` label but the query results won't have this
+                             label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `alertname` label but the query results won't have this label.
+          firstcolumn: 11
+          lastcolumn: 20
+          kind: 0
+        - message: Query is using aggregation with `by(job)`, only labels included inside `by(...)` will be present on the results.
+          firstcolumn: 16
+          lastcolumn: 17
+          kind: 1
+    lines:
+        first: 2
+        last: 5
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/template_query_position_with_vmalert_header - 1]
+- description: template query position with vmalert header
+  content: |4
+
+    - alert: foo
+      expr: foo > 0
+      annotations:
+        summary: '{{ $expr }} {{ with query "sum(foo) by (job)" }}{{ . | first | label "instance" }}{{ end }}'
+  output: |
+    5 |     summary: '{{ $expr }} {{ with query "sum(foo) by (job)" }}{{ . | first | label "instance" }}{{ end }}'
+                                                                                           ^^^^^^^^^^
+            The template query is using `instance` label but the query results won't have this label.
+                                                ^^^^^^^^^^^^^^^^^^^
+                                                Query is using aggregation with `by(job)`, only labels
+                                                included inside `by(...)` will be present on the results.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template query is using `instance` label but the query results won't have this label.
+          firstcolumn: 70
+          lastcolumn: 79
+          kind: 0
+        - message: Query is using aggregation with `by(job)`, only labels included inside `by(...)` will be present on the results.
+          firstcolumn: 27
+          lastcolumn: 45
+          kind: 1
+    lines:
+        first: 2
+        last: 5
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/unknown_template_function - 1]
+- description: unknown template function
+  content: |4
+
+    - alert: foo
+      expr: foo > 0
+      annotations:
+        summary: '{{ $labels.instance | fooEscape }}'
+  output: |
+    5 |     summary: '{{ $labels.instance | fooEscape }}'
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                      Template failed to parse with this error: `function "fooEscape" not defined`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `function "fooEscape" not defined`.'
+          firstcolumn: 1
+          lastcolumn: 34
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 3
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/vmalert_labels_in_annotations - 1]
+[]
+
+---
+
+[TestMetricsQLTemplateCheck/vmalert_labels_in_annotations_with_missing_query_label - 1]
+- description: vmalert labels in annotations with missing query label
+  content: |4
+
+    - alert: foo
+      expr: sum(rate(foo)) by (job) > 0
+      labels:
+        severity: warning
+      annotations:
+        summary: '{{ $labels.alertname }} {{ $labels.instance }}'
+  output: |
+    3 |   expr: sum(rate(foo)) by (job) > 0
+                               ^^
+                               Query is using aggregation with `by(job)`, only labels included inside
+                               `by(...)` will be present on the results.
+      |   [...]
+    7 |     summary: '{{ $labels.alertname }} {{ $labels.instance }}'
+                                                        ^^^^^^^^^
+             The template is using `instance` label but the query
+             results won't have this label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `instance` label but the query results won't have this label.
+          firstcolumn: 35
+          lastcolumn: 43
+          kind: 0
+        - message: Query is using aggregation with `by(job)`, only labels included inside `by(...)` will be present on the results.
+          firstcolumn: 16
+          lastcolumn: 17
+          kind: 1
+    lines:
+        first: 2
+        last: 7
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/vmalert_template_functions - 1]
+[]
+
+---
+
+[TestMetricsQLTemplateCheck/vmalert_template_variable_position_in_label_check - 1]
+- description: vmalert template variable position in label check
+  content: |4
+
+    - alert: foo
+      expr: sum(foo) by (job) > 0
+      annotations:
+        summary: '{{ $expr }} {{ $labels.instance }}'
+  output: |
+    3 |   expr: sum(foo) by (job) > 0
+                         ^^
+                         Query is using aggregation with `by(job)`, only labels included inside `by(...)`
+                         will be present on the results.
+      |   [...]
+    5 |     summary: '{{ $expr }} {{ $labels.instance }}'
+                                            ^^^^^^^^^
+                                            The template is using `instance` label but the query results
+                                            won't have this label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `instance` label but the query results won't have this label.
+          firstcolumn: 23
+          lastcolumn: 31
+          kind: 0
+        - message: Query is using aggregation with `by(job)`, only labels included inside `by(...)` will be present on the results.
+          firstcolumn: 10
+          lastcolumn: 11
+          kind: 1
+    lines:
+        first: 2
+        last: 5
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/vmalert_template_variable_with_bad_field - 1]
+- description: vmalert template variable with bad field
+  content: |4
+
+    - alert: foo
+      expr: foo > 0
+      annotations:
+        summary: 'x {{ $activeAt.Foo }}'
+  output: |
+    5 |     summary: 'x {{ $activeAt.Foo }}'
+                                    ^
+                                    Template failed to parse with this error: `280: executing "summary" at
+                                    <$activeAt.Foo>: can't evaluate field Foo in type time.Time`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `280: executing "summary" at <$activeAt.Foo>: can''t evaluate field Foo in type time.Time`.'
+          firstcolumn: 15
+          lastcolumn: 15
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 3
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/vmalert_template_variables - 1]
+[]
 
 ---
 
