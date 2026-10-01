@@ -1,0 +1,58 @@
+http response vm ^/flags$ 200 -retentionPeriod="7d"
+http response vm /api/v1/metadata 200 {"status":"success","data":{"http_requests_total":[{"type":"counter","help":"","unit":""}]}}
+http response vm /api/v1/query_range 200 {"status":"success","data":{"resultType":"matrix","result":[]}}
+http response vm /api/v1/query 200 {"status":"success","isPartial":false,"data":{"resultType":"vector","result":[]},"stats":{"seriesFetched":"0","executionTimeMsec":0}}
+http start vm 127.0.0.1:7287
+
+! exec pint --no-color lint rules
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=4 workers=10 online=true
+Bug: duration too small (promql/rate)
+  ---> rules/1.yml:7 -> `below_one_scrape_interval`
+7 |     expr: rate(http_requests_total[30s])
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+              Duration for `rate()` must be at least 1 x scrape_interval, `vm` Prometheus server at
+              http://127.0.0.1:7287 is using `1m` scrape_interval.
+
+Bug: duration too small (promql/rate)
+  ---> rules/1.yml:9 -> `prometheus_semantics`
+9 |     expr: rate_prometheus(http_requests_total[1m])
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+              Duration for `rate_prometheus()` must be at least 2 x scrape_interval, `vm` Prometheus
+              server at http://127.0.0.1:7287 is using `1m` scrape_interval.
+
+level=INFO msg="Problems found" Bug=2
+level=ERROR msg="Execution completed with error(s)" err="found 2 problem(s) with severity Bug or higher"
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: one_scrape_interval
+    expr: rate(http_requests_total[1m]) + irate(http_requests_total[1m]) + deriv(temperature[1m])
+  - record: below_one_scrape_interval
+    expr: rate(http_requests_total[30s])
+  - record: prometheus_semantics
+    expr: rate_prometheus(http_requests_total[1m])
+  - record: prometheus_semantics_ok
+    expr: rate_prometheus(http_requests_total[2m])
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri            = "http://127.0.0.1:7287"
+  backend        = "victoriametrics"
+  timeout        = "5s"
+  required       = true
+  scrapeInterval = "1m"
+}
+checks {
+  enabled = ["promql/rate"]
+}

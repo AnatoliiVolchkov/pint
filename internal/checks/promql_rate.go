@@ -12,6 +12,7 @@ import (
 	"github.com/cloudflare/pint/internal/output"
 	"github.com/cloudflare/pint/internal/parser"
 	"github.com/cloudflare/pint/internal/parser/ast"
+	"github.com/cloudflare/pint/internal/parser/metricsql"
 	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 
@@ -30,6 +31,18 @@ const (
 The type of your metric is defined by the application that exports that metric.
 The number of samples depends on how often your application is being scraped by Prometheus.
 Each scrape produces a sample, so if your application is scraped every minute then the minimal time window you can use is two minutes.`
+	RateCheckMetricsQLDetails = `Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate) and [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) function comes with a few requirements:
+
+- The metric you calculate (i)rate from must be a counter or a native histogram.
+- The time window of the (i)rate function must have at least 1 sample.
+
+VictoriaMetrics also uses the last sample before the time window when calculating ` + "`rate()`, `irate()` and `deriv()`" + `,
+so the minimal time window you can use is one scrape interval.
+` + "`rate_prometheus()`" + ` follows Prometheus semantics and needs at least two scrape intervals.`
+
+	// metricsQLMinIntervals is the minimal number of scrape intervals for rate(), irate() and deriv()
+	// in MetricsQL, VictoriaMetrics includes the last sample before the window in calculations.
+	metricsQLMinIntervals = 1
 )
 
 var allowedRateTypes = []v1.MetricType{
@@ -115,7 +128,7 @@ func (c RateCheck) collectRateMetricNames(expr *parser.PromQLExpr, entries []*di
 
 	for _, src := range expr.Source() {
 		src.WalkSources(func(s *source.Source, _ *source.Join, _ *source.Unless) {
-			call, found := findRateCall(s)
+			call, found := findRateCall(s, isMetricsQL(expr))
 			// deriv() doesn't require a counter, skip metadata collection for it.
 			if !found || call.Func.Name == "deriv" {
 				return
@@ -162,12 +175,21 @@ func (c RateCheck) checkSources(
 	pending map[string]*promapi.Request[*promapi.MetadataResult],
 ) (problems []Problem) {
 	done := map[string]struct{}{}
+	metricsQL := isMetricsQL(expr)
+	details := RateCheckDetails
+	if metricsQL {
+		details = RateCheckMetricsQLDetails
+	}
 
 	for _, src := range expr.Source() {
 		src.WalkSources(func(s *source.Source, _ *source.Join, _ *source.Unless) {
-			call, ok := findRateCall(s)
+			call, ok := findRateCall(s, metricsQL)
 			if !ok {
 				return
+			}
+			minIntervals := c.minIntervals
+			if metricsQL && call.Func.Name != "rate_prometheus" {
+				minIntervals = metricsQLMinIntervals
 			}
 
 			m, ok := source.MostOuterOperation[*ast.MatrixSelector](s)
@@ -177,19 +199,19 @@ func (c RateCheck) checkSources(
 
 			// MetricsQL windows like rate(foo) or rate(foo[5i]) are calculated at query time.
 			runtimeWindow := m.Implicit || m.StepRelative
-			if !runtimeWindow && m.Range < cfg.Config.Global.ScrapeInterval*time.Duration(c.minIntervals) {
+			if !runtimeWindow && m.Range < cfg.Config.Global.ScrapeInterval*time.Duration(minIntervals) {
 				problems = append(problems, Problem{
 					Anchor:   AnchorAfter,
 					Lines:    expr.Value.Pos.Lines(),
 					Reporter: c.Reporter(),
 					Summary:  "duration too small",
-					Details:  RateCheckDetails,
+					Details:  details,
 					Severity: Bug,
 					Diagnostics: []diags.Diagnostic{
 						{
 							Message: fmt.Sprintf(
 								"Duration for `%s()` must be at least %d x scrape_interval, %s is using `%s` scrape_interval.",
-								call.Func.Name, c.minIntervals,
+								call.Func.Name, minIntervals,
 								promText(c.prom.Name(), cfg.URI),
 								output.HumanizeDuration(cfg.Config.Global.ScrapeInterval),
 							),
@@ -231,7 +253,7 @@ func (c RateCheck) checkSources(
 						Lines:    expr.Value.Pos.Lines(),
 						Reporter: c.Reporter(),
 						Summary:  "counter based function called on a non-counter",
-						Details:  RateCheckDetails,
+						Details:  details,
 						Severity: Bug,
 						Diagnostics: []diags.Diagnostic{
 							{
@@ -325,7 +347,7 @@ func (c RateCheck) checkSources(
 	return problems
 }
 
-func findRateCall(s *source.Source) (*ast.Call, bool) {
+func findRateCall(s *source.Source, metricsQL bool) (*ast.Call, bool) {
 	for _, op := range s.Operations {
 		call, ok := op.Node.(*ast.Call)
 		if !ok {
@@ -334,7 +356,16 @@ func findRateCall(s *source.Source) (*ast.Call, bool) {
 		switch call.Func.Name {
 		case "rate", "irate", "deriv":
 			return call, true
+		case "rate_prometheus":
+			// MetricsQL version of rate() with Prometheus semantics.
+			if metricsQL {
+				return call, true
+			}
 		}
 	}
 	return nil, false
+}
+
+func isMetricsQL(expr *parser.PromQLExpr) bool {
+	return expr.Language().Name() == metricsql.Name
 }

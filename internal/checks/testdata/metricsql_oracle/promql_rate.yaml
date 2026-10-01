@@ -1,12 +1,13 @@
 check: promql/rate
 cases:
-  - name: window shorter than two scrape intervals
+  - name: window shorter than one scrape interval
     kind: positive
+    comment: VictoriaMetrics uses the last sample before the window, so rate() needs at least one scrape interval.
     settings:
       scrapeInterval: 1m
     rules: |
       - record: x
-        expr: 'rate(rate_short_total[1m])'
+        expr: 'rate(rate_short_total[30s])'
     data:
       step: 1m
       series:
@@ -22,10 +23,67 @@ cases:
         summary: duration too small
         lines: "2"
         diagnostics:
-          - message: Duration for `rate()` must be at least 2 x scrape_interval, `vm` Prometheus server at $URI is using `1m` scrape_interval.
-            fragment: rate(rate_short_total[1m])
+          - message: Duration for `rate()` must be at least 1 x scrape_interval, `vm` Prometheus server at $URI is using `1m` scrape_interval.
+            fragment: rate(rate_short_total[30s])
             start: 0
-            end: 26
+            end: 27
+            line: 2
+  - name: window exactly one scrape interval
+    kind: boundary
+    comment: |
+      A window of one scrape interval has a single sample, VictoriaMetrics still returns
+      a result because it includes the last sample before the window, while the Prometheus
+      compatible rate_prometheus() returns nothing.
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - record: x
+        expr: 'rate(rate_one_total[1m])'
+    data:
+      step: 1m
+      series:
+        - metric: rate_one_total{job="a"}
+          values: 0+60x30
+    vm:
+      - query: rate(rate_one_total[1m])
+        result: '{job="a"} 1'
+      - query: irate(rate_one_total[1m])
+        result: '{job="a"} 1'
+      - query: increase(rate_one_total[1m])
+        result: '{job="a"} 60'
+      - query: increase_prometheus(rate_one_total[1m])
+        result: empty
+    expect: []
+  - name: rate_prometheus window shorter than two scrape intervals
+    kind: positive
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - record: x
+        expr: 'rate_prometheus(rate_prom_total[1m])'
+    data:
+      step: 1m
+      series:
+        - metric: rate_prom_total{job="a"}
+          values: 0+60x30
+    vm:
+      # rate_prometheus() is not supported by the VictoriaMetrics version used in tests (v1.115.0),
+      # increase_prometheus() has the same window semantics.
+      - query: increase_prometheus(rate_prom_total[1m])
+        result: empty
+      - query: increase_prometheus(rate_prom_total[2m])
+        result: '{job="a"} 60'
+    expect:
+      - rule: x
+        reporter: promql/rate
+        severity: bug
+        summary: duration too small
+        lines: "2"
+        diagnostics:
+          - message: Duration for `rate_prometheus()` must be at least 2 x scrape_interval, `vm` Prometheus server at $URI is using `1m` scrape_interval.
+            fragment: rate_prometheus(rate_prom_total[1m])
+            start: 0
+            end: 36
             line: 2
   - name: window of five scrape intervals
     kind: negative

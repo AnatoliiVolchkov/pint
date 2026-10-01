@@ -17,6 +17,13 @@
   - New `--query-language` flag for `pint parse`.
   See [configuration](configuration.md) for details.
 
+### Fixed
+
+- [promql/rate](checks/promql/rate.md) check requires `rate()`, `irate()` and
+  `deriv()` time ranges to be at least 1x `scrape_interval` when using MetricsQL,
+  VictoriaMetrics uses the last sample before the time range. `rate_prometheus()`
+  is now checked and still requires 2x `scrape_interval`.
+
 ## v0.88.0
 
 ### Added

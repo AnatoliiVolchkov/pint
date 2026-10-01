@@ -16,6 +16,11 @@ to verify that:
   It will report a bug if duration is less than 2x `scrape_interval` because
   Prometheus must have at least two samples to be able to calculate rate, so
   the time range used in queries must be at least 2x `scrape_interval` value.
+  When using [MetricsQL](https://docs.victoriametrics.com/victoriametrics/metricsql/)
+  `rate()`, `irate()` and `deriv()` only need a time range of at least 1x `scrape_interval`,
+  because VictoriaMetrics also uses the last sample before the time range when
+  calculating them. `rate_prometheus()` follows Prometheus semantics and is still
+  required to use at least 2x `scrape_interval`.
 - Metrics passed to `rate()` and `irate()` are counters.
   Both functions only work with counters and, although any metric type can be
   passed to it and will return calculated value, using a non-counter will cause
