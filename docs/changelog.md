@@ -16,6 +16,7 @@
     used instead of values that pint reads from Prometheus configuration API.
   - New `--query-language` flag for `pint parse`.
   See [configuration](configuration.md) for details.
+- `pint version` now also prints the version of the MetricsQL parser pint was built with.
 
 ### Fixed
 

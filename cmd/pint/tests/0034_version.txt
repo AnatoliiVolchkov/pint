@@ -1,6 +1,4 @@
 exec pint version
-cmp stdout stdout.txt
+stdout '^unknown \(revision: unknown\)$'
+stdout '^metricsql:  \S+'
 ! stderr .
-
--- stdout.txt --
-unknown (revision: unknown)
