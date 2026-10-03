@@ -1,0 +1,156 @@
+name: Release
+
+# Builds pint binaries from a commit and publishes them as a GitHub release.
+#
+# The version is `git describe` against upstream release tags only, for example
+# v0.88.0-59-ge54a7983: upstream release v0.88.0, 59 commits on top, commit e54a7983.
+# The release tag uses the same name. Those tags contain a dash and are excluded from
+# `git describe`, so later builds keep counting from the upstream release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to release.
+        type: string
+        default: main
+      publish:
+        description: Publish a GitHub release. When off, binaries are only uploaded as workflow artifacts.
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # Never build against a local go.work, always against the pinned metricsql tag.
+  GOWORK: "off"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          show-progress: false
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.ver
+          cache: false
+
+      - name: Configure private Go modules
+        uses: ./.github/actions/private-go-modules
+        with:
+          token: ${{ secrets.METRICSQL_READ_TOKEN }}
+          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
+
+      - name: Compute version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          VERSION=$(git describe --tags --match 'v[0-9]*' --exclude '*-*' --always --dirty=-dev)
+          COMMIT=$(git rev-parse HEAD)
+          UPSTREAM=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' HEAD)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "upstream=$UPSTREAM" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION, commit: $COMMIT, upstream release: $UPSTREAM"
+          if [ "$PUBLISH" = "true" ] && gh release view "$VERSION" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $VERSION already exists, commit $COMMIT was already released"
+            exit 1
+          fi
+
+      - name: Build binaries
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os=${target%/*}
+            arch=${target#*/}
+            name="pint-${VERSION}-${os}-${arch}"
+            ext=""
+            [ "$os" = "windows" ] && ext=".exe"
+            mkdir -p "build/$name"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags="-X main.version=${VERSION} -X main.commit=${COMMIT} -s -w" \
+              -o "build/$name/pint${ext}" ./cmd/pint
+            cp README.md docs/changelog.md "build/$name/"
+            if [ "$os" = "windows" ]; then
+              (cd build && zip -qr "../dist/$name.zip" "$name")
+            else
+              tar -C build -czf "dist/$name.tar.gz" "$name"
+            fi
+          done
+          (cd dist && sha256sum -- * > checksums.txt)
+          ls -l dist
+
+      - name: Verify version output
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          OUT=$(./build/pint-${VERSION}-linux-amd64/pint version)
+          echo "$OUT"
+          echo "$OUT" | head -1 | grep -qxF "${VERSION} (revision: ${COMMIT})"
+          echo "$OUT" | grep -qE '^metricsql:  v[0-9.]+-pint\.[0-9]+ \(replaces VictoriaMetrics/metricsql v[0-9.]+\)$'
+          case "$VERSION" in
+            *-dev) echo "::error::working tree is dirty"; exit 1 ;;
+          esac
+          echo "$OUT" > build/version.txt
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pint-${{ steps.version.outputs.version }}
+          path: dist/
+
+      - name: Publish release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          UPSTREAM: ${{ steps.version.outputs.upstream }}
+        run: |
+          # Commits since the previous fork release, or since the upstream release for the first one.
+          PREV=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 50 --json tagName --jq '.[].tagName' |
+            while read -r tag; do
+              git fetch -q --no-tags origin "+refs/tags/$tag:refs/tags/$tag" 2>/dev/null || continue
+              if git merge-base --is-ancestor "$tag" "$COMMIT" && [ "$(git rev-parse "$tag^{commit}")" != "$COMMIT" ]; then
+                echo "$tag"
+                break
+              fi
+            done)
+          SINCE=${PREV:-$UPSTREAM}
+          {
+            echo "pint built from \`${COMMIT}\`: upstream cloudflare/pint ${UPSTREAM} with VictoriaMetrics and MetricsQL support."
+            echo
+            echo '```'
+            echo "\$ pint version"
+            cat build/version.txt
+            echo '```'
+            echo
+            echo "Changes since ${SINCE}:"
+            echo
+            git log --no-merges --format='- %s (%h)' -n 100 "${SINCE}..${COMMIT}"
+          } > release-notes.md
+          cat release-notes.md
+          gh release create "$VERSION" dist/* -R "$GITHUB_REPOSITORY" \
+            --target "$COMMIT" \
+            --title "pint $VERSION" \
+            --notes-file release-notes.md \
+            --latest

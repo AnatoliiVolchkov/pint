@@ -1,7 +1,8 @@
 PINT_BIN     := pint
 PINT_GO_DIRS := cmd internal
 PINT_SRC     := $(shell find $(PINT_GO_DIRS) -type f -name '*.go')
-PINT_VERSION ?= $(shell git describe --tags --always --dirty='-dev')
+# Only upstream release tags (vX.Y.Z), fork release tags like v0.88.0-59-ge54a7983 are skipped.
+PINT_VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --exclude '*-*' --always --dirty='-dev')
 PINT_COMMIT  ?= $(shell git rev-parse HEAD)
 
 COVER_DIR     = .cover

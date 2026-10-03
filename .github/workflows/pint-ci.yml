@@ -177,7 +177,7 @@ jobs:
           ./pint version
           for target in linux/arm64 darwin/arm64 darwin/amd64; do
             CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go build -trimpath \
-              -ldflags="-X main.version=$(git describe --tags --always --dirty=-dev) -X main.commit=$(git rev-parse HEAD) -s -w" \
+              -ldflags="-X main.version=$(git describe --tags --match 'v[0-9]*' --exclude '*-*' --always --dirty=-dev) -X main.commit=$(git rev-parse HEAD) -s -w" \
               -o "dist/pint-${target%/*}-${target#*/}" ./cmd/pint
           done
           cp pint dist/pint-linux-amd64
