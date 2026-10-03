@@ -107,6 +107,7 @@ func (p Parser) parseGroup(node *yaml.Node, offsetLine, offsetColumn int, conten
 	}
 
 	setKeys := make(map[string]struct{}, len(node.Content))
+	var vg vmalertGroup
 
 	for _, entry := range mappingNodes(node) {
 		switch entry.key.Value {
@@ -148,6 +149,13 @@ func (p Parser) parseGroup(node *yaml.Node, offsetLine, offsetColumn int, conten
 				return group
 			}
 		case "query_offset":
+			if p.isVMAlert() {
+				group.Error = ParseError{
+					Line: entry.key.Line,
+					Err:  errors.New("query_offset is not supported by vmalert, use eval_offset instead"),
+				}
+				return group
+			}
 			resolved := resolveNode(entry.val)
 			if resolved.Kind != yaml.ScalarNode || resolved.ShortTag() != strTag {
 				group.Error = ParseError{
@@ -233,11 +241,18 @@ func (p Parser) parseGroup(node *yaml.Node, offsetLine, offsetColumn int, conten
 				return group
 			}
 		default:
-			group.Error = ParseError{
-				Line: entry.key.Line,
-				Err:  fmt.Errorf("invalid group key %s", entry.key.Value),
+			handled, perr := p.parseVMAlertGroupKey(entry, &vg)
+			if perr.Err != nil {
+				group.Error = perr
+				return group
 			}
-			return group
+			if !handled {
+				group.Error = ParseError{
+					Line: entry.key.Line,
+					Err:  fmt.Errorf("invalid group key %s", entry.key.Value),
+				}
+				return group
+			}
 		}
 
 		if _, ok := setKeys[entry.key.Value]; ok {
@@ -248,6 +263,13 @@ func (p Parser) parseGroup(node *yaml.Node, offsetLine, offsetColumn int, conten
 			return group
 		}
 		setKeys[entry.key.Value] = struct{}{}
+	}
+
+	if p.isVMAlert() {
+		if perr := validateVMAlertGroup(group, vg); perr.Err != nil {
+			group.Error = perr
+			return group
+		}
 	}
 
 	if _, ok := setKeys["rules"]; ok {
@@ -273,8 +295,15 @@ func (p Parser) parseRuleStrict(rule *yaml.Node, contentLines []string) Rule {
 		}
 	}
 
-	for i, node := range unpackNodes(rule) {
+	nodes := unpackNodes(rule)
+	for i, node := range nodes {
 		if i%2 != 0 {
+			continue
+		}
+		if p.isVMAlertRuleKey(node.Value) && i+1 < len(nodes) {
+			if perr := validateVMAlertRuleKey(node, nodes[i+1]); perr.Err != nil {
+				return Rule{Error: perr}
+			}
 			continue
 		}
 		switch node.Value {

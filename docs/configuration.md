@@ -92,7 +92,13 @@ parser {
   syntax (`WITH` templates, extra functions, optional lookbehind windows, `or` label filters,
   `keep_metric_names` and more) and makes all checks follow MetricsQL semantics.
   When using `metricsql` all `prometheus` servers must use `backend = "victoriametrics"`.
-  Rule files are parsed using the same YAML schema regardless of this option.
+  With `metricsql` rule files are parsed using the
+  [vmalert rule file schema](https://docs.victoriametrics.com/victoriametrics/vmalert/#groups):
+  groups can also set `type`, `eval_offset`, `eval_delay`, `eval_alignment`, `concurrency`,
+  `params`, `headers`, `notifier_headers` and `debug`, rules can also set `debug` and
+  `update_entries_limit`. These fields are validated the way vmalert validates them,
+  `query_offset` is reported because vmalert doesn't support it and only groups with
+  `type: prometheus` (the default) are supported.
   Default value is `promql`.
 - `include` - list of regexp patterns to check when running checks. Only files
   matching those regexp rules will be checked, other modified files will be ignored.

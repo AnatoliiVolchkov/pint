@@ -319,7 +319,10 @@ func (p Parser) parseRule(node *yaml.Node, offsetLine, offsetColumn int, content
 				annotationsPart = newYamlMap(key, part, offsetLine, offsetColumn, contentLines)
 				lines.Last = max(lines.Last, annotationsPart.Lines().Last)
 			default:
-				unknownKeys = append(unknownKeys, key)
+				// vmalert-only rule fields don't affect what pint checks.
+				if !p.isVMAlertRuleKey(key.Value) {
+					unknownKeys = append(unknownKeys, key)
+				}
 			}
 		}
 	}
