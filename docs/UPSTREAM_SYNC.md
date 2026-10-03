@@ -38,10 +38,15 @@ upstream  DISABLE-pushing-to-public-upstream (push)
   plus our commits on top, joined by merge commits from upstream syncs.
 - Upstream changes are brought in with `git merge`, never by rebasing our commits,
   squashing, or re-applying the implementation from scratch.
-- Our own work stays in small, focused commits (see `git log upstream/main..main`).
+- Our own work stays in small, focused commits (see `git log refs/upstream-tags/<tag>..main`).
   Do not squash them during syncs.
-- `main` is never force-pushed. Every sync goes through a `sync/upstream-YYYYMMDD`
+- `main` is never force-pushed. Every sync goes through a `sync/upstream-<tag>`
   branch and a pull request.
+- Only stable upstream releases are merged: tags matching `vX.Y.Z`, never the head of
+  upstream `main` and never `-rc`/`-beta` tags. Upstream tags releases on `main`, so
+  merging one release after another is an ordinary merge. To take a single upstream fix
+  before it is released, cherry-pick it (`git cherry-pick -x <sha>`) in a pull request;
+  the next release merge absorbs it.
 
 ## Manual sync procedure
 
@@ -50,14 +55,19 @@ Run from a clean checkout of `main`:
 ```sh
 git switch main
 git pull --ff-only origin main
-git fetch upstream main --tags
+# Upstream tags go to refs/upstream-tags/* so they never mix with our tags.
+git fetch --no-tags --force upstream '+refs/tags/*:refs/upstream-tags/*'
+
+# Newest stable upstream release:
+TAG=$(git for-each-ref --sort=-version:refname --format='%(refname:lstrip=2)' refs/upstream-tags/ \
+  | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
 
 # Anything to do?
-git rev-list --count main..upstream/main     # 0 means nothing to sync
+git rev-list --count main..refs/upstream-tags/$TAG     # 0 means nothing to sync
 
-BRANCH=sync/upstream-$(date -u +%Y%m%d)
+BRANCH=sync/upstream-$TAG
 git switch -c "$BRANCH" main
-git merge --no-ff upstream/main -m "Merge upstream cloudflare/pint $(git rev-parse --short upstream/main)"
+git merge --no-ff refs/upstream-tags/$TAG -m "Merge upstream release $TAG into main"
 ```
 
 If the merge stops with conflicts:
@@ -105,8 +115,8 @@ Push the branch and open a pull request against `main`:
 ```sh
 git push -u origin "$BRANCH"
 gh pr create --repo AnatoliiVolchkov/pint --base main --head "$BRANCH" \
-  --title "Sync with upstream cloudflare/pint $(git rev-parse --short upstream/main)" \
-  --body "Merge of upstream/main into main."
+  --title "Sync with upstream release $TAG" \
+  --body "Merge of upstream cloudflare/pint $TAG into main."
 ```
 
 Merge the pull request with a **merge commit** (not squash, not rebase) so upstream
@@ -195,18 +205,22 @@ The credential only appears in the job's git configuration, it is never printed.
 and on demand:
 
 ```sh
-gh workflow run upstream-sync.yml -R AnatoliiVolchkov/pint                  # real run
-gh workflow run upstream-sync.yml -R AnatoliiVolchkov/pint -f dry_run=true  # detect and test-merge only
+gh workflow run upstream-sync.yml -R AnatoliiVolchkov/pint                    # newest stable release
+gh workflow run upstream-sync.yml -R AnatoliiVolchkov/pint -f dry_run=true    # detect and test-merge only
+gh workflow run upstream-sync.yml -R AnatoliiVolchkov/pint -f tag=v0.89.0     # a specific release
+gh workflow run upstream-sync.yml -R AnatoliiVolchkov/pint -f mode=branch     # head of upstream main (exception)
 gh run watch -R AnatoliiVolchkov/pint $(gh run list -R AnatoliiVolchkov/pint -w upstream-sync.yml -L1 --json databaseId --jq '.[0].databaseId')
 ```
 
 What it does:
 
-1. Fetches `upstream/main` and counts commits missing from `main`. If there are none it
-   exits successfully without changing anything.
-2. Creates `sync/upstream-YYYYMMDD` from `main` and runs `git merge --no-ff upstream/main`.
+1. Fetches upstream tags into `refs/upstream-tags/*` and picks the newest stable release
+   (`^v[0-9]+\.[0-9]+\.[0-9]+$`, highest version) or the `tag` input. It counts the release's
+   commits missing from `main`; if there are none it exits successfully without changing
+   anything. Between upstream releases every run is a no-op.
+2. Creates `sync/upstream-<tag>` from `main` and merges the release with `git merge --no-ff`.
 3. On conflicts it aborts the merge, prints the conflicting files in the job log and summary,
-   opens (or comments on) an issue titled `Upstream sync conflict: main <sha>` with the
+   opens (or comments on) an issue titled `Upstream sync conflict: release <tag>` with the
    exact commands to resolve it, and fails. Nothing is pushed.
 4. On a clean merge it runs `go build`, `go vet` and `go test ./...`, pushes the sync branch
    and opens or updates a pull request against `main` (a draft if tests failed).
@@ -263,7 +277,7 @@ gh workflow list -R AnatoliiVolchkov/pint --all
 After every sync, check for **new upstream workflows** and decide whether to disable them:
 
 ```sh
-git diff --name-status <previous-upstream-sha> upstream/main -- .github/workflows
+git diff --name-status <previous-tag> refs/upstream-tags/<tag> -- .github/workflows
 gh workflow list -R AnatoliiVolchkov/pint --all
 ```
 
