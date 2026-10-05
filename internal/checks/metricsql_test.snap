@@ -493,6 +493,85 @@
 
 ---
 
+[TestMetricsQLTemplateCheck/external_label_in_annotation - 1]
+[]
+
+---
+
+[TestMetricsQLTemplateCheck/external_label_in_label_template - 1]
+- description: external label in label template
+  content: |4
+
+    - alert: foo
+      expr: sum(up{job="api"}) == 0
+      labels:
+        copy: '{{ $labels.account }}'
+  output: |
+    3 |   expr: sum(up{job="api"}) == 0
+                ^^^ Query is using aggregation that removes all labels.
+    4 |   labels:
+    5 |     copy: '{{ $labels.account }}'
+                             ^^^^^^^^
+                             The template is using `account` label but the query results won't have this
+                             label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `account` label but the query results won't have this label.
+          firstcolumn: 11
+          lastcolumn: 18
+          kind: 0
+        - message: Query is using aggregation that removes all labels.
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 1
+    lines:
+        first: 2
+        last: 5
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/label_missing_from_external_labels_in_annotation - 1]
+- description: label missing from external labels in annotation
+  content: |4
+
+    - alert: foo
+      expr: sum(up{job="api"}) == 0
+      annotations:
+        summary: 'API is down in {{ $labels.account }} {{ $labels.region }}'
+  output: |
+    3 |   expr: sum(up{job="api"}) == 0
+                ^^^ Query is using aggregation that removes all labels.
+      |   [...]
+    5 |     summary: 'API is down in {{ $labels.account }} {{ $labels.region }}'
+                                                                     ^^^^^^^
+            The template is using `region` label but the query results won't
+            have this label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `region` label but the query results won't have this label.
+          firstcolumn: 48
+          lastcolumn: 54
+          kind: 0
+        - message: Query is using aggregation that removes all labels.
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 1
+    lines:
+        first: 2
+        last: 5
+    severity: 2
+    anchor: 0
+
+---
+
 [TestMetricsQLFragileCheck/topk_max_in_alert - 1]
 - description: topk_max in alert
   content: |

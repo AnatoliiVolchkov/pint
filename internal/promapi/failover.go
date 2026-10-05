@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"regexp"
 	"slices"
 	"sync"
@@ -134,6 +135,16 @@ func (fg *FailoverGroup) Exclude() []string {
 
 func (fg *FailoverGroup) Tags() []string {
 	return fg.tags
+}
+
+// StaticExternalLabels returns external labels configured in pint for VictoriaMetrics
+// servers, which vmalert adds to all alerts. ok is false for Prometheus servers,
+// their external labels are only known from the configuration API.
+func (fg *FailoverGroup) StaticExternalLabels() (labels map[string]string, ok bool) {
+	if len(fg.servers) == 0 || fg.servers[0].vm == nil {
+		return nil, false
+	}
+	return maps.Clone(fg.servers[0].vm.externalLabels), true
 }
 
 func (fg *FailoverGroup) UptimeMetric() string {

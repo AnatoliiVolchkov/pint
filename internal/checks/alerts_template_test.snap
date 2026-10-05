@@ -1493,6 +1493,42 @@
 
 ---
 
+[TestTemplateCheck/external_labels_are_not_available_in_Prometheus_annotations - 1]
+- description: external labels are not available in Prometheus annotations
+  content: |
+    - alert: foo
+      expr: sum(up) == 0
+      annotations:
+        summary: '{{ $labels.account }}'
+  output: |
+    2 |   expr: sum(up) == 0
+                ^^^ Query is using aggregation that removes all labels.
+      |   [...]
+    4 |     summary: '{{ $labels.account }}'
+                                ^^^^^^^^
+                                The template is using `account` label but the query results won't have this
+                                label.
+  problem:
+    reporter: alerts/template
+    summary: template uses non-existent label
+    details: ""
+    diagnostics:
+        - message: The template is using `account` label but the query results won't have this label.
+          firstcolumn: 11
+          lastcolumn: 18
+          kind: 0
+        - message: Query is using aggregation that removes all labels.
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 1
+    lines:
+        first: 1
+        last: 4
+    severity: 2
+    anchor: 0
+
+---
+
 [TestTemplateCheck/foo_/_on(...)_bar - 1]
 - description: foo / on(...) bar
   content: |

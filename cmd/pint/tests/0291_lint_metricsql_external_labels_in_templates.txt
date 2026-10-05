@@ -1,0 +1,60 @@
+# vmalert merges external labels into rule labels, so annotations can read them as $labels.
+# Label templates only see query labels.
+! exec pint --no-color --offline --external-label account=demo-account lint rules
+! stdout .
+stderr 'labels=\{"account":"demo-account"\} servers=1'
+! stderr '`ExampleErrors`'
+stderr '`ExampleErrorsLabelTemplate`'
+stderr '`ExampleErrorsRegion`'
+stderr 'The template is using `region` label'
+stderr 'level=INFO msg="Problems found" Bug=2'
+
+# externalLabels set in the config file work the same way.
+! exec pint --no-color --offline -c labels.hcl lint rules
+! stderr '`ExampleErrors`'
+stderr 'level=INFO msg="Problems found" Bug=2'
+
+# Without external labels $labels.account is reported.
+! exec pint --no-color --offline --show-duplicates lint rules
+stderr '`ExampleErrors`'
+stderr 'level=INFO msg="Problems found" Bug=3'
+
+-- rules/1.yml --
+groups:
+  - name: example-errors
+    interval: 30s
+    rules:
+      - alert: ExampleErrors
+        expr: sum by (instance) (rate(http_responses_total{status_code=~"5.."}[5m])) > 1
+        for: 5m
+        annotations:
+          summary: '[{{ $labels.account }}] Error rate on {{ $labels.instance }}'
+      - alert: ExampleErrorsRegion
+        expr: sum by (instance) (rate(http_responses_total{status_code=~"5.."}[5m])) > 2
+        for: 5m
+        annotations:
+          summary: '[{{ $labels.region }}] Error rate'
+      - alert: ExampleErrorsLabelTemplate
+        expr: sum by (instance) (rate(http_responses_total{status_code=~"5.."}[5m])) > 3
+        for: 5m
+        labels:
+          copy: '{{ $labels.account }}'
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri     = "http://127.0.0.1:7999"
+  backend = "victoriametrics"
+}
+
+-- labels.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri            = "http://127.0.0.1:7999"
+  backend        = "victoriametrics"
+  externalLabels = { account = "demo-account" }
+}

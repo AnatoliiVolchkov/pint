@@ -19,7 +19,11 @@ When `query_language` is set to `metricsql` templates are validated the way
   can be used.
 - Annotation templates can use the `alertname` and `alertgroup` labels and all labels
   set in the rule `labels` section, vmalert adds them before expanding annotations.
-  Label templates can only use labels returned by the query.
+- Annotation templates can also use external labels set on vmalert with `-external.label`,
+  vmalert merges them into rule labels. pint reads them from `externalLabels` of
+  VictoriaMetrics servers and from the `--external-label` flag. When a rule is checked
+  against several servers only labels set on all of them are used.
+- Label templates can only use labels returned by the query.
 
 This check will also inspect all alert rules and warn if any of them
 use query return values inside alert labels.

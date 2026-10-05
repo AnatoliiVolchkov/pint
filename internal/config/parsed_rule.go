@@ -114,11 +114,46 @@ func defaultMatchStates(cmd ContextCommandVal) []string {
 	}
 }
 
+// commonExternalLabels returns names of external labels set on every VictoriaMetrics
+// server, it returns nothing if there is any Prometheus server, or no server at all.
+// A label set only on some servers can still be missing when the rule is evaluated.
+func commonExternalLabels(proms []*promapi.FailoverGroup) (names []string) {
+	var common map[string]struct{}
+	for _, p := range proms {
+		labels, ok := p.StaticExternalLabels()
+		if !ok {
+			return nil
+		}
+		if common == nil {
+			common = make(map[string]struct{}, len(labels))
+			for name := range labels {
+				common[name] = struct{}{}
+			}
+			continue
+		}
+		for name := range common {
+			if _, ok := labels[name]; !ok {
+				delete(common, name)
+			}
+		}
+	}
+	for name := range common {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
+}
+
 func baseRules(staticRules []staticRule, proms []*promapi.FailoverGroup, match []Match) (rules []*parsedRule) {
 	const checksPerProm = 11 // Number of checks registered per Prometheus server below.
 	rules = make([]*parsedRule, 0, len(staticRules)+(len(proms)*checksPerProm))
+	externalLabels := commonExternalLabels(proms)
 	for _, sr := range staticRules {
-		rules = append(rules, baseParsedRule(match, sr.name, sr.checker, nil))
+		checker := sr.checker
+		if tc, ok := checker.(checks.TemplateCheck); ok && len(externalLabels) > 0 {
+			checker = tc.WithExternalLabels(externalLabels)
+		}
+		rules = append(rules, baseParsedRule(match, sr.name, checker, nil))
 	}
 
 	for _, p := range proms {

@@ -26,6 +26,16 @@ func TestTemplateCheck(t *testing.T) {
 			prometheus:  noProm,
 		},
 		{
+			// Prometheus adds external labels to alerts after templates are expanded.
+			description: "external labels are not available in Prometheus annotations",
+			content:     "- alert: foo\n  expr: sum(up) == 0\n  annotations:\n    summary: '{{ $labels.account }}'\n",
+			checker: func(_ *promapi.FailoverGroup) checks.RuleChecker {
+				return checks.NewTemplateCheck().WithExternalLabels([]string{"account"})
+			},
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
 			// Prometheus only passes query labels to annotation templates.
 			description: "alertname and rule labels in annotations",
 			content:     "- alert: foo\n  expr: sum(foo) by (job) > 0\n  labels:\n    severity: warning\n  annotations:\n    summary: '{{ $labels.alertname }} {{ $labels.severity }}'\n",

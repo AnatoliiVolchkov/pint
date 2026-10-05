@@ -174,3 +174,25 @@ func TestFailoverGroupCleanCache(t *testing.T) {
 		})
 	}
 }
+
+func TestFailoverGroupStaticExternalLabels(t *testing.T) {
+	vm := NewFailoverGroup("vm", "http://vm", []*Prometheus{
+		NewVictoriaMetrics("vm", "http://vm", "", nil, time.Second, 1, 100, nil, VictoriaMetricsOptions{
+			ExternalLabels: map[string]string{"account": "alpha"},
+			ScrapeInterval: 0,
+		}),
+	}, true, "up", nil, nil, nil)
+	labels, ok := vm.StaticExternalLabels()
+	require.True(t, ok)
+	require.Equal(t, map[string]string{"account": "alpha"}, labels)
+	labels["account"] = "changed"
+	labels, _ = vm.StaticExternalLabels()
+	require.Equal(t, "alpha", labels["account"], "returned labels must be a copy")
+
+	prom := NewFailoverGroup("prom", "http://prom", []*Prometheus{
+		NewPrometheus("prom", "http://prom", "", nil, time.Second, 1, 100, nil),
+	}, true, "up", nil, nil, nil)
+	labels, ok = prom.StaticExternalLabels()
+	require.False(t, ok)
+	require.Nil(t, labels)
+}

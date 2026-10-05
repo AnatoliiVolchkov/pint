@@ -142,8 +142,51 @@ func TestMetricsQLComparisonCheck(t *testing.T) {
 	}))
 }
 
+func newTemplateCheckWithExternalLabels(names ...string) newCheckFn {
+	return func(_ *promapi.FailoverGroup) checks.RuleChecker {
+		return checks.NewTemplateCheck().WithExternalLabels(names)
+	}
+}
+
 func TestMetricsQLTemplateCheck(t *testing.T) {
 	runTests(t, withMetricsQL([]checkTest{
+		{
+			// vmalert merges external labels into rule labels, annotations can use them.
+			description: "external label in annotation",
+			content: `
+- alert: foo
+  expr: sum(up{job="api"}) == 0
+  annotations:
+    summary: 'API is down in {{ $labels.account }} {{ $labels.dc }}'
+`,
+			checker:    newTemplateCheckWithExternalLabels("account", "dc"),
+			prometheus: noProm,
+		},
+		{
+			description: "label missing from external labels in annotation",
+			content: `
+- alert: foo
+  expr: sum(up{job="api"}) == 0
+  annotations:
+    summary: 'API is down in {{ $labels.account }} {{ $labels.region }}'
+`,
+			checker:    newTemplateCheckWithExternalLabels("account"),
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			// Label templates are expanded with query labels only.
+			description: "external label in label template",
+			content: `
+- alert: foo
+  expr: sum(up{job="api"}) == 0
+  labels:
+    copy: '{{ $labels.account }}'
+`,
+			checker:    newTemplateCheckWithExternalLabels("account"),
+			prometheus: noProm,
+			problems:   true,
+		},
 		{
 			// vmalert adds alertname, alertgroup and rule labels before expanding annotations.
 			description: "vmalert labels in annotations",

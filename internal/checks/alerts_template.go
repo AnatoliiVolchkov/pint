@@ -182,10 +182,20 @@ func dummyFuncMap(q string) string {
 }
 
 func NewTemplateCheck() TemplateCheck {
-	return TemplateCheck{}
+	return TemplateCheck{externalLabels: nil}
 }
 
-type TemplateCheck struct{}
+// WithExternalLabels returns a copy of the check that knows the external labels vmalert
+// adds to all rules. vmalert merges them into rule labels, so annotation templates of
+// MetricsQL rules can read them as $labels.<name>.
+func (c TemplateCheck) WithExternalLabels(names []string) TemplateCheck {
+	c.externalLabels = slices.Clone(names)
+	return c
+}
+
+type TemplateCheck struct {
+	externalLabels []string
+}
 
 func (c TemplateCheck) Meta() CheckMeta {
 	return CheckMeta{
@@ -248,6 +258,9 @@ func (c TemplateCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*d
 		}
 		for _, label := range entry.Labels().Items {
 			annotationLabels[label.Key.Value] = struct{}{}
+		}
+		for _, name := range c.externalLabels {
+			annotationLabels[name] = struct{}{}
 		}
 	}
 
