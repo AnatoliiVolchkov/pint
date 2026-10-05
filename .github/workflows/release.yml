@@ -77,46 +77,54 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           COMMIT: ${{ steps.version.outputs.commit }}
         run: |
-          mkdir -p dist
+          # Build outside the checkout, untracked files would mark binaries as vcs.modified=true.
+          BUILD="$RUNNER_TEMP/build"
+          DIST="$RUNNER_TEMP/dist"
+          mkdir -p "$BUILD" "$DIST"
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
             os=${target%/*}
             arch=${target#*/}
             name="pint-${VERSION}-${os}-${arch}"
             ext=""
             [ "$os" = "windows" ] && ext=".exe"
-            mkdir -p "build/$name"
+            mkdir -p "$BUILD/$name"
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
               -ldflags="-X main.version=${VERSION} -X main.commit=${COMMIT} -s -w" \
-              -o "build/$name/pint${ext}" ./cmd/pint
-            cp README.md docs/changelog.md "build/$name/"
+              -o "$BUILD/$name/pint${ext}" ./cmd/pint
+            cp README.md docs/changelog.md "$BUILD/$name/"
             if [ "$os" = "windows" ]; then
-              (cd build && zip -qr "../dist/$name.zip" "$name")
+              (cd "$BUILD" && zip -qr "$DIST/$name.zip" "$name")
             else
-              tar -C build -czf "dist/$name.tar.gz" "$name"
+              tar -C "$BUILD" -czf "$DIST/$name.tar.gz" "$name"
             fi
           done
-          (cd dist && sha256sum -- * > checksums.txt)
-          ls -l dist
+          (cd "$DIST" && sha256sum -- * > checksums.txt)
+          ls -l "$DIST"
 
       - name: Verify version output
         env:
           VERSION: ${{ steps.version.outputs.version }}
           COMMIT: ${{ steps.version.outputs.commit }}
         run: |
-          OUT=$(./build/pint-${VERSION}-linux-amd64/pint version)
+          BIN="$RUNNER_TEMP/build/pint-${VERSION}-linux-amd64/pint"
+          OUT=$("$BIN" version)
           echo "$OUT"
           echo "$OUT" | head -1 | grep -qxF "${VERSION} (revision: ${COMMIT})"
           echo "$OUT" | grep -qE '^metricsql:  v[0-9.]+-pint\.[0-9]+ \(replaces VictoriaMetrics/metricsql v[0-9.]+\)$'
           case "$VERSION" in
             *-dev) echo "::error::working tree is dirty"; exit 1 ;;
           esac
-          echo "$OUT" > build/version.txt
+          if go version -m "$BIN" | grep -q 'vcs.modified=true'; then
+            echo "::error::binary was built from a modified checkout"
+            exit 1
+          fi
+          echo "$OUT" > "$RUNNER_TEMP/build/version.txt"
 
       - name: Upload binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pint-${{ steps.version.outputs.version }}
-          path: dist/
+          path: ${{ runner.temp }}/dist/
 
       - name: Publish release
         if: ${{ inputs.publish }}
@@ -142,16 +150,16 @@ jobs:
             echo
             echo '```'
             echo "\$ pint version"
-            cat build/version.txt
+            cat "$RUNNER_TEMP/build/version.txt"
             echo '```'
             echo
             echo "Changes since ${SINCE}:"
             echo
             git log --no-merges --format='- %s (%h)' -n 100 "${SINCE}..${COMMIT}"
-          } > release-notes.md
-          cat release-notes.md
-          gh release create "$VERSION" dist/* -R "$GITHUB_REPOSITORY" \
+          } > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md"
+          gh release create "$VERSION" "$RUNNER_TEMP"/dist/* -R "$GITHUB_REPOSITORY" \
             --target "$COMMIT" \
             --title "pint $VERSION" \
-            --notes-file release-notes.md \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
             --latest
