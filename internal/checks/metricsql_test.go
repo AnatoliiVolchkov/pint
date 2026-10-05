@@ -97,6 +97,59 @@ func TestMetricsQLSyntaxCheck(t *testing.T) {
 			prometheus:  noProm,
 			problems:    true,
 		},
+		{
+			description: "window after rate",
+			content:     "- alert: foo\n  expr: 'sum by (shard) (rate(requests_total{job=\"api\"})[1m]) < 2'\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "window with step after rate",
+			content:     "- record: foo\n  expr: rate(foo)[5m:1m]\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "window after rate in parens",
+			content:     "- record: foo\n  expr: sum((rate(foo))[5m])\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "window after delta with offset",
+			content:     "- record: foo\n  expr: delta(foo offset 1h)[10m] > 0\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "window after rate of an expression",
+			content:     "- record: foo\n  expr: rate(sum(foo))[5m]\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "subquery inside a rollup function",
+			content:     "- record: foo\n  expr: max_over_time(rate(foo)[1h:1m])\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+		},
+		{
+			description: "subquery of rate with a window",
+			content:     "- record: foo\n  expr: rate(foo[5m])[1h:1m]\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+		},
+		{
+			description: "subquery of an aggregation",
+			content:     "- record: foo\n  expr: sum(foo)[5m]\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+		},
 	}))
 }
 

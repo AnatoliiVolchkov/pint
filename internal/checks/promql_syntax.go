@@ -92,6 +92,8 @@ func (c SyntaxCheck) Check(_ context.Context, entry *discovery.Entry, _ []*disco
 			Diagnostics: []diags.Diagnostic{diag},
 			Severity:    Fatal,
 		})
+	} else if expr.Language().Name() == metricsql.Name {
+		problems = append(problems, c.checkMisplacedWindows(expr)...)
 	}
 	return problems
 }

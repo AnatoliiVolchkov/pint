@@ -1,0 +1,48 @@
+# rate(foo)[1m] is valid MetricsQL, but [1m] doesn't set the rate() window,
+# it creates a subquery of rate(foo) with a window based on the query step.
+exec pint --no-color lint rules
+! stdout .
+cmp stderr stderr.txt
+
+# PromQL doesn't allow it at all.
+! exec pint --no-color -c promql.hcl lint rules
+! stdout .
+stderr 'ranges only allowed for vector selectors'
+stderr 'level=INFO msg="Problems found" Fatal=2'
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Checking Prometheus rules" entries=3 workers=10 online=true
+Warning: misplaced lookbehind window (promql/syntax)
+  ---> rules/1.yml:5 -> `RequestRateTooLow`
+5 |         expr: sum by (example_shard) (rate(api_requests_total{job="db"})[1m]) < 2
+                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     `[1m]` is applied to the results of `rate()`, not to its argument, `rate()`
+     has no window and MetricsQL picks one from the query step. Did you mean
+     `rate(api_requests_total{job="db"}[1m])`?
+
+level=INFO msg="Problems found" Warning=1
+-- rules/1.yml --
+groups:
+  - name: requests
+    rules:
+      - alert: RequestRateTooLow
+        expr: sum by (example_shard) (rate(api_requests_total{job="db"})[1m]) < 2
+        for: 5m
+      - alert: RequestRateTooLowFixed
+        expr: sum by (example_shard) (rate(api_requests_total{job="db"}[1m])) < 2
+        for: 5m
+      - alert: RequestRateMaxOverHour
+        expr: max_over_time(sum(rate(api_requests_total{job="db"}))[1h:1m]) < 2
+        for: 5m
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+
+-- promql.hcl --
+parser {
+  query_language = "promql"
+}

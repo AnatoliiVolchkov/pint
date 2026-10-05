@@ -22,6 +22,8 @@
 - New global `--external-label` flag and `PINT_EXTERNAL_LABELS` environment variable to set
   vmalert external labels, for example `--external-label account=alpha,dc=test`, on all
   VictoriaMetrics servers.
+- [promql/syntax](checks/promql/syntax.md) check now warns about MetricsQL queries like
+  `rate(foo)[5m]`, where the window is applied to `rate()` results and not to `foo`.
 
 ### Fixed
 

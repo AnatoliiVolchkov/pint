@@ -74,6 +74,182 @@
 
 ---
 
+[TestMetricsQLSyntaxCheck/window_after_rate - 1]
+- description: window after rate
+  content: |
+    - alert: foo
+      expr: 'sum by (shard) (rate(requests_total{job="api"})[1m]) < 2'
+  output: |
+    2 |   expr: 'sum by (shard) (rate(requests_total{job="api"})[1m]) < 2'
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                 `[1m]` is applied to the results of `rate()`, not to its argument, `rate()`
+                                 has no window and MetricsQL picks one from the query step. Did you mean
+                                 `rate(requests_total{job="api"}[1m])`?
+  problem:
+    reporter: promql/syntax
+    summary: misplaced lookbehind window
+    details: |-
+        In MetricsQL a lookbehind window placed after a function call, like `rate(foo)[5m]`, is applied to the function results, not to the time series selector.
+        The function itself has no window, so MetricsQL picks one at query time from the query step, vmalert sends `-datasource.queryStep` as the step, it's `5m` by default.
+        `[5m]` turns the function results into a subquery and a subquery used outside of rollup functions is wrapped in `default_rollup()`, which returns the last value.
+        The result is the same as `rate(foo)`, to calculate it over `5m` put the window inside: `rate(foo[5m])`.
+        [Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.
+    diagnostics:
+        - message: '`[1m]` is applied to the results of `rate()`, not to its argument, `rate()` has no window and MetricsQL picks one from the query step. Did you mean `rate(requests_total{job="api"}[1m])`?'
+          firstcolumn: 17
+          lastcolumn: 51
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/window_with_step_after_rate - 1]
+- description: window with step after rate
+  content: |
+    - record: foo
+      expr: rate(foo)[5m:1m]
+  output: |
+    2 |   expr: rate(foo)[5m:1m]
+                ^^^^^^^^^^^^^^^^
+                `[5m]` is applied to the results of `rate()`, not to its argument, `rate()` has no window
+                and MetricsQL picks one from the query step. Did you mean `rate(foo[5m])`?
+  problem:
+    reporter: promql/syntax
+    summary: misplaced lookbehind window
+    details: |-
+        In MetricsQL a lookbehind window placed after a function call, like `rate(foo)[5m]`, is applied to the function results, not to the time series selector.
+        The function itself has no window, so MetricsQL picks one at query time from the query step, vmalert sends `-datasource.queryStep` as the step, it's `5m` by default.
+        `[5m]` turns the function results into a subquery and a subquery used outside of rollup functions is wrapped in `default_rollup()`, which returns the last value.
+        The result is the same as `rate(foo)`, to calculate it over `5m` put the window inside: `rate(foo[5m])`.
+        [Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.
+    diagnostics:
+        - message: '`[5m]` is applied to the results of `rate()`, not to its argument, `rate()` has no window and MetricsQL picks one from the query step. Did you mean `rate(foo[5m])`?'
+          firstcolumn: 1
+          lastcolumn: 16
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/window_after_rate_in_parens - 1]
+- description: window after rate in parens
+  content: |
+    - record: foo
+      expr: sum((rate(foo))[5m])
+  output: |
+    2 |   expr: sum((rate(foo))[5m])
+                    ^^^^^^^^^^^^^^^
+                    `[5m]` is applied to the results of `rate()`, not to its argument, `rate()` has no
+                    window and MetricsQL picks one from the query step. Did you mean `rate(foo[5m])`?
+  problem:
+    reporter: promql/syntax
+    summary: misplaced lookbehind window
+    details: |-
+        In MetricsQL a lookbehind window placed after a function call, like `rate(foo)[5m]`, is applied to the function results, not to the time series selector.
+        The function itself has no window, so MetricsQL picks one at query time from the query step, vmalert sends `-datasource.queryStep` as the step, it's `5m` by default.
+        `[5m]` turns the function results into a subquery and a subquery used outside of rollup functions is wrapped in `default_rollup()`, which returns the last value.
+        The result is the same as `rate(foo)`, to calculate it over `5m` put the window inside: `rate(foo[5m])`.
+        [Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.
+    diagnostics:
+        - message: '`[5m]` is applied to the results of `rate()`, not to its argument, `rate()` has no window and MetricsQL picks one from the query step. Did you mean `rate(foo[5m])`?'
+          firstcolumn: 5
+          lastcolumn: 19
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/window_after_delta_with_offset - 1]
+- description: window after delta with offset
+  content: |
+    - record: foo
+      expr: delta(foo offset 1h)[10m] > 0
+  output: |
+    2 |   expr: delta(foo offset 1h)[10m] > 0
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+                `[10m]` is applied to the results of `delta()`, not to its argument, `delta()` has no window
+                and MetricsQL picks one from the query step.
+  problem:
+    reporter: promql/syntax
+    summary: misplaced lookbehind window
+    details: |-
+        In MetricsQL a lookbehind window placed after a function call, like `rate(foo)[5m]`, is applied to the function results, not to the time series selector.
+        The function itself has no window, so MetricsQL picks one at query time from the query step, vmalert sends `-datasource.queryStep` as the step, it's `5m` by default.
+        `[5m]` turns the function results into a subquery and a subquery used outside of rollup functions is wrapped in `default_rollup()`, which returns the last value.
+        The result is the same as `rate(foo)`, to calculate it over `5m` put the window inside: `rate(foo[5m])`.
+        [Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.
+    diagnostics:
+        - message: '`[10m]` is applied to the results of `delta()`, not to its argument, `delta()` has no window and MetricsQL picks one from the query step.'
+          firstcolumn: 1
+          lastcolumn: 25
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/window_after_rate_of_an_expression - 1]
+- description: window after rate of an expression
+  content: |
+    - record: foo
+      expr: rate(sum(foo))[5m]
+  output: |
+    2 |   expr: rate(sum(foo))[5m]
+                ^^^^^^^^^^^^^^^^^^
+                `[5m]` is applied to the results of `rate()`, not to its argument, `rate()` has no window
+                and MetricsQL picks one from the query step.
+  problem:
+    reporter: promql/syntax
+    summary: misplaced lookbehind window
+    details: |-
+        In MetricsQL a lookbehind window placed after a function call, like `rate(foo)[5m]`, is applied to the function results, not to the time series selector.
+        The function itself has no window, so MetricsQL picks one at query time from the query step, vmalert sends `-datasource.queryStep` as the step, it's `5m` by default.
+        `[5m]` turns the function results into a subquery and a subquery used outside of rollup functions is wrapped in `default_rollup()`, which returns the last value.
+        The result is the same as `rate(foo)`, to calculate it over `5m` put the window inside: `rate(foo[5m])`.
+        [Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.
+    diagnostics:
+        - message: '`[5m]` is applied to the results of `rate()`, not to its argument, `rate()` has no window and MetricsQL picks one from the query step.'
+          firstcolumn: 1
+          lastcolumn: 18
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/subquery_inside_a_rollup_function - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/subquery_of_rate_with_a_window - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/subquery_of_an_aggregation - 1]
+[]
+
+---
+
 [TestMetricsQLAlertsForCheck/valid_for - 1]
 []
 
