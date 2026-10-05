@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: oom-alerts
+spec:
+  groups:
+    - name: oom
+      rules:
+        - alert: OomKill
+          expr: increase(node_vmstat_oom_kill[5m]) > 0
+          labels:
+            severity: page
+          annotations:
+            summary: "OOM on {{ $labels.instance }}"

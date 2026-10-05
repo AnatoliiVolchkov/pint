@@ -1,0 +1,60 @@
+groups:
+  - name: standard-format
+    interval: 30s
+    rules:
+      # Compliant: exactly the format from the standard.
+      - alert: HostOutOfMemory
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team_name: "Example Team"
+          tags: "Alpha,Beta,Gamma"
+        annotations:
+          actions: "RestartService,ClearCache"
+          summary: "Memory low on {{ $labels.instance }}"
+          description: "Available memory is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          grafana_url: "{{ $externalURL }}/d/example/?viewPanel=78&var-instance={{ $labels.instance }}"
+          runbook_url: "https://wiki.example.com/runbooks/HostOutOfMemory"
+          logs_url: "https://logs.example.com/search#/?_a=(query:(query:'host.name:\"{{ $labels.instance }}\"'))"
+
+      # Compliant, absolute Grafana URL and severity high.
+      - alert: HostHighCpuLoad
+        expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.8
+        for: 10m
+        labels:
+          severity: high
+          team_name: "Example Team"
+          tags: "Monitoring,Node"
+        annotations:
+          actions: "ScaleUp"
+          summary: "High CPU on {{ $labels.instance }}"
+          description: "CPU utilization is {{ $value | humanizePercentage }}"
+          grafana_url: "https://grafana.example.com/d/example/?viewPanel=3"
+          runbook_url: "https://wiki.example.com/runbooks/HostHighCpuLoad"
+          logs_url: "https://logs.example.com/search"
+
+      # Broken: only the old fields, severity info.
+      - alert: OldFormat
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Target {{ $labels.instance }} is down"
+
+      # Broken: bad values in every field.
+      - alert: bad_values_alert
+        expr: up == 0
+        for: 2h
+        labels:
+          severity: page
+          team_name: ""
+          tags: "Alpha, Beta"
+        annotations:
+          actions: "Restart Service"
+          summary: ""
+          description: "Target is down"
+          grafana_url: "grafana/d/123"
+          runbook_url: "<link to runbook>"
+          logs_url: "logs.example.com"

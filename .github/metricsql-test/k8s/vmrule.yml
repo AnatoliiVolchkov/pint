@@ -1,0 +1,23 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: disk-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: disk
+      interval: 30s
+      rules:
+        - alert: DiskAlmostFull
+          expr: node_filesystem_avail_bytes{fstype="ext4"} / node_filesystem_size_bytes < 0.05
+          for: 10m
+          labels:
+            severity: high
+            team_name: "Example Team"
+            tags: "Monitoring,Disk"
+          annotations:
+            actions: "ClearCache"
+            summary: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }}"
+            description: "Free space is {{ $value | humanizePercentage }}"
+            grafana_url: "https://grafana.example.com/d/x"
+            logs_url: "https://logs.example.com/search"

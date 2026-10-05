@@ -32,6 +32,26 @@ upstream  https://github.com/cloudflare/pint.git (fetch)
 upstream  DISABLE-pushing-to-public-upstream (push)
 ```
 
+## Fork-only paths
+
+Files that exist only in this fork never conflict with upstream merges. Put fork
+additions into new files under these paths instead of editing upstream files:
+
+| Path | Contents |
+|---|---|
+| `.github/actions/` | `private-go-modules` composite action |
+| `.github/scripts/` | `upstream-sync.sh` |
+| `.github/metricsql-test/` | MetricsQL rules and pint config tested against real VictoriaMetrics, see its README |
+| `.github/workflows/pint-ci.yml`, `integration.yml`, `release.yml`, `upstream-sync.yml` | fork CI, sync and release workflows |
+| `docs/UPSTREAM_SYNC.md`, `docs/METRICSQL_TESTING.md` | fork documentation |
+
+Check that a new path doesn't exist upstream before using it:
+
+```sh
+git fetch upstream main
+git log --oneline upstream/main -- <path>    # empty output means upstream never had it
+```
+
 ## Branch model
 
 - `main` is the maintained product branch. It contains the complete upstream history

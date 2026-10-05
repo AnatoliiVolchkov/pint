@@ -1,0 +1,61 @@
+groups:
+  # Valid: every vmalert-only group and rule field, alert follows the standard.
+  - name: vmalert-fields
+    interval: 30s
+    type: prometheus
+    eval_offset: 10s
+    eval_alignment: false
+    concurrency: 2
+    limit: 100
+    params:
+      nocache: ["1"]
+    headers:
+      - "X-Team: sre"
+    notifier_headers:
+      - "X-Env: prod"
+    rules:
+      - alert: HostHighLoad
+        expr: WITH (cf = {job="node"}) node_load15{cf} / on(instance) count(node_cpu_seconds_total{cf, mode="idle"}) by (instance) > 4
+        for: 15m
+        debug: false
+        update_entries_limit: 10
+        labels:
+          severity: warning
+          team_name: "Example Team"
+          tags: "Monitoring,Node"
+        annotations:
+          actions: "ScaleUp"
+          summary: "High load on {{ $labels.instance }}"
+          description: "Load per CPU is {{ $value | humanize }}"
+          grafana_url: "{{ $externalURL }}/d/example/?viewPanel=7"
+          logs_url: "https://logs.example.com/search"
+          graph: "https://prom.example.com/vmui/#/?g0.expr={{ $expr | queryEscape }}"
+
+  # Broken: Prometheus-only field, vmalert refuses to load it.
+  - name: prometheus-query-offset
+    query_offset: 1m
+    rules:
+      - alert: QueryOffsetGroup
+        expr: up == 0
+
+  # Broken: eval_offset longer than interval.
+  - name: offset-too-long
+    interval: 30s
+    eval_offset: 1m
+    rules:
+      - alert: OffsetTooLong
+        expr: up == 0
+
+  # Broken: negative concurrency.
+  - name: negative-concurrency
+    concurrency: -1
+    rules:
+      - alert: NegativeConcurrency
+        expr: up == 0
+
+  # Broken: Graphite group, its expressions are not MetricsQL.
+  - name: graphite
+    type: graphite
+    rules:
+      - alert: GraphiteAlert
+        expr: "summarize(app.errors, '5min') > 10"

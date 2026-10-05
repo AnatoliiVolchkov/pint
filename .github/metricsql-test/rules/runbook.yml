@@ -1,0 +1,96 @@
+groups:
+  - name: runbook-by-severity
+    interval: 30s
+    rules:
+      # OK: critical with runbook_url.
+      - alert: CriticalWithRunbook
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team_name: "Example Team"
+          tags: "Monitoring,Node"
+        annotations:
+          actions: "RestartService,ClearCache"
+          summary: "Memory low on {{ $labels.instance }}"
+          description: "Available memory is {{ $value | humanizePercentage }}"
+          grafana_url: "{{ $externalURL }}/d/example/?viewPanel=78&var-instance={{ $labels.instance }}"
+          runbook_url: "https://wiki.example.com/runbooks/CriticalWithRunbook"
+          logs_url: "https://logs.example.com/search"
+
+      # BUG: critical without runbook_url.
+      - alert: CriticalWithoutRunbook
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.02
+        for: 5m
+        labels:
+          severity: critical
+          team_name: "Example Team"
+          tags: "Monitoring,Node"
+        annotations:
+          actions: "RestartService"
+          summary: "Memory critical on {{ $labels.instance }}"
+          description: "Available memory is {{ $value | humanizePercentage }}"
+          grafana_url: "{{ $externalURL }}/d/example/?viewPanel=78"
+          logs_url: "https://logs.example.com/search"
+
+      # OK: high without runbook_url.
+      - alert: HighWithoutRunbook
+        expr: WITH (cf = {job="node"}) 1 - avg(rate(node_cpu_seconds_total{cf, mode="idle"})) by (instance) > 0.9
+        for: 10m
+        labels:
+          severity: high
+          team_name: "Example Team"
+          tags: "Monitoring,Node"
+        annotations:
+          actions: "ScaleUp"
+          summary: "High CPU on {{ $labels.instance }}"
+          description: "CPU utilization is {{ $value | humanizePercentage }}"
+          grafana_url: "{{ $externalURL }}/d/example/?viewPanel=3"
+          logs_url: "https://logs.example.com/search"
+
+      # OK: warning without runbook_url.
+      - alert: WarningWithoutRunbook
+        expr: rate(node_vmstat_pgmajfault) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team_name: "Example Team"
+          tags: "Monitoring,Node"
+        annotations:
+          actions: "ClearCache"
+          summary: "Major page faults on {{ $labels.instance }}"
+          description: "Rate is {{ $value | humanize }}/s"
+          grafana_url: "https://grafana.example.com/d/example/?viewPanel=5"
+          logs_url: "https://logs.example.com/search"
+
+      # BUG: warning with runbook_url that is not a link.
+      - alert: WarningWithBadRunbook
+        expr: rate(node_vmstat_pgmajfault) > 5000
+        for: 5m
+        labels:
+          severity: warning
+          team_name: "Example Team"
+          tags: "Monitoring,Node"
+        annotations:
+          actions: "ClearCache"
+          summary: "Major page faults on {{ $labels.instance }}"
+          description: "Rate is {{ $value | humanize }}/s"
+          grafana_url: "https://grafana.example.com/d/example/?viewPanel=5"
+          runbook_url: "see wiki"
+          logs_url: "https://logs.example.com/search"
+
+      # BUG: critical with runbook_url that is not a link.
+      - alert: CriticalWithBadRunbook
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.01
+        for: 5m
+        labels:
+          severity: critical
+          team_name: "Example Team"
+          tags: "Monitoring,Node"
+        annotations:
+          actions: "RestartService"
+          summary: "Memory critical on {{ $labels.instance }}"
+          description: "Available memory is {{ $value | humanizePercentage }}"
+          grafana_url: "{{ $externalURL }}/d/example/?viewPanel=78"
+          runbook_url: "TODO"
+          logs_url: "https://logs.example.com/search"

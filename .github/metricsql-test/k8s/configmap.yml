@@ -1,0 +1,48 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node-alerts
+  namespace: monitoring
+data:
+  node-alerts.yml: |
+    groups:
+      - name: node
+        interval: 30s
+        rules:
+          - alert: HostOutOfMemory
+            expr: |
+              WITH (cf = {job="node"})
+              node_memory_MemAvailable_bytes{cf} / node_memory_MemTotal_bytes{cf} < 0.05
+            for: 5m
+            labels:
+              severity: critical
+              team_name: "Example Team"
+              tags: "Monitoring,Node"
+            annotations:
+              actions: "RestartService"
+              summary: "Memory low on {{ $labels.instance }}"
+              description: "Available memory is {{ $value | humanizePercentage }}"
+              grafana_url: "{{ $externalURL }}/d/example/?viewPanel=78"
+              logs_url: "https://logs.example.com/search"
+          - alert: HostCpuBroken
+            expr: sum(rate(node_cpu_seconds_total{mode="idle"}) by (instance) < 0.1
+            for: 5m
+            labels:
+              severity: warning
+              team_name: "Example Team"
+              tags: "Monitoring,Node"
+            annotations:
+              actions: "ScaleUp"
+              summary: "CPU on {{ $labels.instance }}"
+              description: "CPU is {{ $value }}"
+              grafana_url: "https://grafana.example.com/d/x"
+              logs_url: "https://logs.example.com/search"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: not-rules
+spec:
+  ports:
+    - port: 80
