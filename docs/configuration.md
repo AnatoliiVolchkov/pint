@@ -384,6 +384,21 @@ prometheus "$name" {
   Only valid with `backend = "victoriametrics"`, Prometheus servers expose them via the
   configuration API. Set it to external labels configured on vmalert
   (`-external.label` flag).
+  External labels can also be passed on the command line with the global
+  `--external-label` flag or the `PINT_EXTERNAL_LABELS` environment variable, using the
+  same `name=value` format as vmalert, with labels separated by commas or set by repeating
+  the flag:
+
+  ```sh
+  pint --external-label account=alpha,dc=test lint rules
+  pint --external-label account=alpha --external-label dc=test lint rules
+  PINT_EXTERNAL_LABELS=account=alpha,dc=test pint lint rules
+  ```
+
+  These labels are added to `externalLabels` of every server and discovery template using
+  `backend = "victoriametrics"`, overriding labels with the same name from the config file.
+  The flag takes precedence over the environment variable. Prometheus servers are not
+  changed, they expose their external labels via the configuration API.
 - `publicURI` - optional URI to use instead of `uri` in problems reported to users.
   Set it if Prometheus links used by pint in comments submitted to BitBucket or GitHub
   should use different URIs than the one used by pint when querying Prometheus.

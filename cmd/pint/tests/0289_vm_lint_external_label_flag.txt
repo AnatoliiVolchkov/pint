@@ -1,0 +1,64 @@
+http response vm ^/flags$ 200 -retentionPeriod="7d"
+http response vm /api/v1/metadata 200 {"status":"success","data":{}}
+http response vm /api/v1/query_range 200 {"status":"success","data":{"resultType":"matrix","result":[]}}
+http response vm /api/v1/query 200 {"status":"success","isPartial":false,"data":{"resultType":"vector","result":[]},"stats":{"seriesFetched":"0","executionTimeMsec":0}}
+http start vm 127.0.0.1:7289
+
+# Without external labels the template uses a label vmalert doesn't set.
+! exec pint --no-color lint rules
+! stdout .
+stderr 'The template is using `account` external label'
+! stderr 'labels/conflict'
+! stderr 'external labels from the command line'
+
+# --external-label accepts comma separated labels.
+exec pint --no-color --external-label account=alpha,dc=test lint rules
+! stdout .
+stderr 'msg="Using external labels from the command line" labels=\{"account":"alpha","dc":"test"\} servers=1'
+! stderr 'alerts/external_labels'
+stderr 'Warning: conflicting labels \(labels/conflict\)'
+stderr 'already has dc="test" label set'
+
+# The flag can be repeated.
+exec pint --no-color --external-label account=alpha --external-label dc=test lint rules
+stderr 'labels=\{"account":"alpha","dc":"test"\} servers=1'
+! stderr 'alerts/external_labels'
+
+# Labels can come from the PINT_EXTERNAL_LABELS environment variable.
+env PINT_EXTERNAL_LABELS=account=alpha
+exec pint --no-color lint rules
+stderr 'labels=\{"account":"alpha"\} servers=1'
+! stderr 'alerts/external_labels'
+! stderr 'labels/conflict'
+
+# The flag takes precedence over the environment variable.
+env PINT_EXTERNAL_LABELS=dc=test
+! exec pint --no-color --external-label region=eu lint rules
+stderr 'labels=\{"region":"eu"\} servers=1'
+stderr 'The template is using `account` external label'
+
+-- rules/1.yml --
+groups:
+  - name: vm
+    rules:
+      - alert: Down
+        expr: up == 0
+        for: 5m
+        labels:
+          dc: test
+        annotations:
+          summary: '{{ $labels.instance }} in account {{ $externalLabels.account }} is down'
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri      = "http://127.0.0.1:7289"
+  backend  = "victoriametrics"
+  timeout  = "5s"
+  required = true
+}
+checks {
+  enabled = ["alerts/external_labels", "labels/conflict"]
+}

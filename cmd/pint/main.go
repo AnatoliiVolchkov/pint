@@ -20,6 +20,9 @@ const (
 	noColorFlag  = "no-color"
 	workersFlag  = "workers"
 	showDupsFlag = "show-duplicates"
+
+	externalLabelFlag    = "external-label"
+	externalLabelsEnvVar = "PINT_EXTERNAL_LABELS"
 )
 
 var (
@@ -72,6 +75,13 @@ func newApp() *cli.Command {
 				Value:   false,
 				Usage:   "Disable all checks that send live queries to Prometheus servers.",
 			},
+			&cli.StringSliceFlag{
+				Name: externalLabelFlag,
+				Usage: "External labels set on vmalert with -external.label, as name=value pairs " +
+					"separated by commas or by repeating the flag (example: account=alpha,dc=test). " +
+					"Added to externalLabels of all VictoriaMetrics servers, overriding labels with the same name.",
+				Sources: cli.EnvVars(externalLabelsEnvVar),
+			},
 			&cli.BoolFlag{
 				Name:    showDupsFlag,
 				Aliases: []string{"s"},
@@ -117,6 +127,10 @@ func actionSetup(c *cli.Command) (meta actionMeta, err error) {
 		meta.cfg.Parser.Exclude = append(meta.cfg.Parser.Exclude, c.String(configFlag))
 	}
 
+	if err = applyExternalLabels(c, &meta.cfg); err != nil {
+		return meta, err
+	}
+
 	meta.cfg.SetDisabledChecks(c.StringSlice(disabledFlag))
 	enabled := c.StringSlice(enabledFlag)
 	if len(enabled) > 0 {
@@ -129,6 +143,34 @@ func actionSetup(c *cli.Command) (meta actionMeta, err error) {
 	}
 
 	return meta, nil
+}
+
+// applyExternalLabels adds labels from the --external-label flag or the
+// PINT_EXTERNAL_LABELS environment variable to all VictoriaMetrics servers.
+func applyExternalLabels(c *cli.Command, cfg *config.Config) error {
+	labels, err := config.ParseExternalLabels(c.StringSlice(externalLabelFlag))
+	if err != nil {
+		return fmt.Errorf("invalid --%s flag or %s environment variable: %w", externalLabelFlag, externalLabelsEnvVar, err)
+	}
+	if len(labels) == 0 {
+		return nil
+	}
+	updated := cfg.SetExternalLabels(labels)
+	if updated == 0 {
+		slog.LogAttrs(
+			context.Background(), slog.LevelWarn,
+			"External labels are only used by VictoriaMetrics servers, no prometheus server uses the victoriametrics backend",
+			slog.Any("labels", labels),
+		)
+		return nil
+	}
+	slog.LogAttrs(
+		context.Background(), slog.LevelInfo,
+		"Using external labels from the command line",
+		slog.Any("labels", labels),
+		slog.Int("servers", updated),
+	)
+	return nil
 }
 
 func main() {

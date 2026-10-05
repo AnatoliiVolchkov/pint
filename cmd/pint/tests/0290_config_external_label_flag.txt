@@ -1,0 +1,47 @@
+# Labels from the command line are merged into externalLabels of VictoriaMetrics servers,
+# overriding labels with the same name. Prometheus servers are not changed.
+exec pint --no-color --external-label account=alpha,dc=test config
+! stdout .
+stderr '"externalLabels": \{\n\s+"account": "alpha",\n\s+"cluster": "demo",\n\s+"dc": "test"\n\s+\},\n\s+"name": "vm"'
+! stderr '"externalLabels": \{\n\s+"account": "alpha",\n\s+"dc": "test"\n\s+\},\n\s+"name": "prom"'
+stderr '"name": "prom",\n\s+"uri": "http://127.0.0.1:7998"'
+
+# Without the flag the config file is used as is.
+exec pint --no-color config
+stderr '"externalLabels": \{\n\s+"account": "from-config",\n\s+"cluster": "demo"\n\s+\}'
+
+# Invalid labels are rejected.
+! exec pint --no-color --external-label account config
+stderr 'invalid --external-label flag or PINT_EXTERNAL_LABELS environment variable: invalid external label \\"account\\", expected name=value'
+! exec pint --no-color --external-label bad-name=x lint rules
+stderr 'invalid external label name \\"bad-name\\"'
+env PINT_EXTERNAL_LABELS=account=a,account=b
+! exec pint --no-color config
+stderr 'external label \\"account\\" is set twice'
+env PINT_EXTERNAL_LABELS=
+
+# With only Prometheus servers the labels are not used.
+exec pint --no-color -c prom.hcl --external-label account=alpha config
+stderr 'level=WARN msg="External labels are only used by VictoriaMetrics servers, no prometheus server uses the victoriametrics backend" labels=\{"account":"alpha"\}'
+
+-- rules/1.yml --
+groups:
+  - name: g
+    rules:
+      - record: foo
+        expr: sum(up)
+
+-- .pint.hcl --
+prometheus "vm" {
+  uri            = "http://127.0.0.1:7999"
+  backend        = "victoriametrics"
+  externalLabels = { cluster = "demo", account = "from-config" }
+}
+prometheus "prom" {
+  uri = "http://127.0.0.1:7998"
+}
+
+-- prom.hcl --
+prometheus "prom" {
+  uri = "http://127.0.0.1:7998"
+}

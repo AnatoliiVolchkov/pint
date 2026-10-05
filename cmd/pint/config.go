@@ -27,6 +27,10 @@ func actionConfig(_ context.Context, c *cli.Command) (err error) {
 		return fmt.Errorf("failed to load config file %q: %w", c.String(configFlag), err)
 	}
 
+	if err = applyExternalLabels(c, &cfg); err != nil {
+		return err
+	}
+
 	fmt.Fprintln(os.Stderr, cfg.String())
 
 	return nil

@@ -19,6 +19,9 @@
 - `pint version` now also prints the version of the MetricsQL parser pint was built with.
 - With `query_language = "metricsql"` rule files can use vmalert-only group and rule fields
   (`eval_offset`, `concurrency`, `headers`, `debug`, `update_entries_limit` and others).
+- New global `--external-label` flag and `PINT_EXTERNAL_LABELS` environment variable to set
+  vmalert external labels, for example `--external-label account=alpha,dc=test`, on all
+  VictoriaMetrics servers.
 
 ### Fixed
 
