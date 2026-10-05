@@ -127,10 +127,11 @@ jobs:
           UPSTREAM: ${{ steps.version.outputs.upstream }}
         run: |
           # Commits since the previous fork release, or since the upstream release for the first one.
+          # The checkout step fetched all tags, releases are listed newest first.
           PREV=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 50 --json tagName --jq '.[].tagName' |
             while read -r tag; do
-              git fetch -q --no-tags origin "+refs/tags/$tag:refs/tags/$tag" 2>/dev/null || continue
-              if git merge-base --is-ancestor "$tag" "$COMMIT" && [ "$(git rev-parse "$tag^{commit}")" != "$COMMIT" ]; then
+              sha=$(git rev-parse -q --verify "refs/tags/$tag^{commit}") || continue
+              if [ "$sha" != "$COMMIT" ] && git merge-base --is-ancestor "$sha" "$COMMIT"; then
                 echo "$tag"
                 break
               fi
