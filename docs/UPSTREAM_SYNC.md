@@ -44,6 +44,7 @@ additions into new files under these paths instead of editing upstream files:
 | `.github/metricsql-test/` | MetricsQL rules and pint config tested against real VictoriaMetrics, see its README |
 | `.github/workflows/pint-ci.yml`, `integration.yml`, `release.yml`, `upstream-sync.yml` | fork CI, sync and release workflows |
 | `docs/UPSTREAM_SYNC.md`, `docs/METRICSQL_TESTING.md` | fork documentation |
+| `.claude/` | onboarding docs for AI coding agents (`.claude/CLAUDE.md`, `.claude/docs/`) |
 
 Check that a new path doesn't exist upstream before using it:
 
