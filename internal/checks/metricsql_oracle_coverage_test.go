@@ -43,7 +43,7 @@ var oracleRequirements = map[string]struct {
 	checks.AggregationCheckName:          {req: reqQueryOffline},
 	checks.CounterCheckName: {
 		req:    reqQueryOnlineNoPositive,
-		reason: "needs metric metadata, VictoriaMetrics returns none; positive cases use mocked metadata in metricsql_test.go",
+		reason: "needs metric metadata, the VictoriaMetrics v1.115.0 test images return none; positive cases use mocked metadata in metricsql_test.go",
 	},
 	checks.FeaturesCheckName: {
 		req:    reqQueryOnlineNoPositive,

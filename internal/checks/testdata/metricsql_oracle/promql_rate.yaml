@@ -130,7 +130,7 @@ cases:
     expect: []
   - name: rate on a gauge without metadata
     kind: negative
-    comment: Detecting rate() on gauges needs metric metadata which VictoriaMetrics doesn't serve, so it's never reported against VictoriaMetrics.
+    comment: Detecting rate() on gauges needs metric metadata which the VictoriaMetrics v1.115.0 test images don't serve (stored since v1.130.0), so it's never reported against them.
     settings:
       scrapeInterval: 1m
     rules: |
