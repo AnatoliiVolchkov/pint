@@ -307,6 +307,67 @@ func TestMetricsQLTemplateCheck(t *testing.T) {
 			prometheus: noProm,
 		},
 		{
+			// $interval was added to vmalert templates after v1.145.0.
+			description: "vmalert interval template variable",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    summary: 'evaluated every {{ $interval }} {{ .Interval.Seconds }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+		},
+		{
+			// vmalert v1.153.0 doesn't have toDuration, urlQueryEscape, graphLink, tableLink and tmpl.
+			description: "Prometheus only template function toDuration",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    summary: 'down for {{ $value | toDuration }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			description: "Prometheus only template function urlQueryEscape",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    link: 'https://vm/vmui/#/?g0.expr={{ $expr | urlQueryEscape }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			description: "Prometheus only template function in a branch that never runs",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    link: '{{ if false }}{{ graphLink "foo" }}{{ tableLink "foo" }}{{ end }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			description: "Prometheus only template function in a label",
+			content: `
+- alert: foo
+  expr: foo > 0
+  labels:
+    since: '{{ $value | toDuration }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
 			description: "vmalert template variable with bad field",
 			content: `
 - alert: foo
@@ -413,6 +474,36 @@ func TestMetricsQLTemplateCheck(t *testing.T) {
 			problems:   true,
 		},
 	}))
+}
+
+// PromQL rules are expanded by Prometheus, vmalert template differences must not apply to them.
+func TestMetricsQLTemplateCheckPromQLRules(t *testing.T) {
+	runTests(t, []checkTest{
+		{
+			description: "Prometheus template functions vmalert doesn't have",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    summary: 'down for {{ $value | toDuration }}'
+    link: '{{ $labels.job | urlQueryEscape }} {{ if false }}{{ graphLink "foo" }}{{ tableLink "foo" }}{{ end }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+		},
+		{
+			description: "vmalert interval template variable",
+			content: `
+- alert: foo
+  expr: foo > 0
+  annotations:
+    summary: 'evaluated every {{ $interval }}'
+`,
+			checker:    newTemplateCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+	})
 }
 
 func TestMetricsQLFragileCheck(t *testing.T) {

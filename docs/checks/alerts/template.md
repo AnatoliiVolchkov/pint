@@ -13,10 +13,13 @@ for details of supported template syntax.
 When `query_language` is set to `metricsql` templates are validated the way
 [vmalert](https://docs.victoriametrics.com/victoriametrics/vmalert/#templating) expands them:
 
-- vmalert template variables (`$expr`, `$type`, `$alertID`, `$groupID`, `$activeAt`,
-  `$for` and `$isPartial`) and functions (`quotesEscape`, `jsonEscape`, `htmlEscape`,
-  `crlfEscape`, `pathEscape`, `queryEscape`, `formatTime` and `parseDurationTime`)
-  can be used.
+- vmalert template variables (`$expr`, `$type`, `$interval`, `$alertID`, `$groupID`,
+  `$activeAt`, `$for` and `$isPartial`) and functions (`quotesEscape`, `jsonEscape`,
+  `htmlEscape`, `crlfEscape`, `pathEscape`, `queryEscape`, `formatTime` and
+  `parseDurationTime`) can be used, as in vmalert v1.153.0.
+- Prometheus template functions that vmalert doesn't have (`toDuration`, `urlQueryEscape`,
+  `graphLink`, `tableLink` and `tmpl`) are reported as errors, vmalert fails to load
+  templates using them.
 - Annotation templates can use the `alertname` and `alertgroup` labels and all labels
   set in the rule `labels` section, vmalert adds them before expanding annotations.
 - Annotation templates can also use external labels set on vmalert with `-external.label`,

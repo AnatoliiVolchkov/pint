@@ -409,6 +409,122 @@
 
 ---
 
+[TestMetricsQLTemplateCheck/Prometheus_only_template_function_in_a_branch_that_never_runs - 1]
+- description: Prometheus only template function in a branch that never runs
+  content: |4
+
+    - alert: foo
+      expr: foo > 0
+      annotations:
+        link: '{{ if false }}{{ graphLink "foo" }}{{ tableLink "foo" }}{{ end }}'
+  output: |
+    5 |     link: '{{ if false }}{{ graphLink "foo" }}{{ tableLink "foo" }}{{ end }}'
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                   Template failed to parse with this error: `function "graphLink" not defined`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `function "graphLink" not defined`.'
+          firstcolumn: 1
+          lastcolumn: 65
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 3
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/Prometheus_only_template_function_in_a_label - 1]
+- description: Prometheus only template function in a label
+  content: |4
+
+    - alert: foo
+      expr: foo > 0
+      labels:
+        since: '{{ $value | toDuration }}'
+  output: |
+    5 |     since: '{{ $value | toDuration }}'
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+                    Template failed to parse with this error: `function "toDuration" not defined`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `function "toDuration" not defined`.'
+          firstcolumn: 1
+          lastcolumn: 25
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 3
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/Prometheus_only_template_function_toDuration - 1]
+- description: Prometheus only template function toDuration
+  content: |4
+
+    - alert: foo
+      expr: foo > 0
+      annotations:
+        summary: 'down for {{ $value | toDuration }}'
+  output: |
+    5 |     summary: 'down for {{ $value | toDuration }}'
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                      Template failed to parse with this error: `function "toDuration" not defined`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `function "toDuration" not defined`.'
+          firstcolumn: 1
+          lastcolumn: 34
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 3
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheck/Prometheus_only_template_function_urlQueryEscape - 1]
+- description: Prometheus only template function urlQueryEscape
+  content: |4
+
+    - alert: foo
+      expr: foo > 0
+      annotations:
+        link: 'https://vm/vmui/#/?g0.expr={{ $expr | urlQueryEscape }}'
+  output: |
+    5 |     link: 'https://vm/vmui/#/?g0.expr={{ $expr | urlQueryEscape }}'
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                   Template failed to parse with this error: `function "urlQueryEscape" not defined`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `function "urlQueryEscape" not defined`.'
+          firstcolumn: 1
+          lastcolumn: 55
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 3
+    anchor: 0
+
+---
+
 [TestMetricsQLTemplateCheck/invalid_template_query - 1]
 - description: invalid template query
   content: |4
@@ -420,7 +536,7 @@
   output: |
     5 |     summary: '{{ with query "sum(foo" }}{{ . | first | value }}{{ end }}'
                               ^^^^^^^^^^^^^^^
-                              Template failed to parse with this error: `274: executing "summary" at <query
+                              Template failed to parse with this error: `300: executing "summary" at <query
                               "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")";
                               unparsed data: ""`.
   problem:
@@ -428,7 +544,7 @@
     summary: template syntax error
     details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
     diagnostics:
-        - message: 'Template failed to parse with this error: `274: executing "summary" at <query "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")"; unparsed data: ""`.'
+        - message: 'Template failed to parse with this error: `300: executing "summary" at <query "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")"; unparsed data: ""`.'
           firstcolumn: 9
           lastcolumn: 23
           kind: 0
@@ -544,6 +660,11 @@
 
 ---
 
+[TestMetricsQLTemplateCheck/vmalert_interval_template_variable - 1]
+[]
+
+---
+
 [TestMetricsQLTemplateCheck/vmalert_labels_in_annotations - 1]
 []
 
@@ -645,14 +766,14 @@
   output: |
     5 |     summary: 'x {{ $activeAt.Foo }}'
                                     ^
-                                    Template failed to parse with this error: `280: executing "summary" at
+                                    Template failed to parse with this error: `306: executing "summary" at
                                     <$activeAt.Foo>: can't evaluate field Foo in type time.Time`.
   problem:
     reporter: alerts/template
     summary: template syntax error
     details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
     diagnostics:
-        - message: 'Template failed to parse with this error: `280: executing "summary" at <$activeAt.Foo>: can''t evaluate field Foo in type time.Time`.'
+        - message: 'Template failed to parse with this error: `306: executing "summary" at <$activeAt.Foo>: can''t evaluate field Foo in type time.Time`.'
           firstcolumn: 15
           lastcolumn: 15
           kind: 0
@@ -1890,6 +2011,40 @@
         first: 2
         last: 2
     severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLTemplateCheckPromQLRules/Prometheus_template_functions_vmalert_doesn't_have - 1]
+[]
+
+---
+
+[TestMetricsQLTemplateCheckPromQLRules/vmalert_interval_template_variable - 1]
+- description: vmalert interval template variable
+  content: |4
+
+    - alert: foo
+      expr: foo > 0
+      annotations:
+        summary: 'evaluated every {{ $interval }}'
+  output: |
+    5 |     summary: 'evaluated every {{ $interval }}'
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                      Template failed to parse with this error: `undefined variable "$interval"`.
+  problem:
+    reporter: alerts/template
+    summary: template syntax error
+    details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
+    diagnostics:
+        - message: 'Template failed to parse with this error: `undefined variable "$interval"`.'
+          firstcolumn: 1
+          lastcolumn: 31
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 3
     anchor: 0
 
 ---

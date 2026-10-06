@@ -34,6 +34,9 @@
   in annotations as `{{ $labels.name }}` when using MetricsQL, vmalert merges external labels
   into rule labels. External labels come from `externalLabels` of VictoriaMetrics servers and
   from the `--external-label` flag.
+- [alerts/template](checks/alerts/template.md) check now matches vmalert v1.153.0 templates
+  when using MetricsQL: `$interval` can be used, and Prometheus-only functions vmalert doesn't
+  have (`toDuration`, `urlQueryEscape`, `graphLink`, `tableLink`, `tmpl`) are reported.
 - [promql/rate](checks/promql/rate.md) check requires `rate()`, `irate()` and
   `deriv()` time ranges to be at least 1x `scrape_interval` when using MetricsQL,
   VictoriaMetrics uses the last sample before the time range. `rate_prometheus()`

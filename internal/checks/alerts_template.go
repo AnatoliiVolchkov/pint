@@ -45,10 +45,11 @@ var (
 	templateDefsLen    = len(templateDefsString)
 
 	// vmalert defines more variables than Prometheus, see tplHeaders in
-	// https://github.com/VictoriaMetrics/VictoriaMetrics/blob/master/app/vmalert/notifier/alert.go
+	// https://github.com/VictoriaMetrics/VictoriaMetrics/blob/v1.153.0/app/vmalert/notifier/alert.go
 	vmalertTemplateDefs = []string{
 		"{{$type := .Type}}",
 		"{{$expr := .Expr}}",
+		"{{$interval := .Interval}}",
 		"{{$alertID := .AlertID}}",
 		"{{$groupID := .GroupID}}",
 		"{{$activeAt := .ActiveAt}}",
@@ -92,9 +93,20 @@ var (
 		"value":              dummyFuncMap,
 	}
 
+	// vmalertMissingTemplateFuncs are Prometheus template functions that vmalert doesn't have,
+	// templates using them fail to load in vmalert, see
+	// https://github.com/VictoriaMetrics/VictoriaMetrics/blob/v1.153.0/app/vmalert/templates/template.go
+	vmalertMissingTemplateFuncs = []string{
+		"graphLink",
+		"tableLink",
+		"tmpl",
+		"toDuration",
+		"urlQueryEscape",
+	}
+
 	// vmalertTemplateFuncs are template functions that vmalert provides on top of the
 	// functions it shares with Prometheus, see
-	// https://github.com/VictoriaMetrics/VictoriaMetrics/blob/master/app/vmalert/templates/template.go
+	// https://github.com/VictoriaMetrics/VictoriaMetrics/blob/v1.153.0/app/vmalert/templates/template.go
 	vmalertTemplateFuncs = textTemplate.FuncMap{
 		"crlfEscape": func(s string) string {
 			return strings.NewReplacer("\r", `\r`, "\n", `\n`).Replace(s)
@@ -115,8 +127,10 @@ var (
 		},
 	}
 
+	vmalertTemplateFuncMap = vmalertFuncMap()
+
 	templatePool        = newTemplatePool(templateFuncMap)
-	vmalertTemplatePool = newTemplatePool(vmalertFuncMap())
+	vmalertTemplatePool = newTemplatePool(vmalertTemplateFuncMap)
 )
 
 func newTemplatePool(funcs textTemplate.FuncMap) *sync.Pool {
@@ -133,6 +147,9 @@ func newTemplatePool(funcs textTemplate.FuncMap) *sync.Pool {
 
 func vmalertFuncMap() textTemplate.FuncMap {
 	funcs := maps.Clone(templateFuncMap)
+	for _, name := range vmalertMissingTemplateFuncs {
+		delete(funcs, name)
+	}
 	maps.Copy(funcs, vmalertTemplateFuncs)
 	return funcs
 }
@@ -173,6 +190,7 @@ type vmalertTemplateData struct {
 	Value          float64
 	AlertID        uint64
 	GroupID        uint64
+	Interval       time.Duration
 	For            time.Duration
 	IsPartial      bool
 }
@@ -529,6 +547,12 @@ func checkTemplateSyntax(ctx context.Context, lang ast.Language, name, text stri
 		nil,
 	)
 	if dialect.vmalert {
+		// The Prometheus expander also knows functions vmalert doesn't have,
+		// parse with the vmalert function set first to report them.
+		_, err := textTemplate.New(name).Funcs(vmalertTemplateFuncMap).Option("missingkey=zero").Parse(dialect.defs + text)
+		if err != nil {
+			return newTemplateError(maybeExpandError(err), name, text, len(dialect.defs))
+		}
 		tmpl.Funcs(vmalertTemplateFuncs)
 	}
 
