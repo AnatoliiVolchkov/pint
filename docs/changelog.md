@@ -24,6 +24,9 @@
   VictoriaMetrics servers.
 - [promql/syntax](checks/promql/syntax.md) check now warns about MetricsQL queries like
   `rate(foo)[5m]`, where the window is applied to `rate()` results and not to `foo`.
+- [promql/syntax](checks/promql/syntax.md) check now warns about MetricsQL queries that
+  VictoriaMetrics turns into implicit subqueries, like `rate(sum(foo))` or `sum(foo)[5m]`,
+  the same queries VictoriaMetrics rejects with `-search.disableImplicitConversion`.
 
 ### Fixed
 

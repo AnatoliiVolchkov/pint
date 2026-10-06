@@ -9,7 +9,257 @@
 
 ---
 
+[TestMetricsQLSyntaxCheck/explicit_subquery_of_an_aggregation - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/implicit_subquery_of_a_binary_operation - 1]
+- description: implicit subquery of a binary operation
+  content: |
+    - record: foo
+      expr: max_over_time((foo + bar)[5m])
+  output: |
+    2 |   expr: max_over_time((foo + bar)[5m])
+                              ^^^^^^^^^^^^^^^
+                              `[5m]` is placed after `(foo + bar)`, which isn't a time series selector, so
+                              MetricsQL turns it into a subquery that uses the query step, as if it was
+                              written `(foo + bar)[5m:]`.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`[5m]` is placed after `(foo + bar)`, which isn''t a time series selector, so MetricsQL turns it into a subquery that uses the query step, as if it was written `(foo + bar)[5m:]`.'
+          firstcolumn: 15
+          lastcolumn: 29
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/implicit_subquery_step_inside_a_rollup_function - 1]
+- description: implicit subquery step inside a rollup function
+  content: |
+    - record: foo
+      expr: avg_over_time(rate(http_requests_total[5m])[1h])
+  output: |
+    2 |   expr: avg_over_time(rate(http_requests_total[5m])[1h])
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                              `[1h]` is placed after `rate(http_requests_total[5m])`, which isn't a time
+                              series selector, so MetricsQL turns it into a subquery that uses the query
+                              step, as if it was written `rate(http_requests_total[5m])[1h:]`.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`[1h]` is placed after `rate(http_requests_total[5m])`, which isn''t a time series selector, so MetricsQL turns it into a subquery that uses the query step, as if it was written `rate(http_requests_total[5m])[1h:]`.'
+          firstcolumn: 15
+          lastcolumn: 47
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
 [TestMetricsQLSyntaxCheck/or_label_filters - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/rate_of_an_aggregation - 1]
+- description: rate of an aggregation
+  content: |
+    - alert: foo
+      expr: 'rate(sum(requests_total{job="api"})) > 0'
+  output: |
+    2 |   expr: 'rate(sum(requests_total{job="api"})) > 0'
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 `rate()` is called on `sum(requests_total{job="api"})`, which isn't a time series selector,
+                 so MetricsQL turns it into the subquery `sum(requests_total{job="api"})[1i:1i]` and
+                 `rate()` is calculated over the query step.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`rate()` is called on `sum(requests_total{job="api"})`, which isn''t a time series selector, so MetricsQL turns it into the subquery `sum(requests_total{job="api"})[1i:1i]` and `rate()` is calculated over the query step.'
+          firstcolumn: 1
+          lastcolumn: 36
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/rollup_function_of_an_expression_from_a_WITH_template - 1]
+- description: rollup function of an expression from a WITH template
+  content: |
+    - record: foo
+      expr: 'WITH (f(x) = rate(sum(x))) f(foo)'
+  output: |
+    2 |   expr: 'WITH (f(x) = rate(sum(x))) f(foo)'
+                                            ^^^^^^
+                                            `rate()` is called on `sum(foo)`, which isn't a time series
+                                            selector, so MetricsQL turns it into the subquery
+                                            `sum(foo)[1i:1i]` and `rate()` is calculated over the query
+                                            step.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`rate()` is called on `sum(foo)`, which isn''t a time series selector, so MetricsQL turns it into the subquery `sum(foo)[1i:1i]` and `rate()` is calculated over the query step.'
+          firstcolumn: 28
+          lastcolumn: 33
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/rollup_function_of_an_expression_with_offset - 1]
+- description: rollup function of an expression with offset
+  content: |
+    - record: foo
+      expr: rate(sum(foo) offset 5m)
+  output: |
+    2 |   expr: rate(sum(foo) offset 5m)
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+                `rate()` is called on `sum(foo) offset 5m`, which isn't a time series selector, so MetricsQL
+                turns it into the subquery `(sum(foo) offset 5m)[1i:1i]` and `rate()` is calculated over the
+                query step.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`rate()` is called on `sum(foo) offset 5m`, which isn''t a time series selector, so MetricsQL turns it into the subquery `(sum(foo) offset 5m)[1i:1i]` and `rate()` is calculated over the query step.'
+          firstcolumn: 1
+          lastcolumn: 24
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/rollup_functions_of_expressions - 1]
+- description: rollup functions of expressions
+  content: |
+    - record: foo
+      expr: delta(abs(foo)) + increase(foo > 10) + rate(foo + bar)
+  output: |
+    2 |   expr: delta(abs(foo)) + increase(foo > 10) + rate(foo + bar)
+                ^^^^^^^^^^^^^^^
+                `delta()` is called on `abs(foo)`, which isn't a time series selector, so MetricsQL turns it
+                into the subquery `abs(foo)[1i:1i]` and `delta()` is calculated over the query step.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`delta()` is called on `abs(foo)`, which isn''t a time series selector, so MetricsQL turns it into the subquery `abs(foo)[1i:1i]` and `delta()` is calculated over the query step.'
+          firstcolumn: 1
+          lastcolumn: 15
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+- description: rollup functions of expressions
+  content: |
+    - record: foo
+      expr: delta(abs(foo)) + increase(foo > 10) + rate(foo + bar)
+  output: |
+    2 |   expr: delta(abs(foo)) + increase(foo > 10) + rate(foo + bar)
+                                  ^^^^^^^^^^^^^^^^^^
+                                  `increase()` is called on `foo > 10`, which isn't a time series selector,
+                                  so MetricsQL turns it into the subquery `(foo > 10)[1i:1i]` and
+                                  `increase()` is calculated over the query step.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`increase()` is called on `foo > 10`, which isn''t a time series selector, so MetricsQL turns it into the subquery `(foo > 10)[1i:1i]` and `increase()` is calculated over the query step.'
+          firstcolumn: 19
+          lastcolumn: 36
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+- description: rollup functions of expressions
+  content: |
+    - record: foo
+      expr: delta(abs(foo)) + increase(foo > 10) + rate(foo + bar)
+  output: |
+    2 |   expr: delta(abs(foo)) + increase(foo > 10) + rate(foo + bar)
+                                                       ^^^^^^^^^^^^^^^
+          `rate()` is called on `foo + bar`, which isn't a time series
+          selector, so MetricsQL turns it into the subquery `(foo +
+          bar)[1i:1i]` and `rate()` is calculated over the query step.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`rate()` is called on `foo + bar`, which isn''t a time series selector, so MetricsQL turns it into the subquery `(foo + bar)[1i:1i]` and `rate()` is calculated over the query step.'
+          firstcolumn: 40
+          lastcolumn: 54
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/rollup_functions_of_selectors - 1]
 []
 
 ---
@@ -46,6 +296,11 @@
         last: 2
     severity: 3
     anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/timestamp_of_an_aggregation - 1]
+[]
 
 ---
 
@@ -232,6 +487,32 @@
         last: 2
     severity: 1
     anchor: 0
+- description: window after rate of an expression
+  content: |
+    - record: foo
+      expr: rate(sum(foo))[5m]
+  output: |
+    2 |   expr: rate(sum(foo))[5m]
+                ^^^^^^^^^^^^^^
+                `rate()` is called on `sum(foo)`, which isn't a time series selector, so MetricsQL turns it
+                into the subquery `sum(foo)[1i:1i]` and `rate()` is calculated over the query step.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`rate()` is called on `sum(foo)`, which isn''t a time series selector, so MetricsQL turns it into the subquery `sum(foo)[1i:1i]` and `rate()` is calculated over the query step.'
+          firstcolumn: 1
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
 
 ---
 
@@ -246,7 +527,32 @@
 ---
 
 [TestMetricsQLSyntaxCheck/subquery_of_an_aggregation - 1]
-[]
+- description: subquery of an aggregation
+  content: |
+    - record: foo
+      expr: sum(foo)[5m]
+  output: |
+    2 |   expr: sum(foo)[5m]
+                ^^^^^^^^^^^^
+                `[5m]` is placed after `sum(foo)`, which isn't a time series selector, so MetricsQL turns it
+                into a subquery that uses the query step, as if it was written `sum(foo)[5m:]`.
+  problem:
+    reporter: promql/syntax
+    summary: implicit subquery conversion
+    details: |-
+        MetricsQL silently rewrites some queries before running them, see [implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).
+        A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` placed after anything other than a time series selector, become subqueries that use the query step, which returns unexpected results most of the time.
+        VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, it uses the same `IsLikelyInvalid()` function from the MetricsQL parser.
+    diagnostics:
+        - message: '`[5m]` is placed after `sum(foo)`, which isn''t a time series selector, so MetricsQL turns it into a subquery that uses the query step, as if it was written `sum(foo)[5m:]`.'
+          firstcolumn: 1
+          lastcolumn: 12
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
 
 ---
 

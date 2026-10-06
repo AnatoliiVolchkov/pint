@@ -1,0 +1,58 @@
+# MetricsQL turns rate(sum(foo)) and sum(foo)[1h] into implicit subqueries,
+# VictoriaMetrics rejects them with -search.disableImplicitConversion.
+exec pint --no-color lint rules
+! stdout .
+cmp stderr stderr.txt
+
+# PromQL doesn't allow them at all.
+! exec pint --no-color -c promql.hcl lint rules
+! stdout .
+stderr 'level=INFO msg="Problems found" Fatal=2'
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Checking Prometheus rules" entries=4 workers=10 online=true
+Warning: implicit subquery conversion (promql/syntax)
+  ---> rules/1.yml:5 -> `RequestRateDropped`
+5 |         expr: rate(sum(api_requests_total{job="api"})) < 2
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  `rate()` is called on `sum(api_requests_total{job="api"})`, which isn't a time series
+                  selector, so MetricsQL turns it into the subquery
+                  `sum(api_requests_total{job="api"})[1i:1i]` and `rate()` is calculated over the query
+                  step.
+
+Warning: implicit subquery conversion (promql/syntax)
+  ---> rules/1.yml:11 -> `api:requests:max1h`
+11 |         expr: max_over_time(sum(rate(api_requests_total[5m]))[1h])
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                 `[1h]` is placed after `sum(rate(api_requests_total[5m]))`, which isn't
+                                 a time series selector, so MetricsQL turns it into a subquery that uses
+                                 the query step, as if it was written
+                                 `sum(rate(api_requests_total[5m]))[1h:]`.
+
+level=INFO msg="Problems found" Warning=2
+-- rules/1.yml --
+groups:
+  - name: api
+    rules:
+      - alert: RequestRateDropped
+        expr: rate(sum(api_requests_total{job="api"})) < 2
+        for: 5m
+      - alert: RequestRateDroppedFixed
+        expr: sum(rate(api_requests_total{job="api"}[5m])) < 2
+        for: 5m
+      - record: api:requests:max1h
+        expr: max_over_time(sum(rate(api_requests_total[5m]))[1h])
+      - record: api:requests:max1h:explicit
+        expr: max_over_time(sum(rate(api_requests_total[5m]))[1h:])
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+
+-- promql.hcl --
+parser {
+  query_language = "promql"
+}

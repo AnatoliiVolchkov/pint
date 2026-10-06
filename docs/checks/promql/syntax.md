@@ -25,6 +25,21 @@ to calculate the rate over the last `5m`: `rate(foo[5m])`.
 Subqueries passed to rollup functions, like `max_over_time(rate(foo)[1h:1m])`,
 are not reported.
 
+It also warns about MetricsQL queries that VictoriaMetrics turns into subqueries with
+[implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions):
+
+- a rollup function called on something other than a time series selector, for example
+  `rate(sum(foo))`, which is calculated as `rate(sum(foo)[1i:1i])` over the query step,
+- a lookbehind window placed after something other than a time series selector,
+  for example `sum(foo)[5m]`, which is the subquery `sum(foo)[5m:]`.
+
+These queries return unexpected results most of the time. VictoriaMetrics runs them by
+default, rejects them when started with `-search.disableImplicitConversion` and logs them
+with `-search.logImplicitConversion`. pint reports exactly the queries these flags act on,
+using the same `IsLikelyInvalid()` function from the MetricsQL parser.
+Write subqueries explicitly, for example `sum(rate(foo[5m]))` instead of `rate(sum(foo))`,
+or `max_over_time(sum(foo)[1h:])` instead of `max_over_time(sum(foo)[1h])`.
+
 ## Configuration
 
 This check doesn't have any configuration options.

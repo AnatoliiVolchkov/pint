@@ -2,6 +2,9 @@ package checks
 
 import (
 	"fmt"
+	"slices"
+
+	mql "github.com/VictoriaMetrics/metricsql"
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/parser"
@@ -17,10 +20,26 @@ const SyntaxCheckMisplacedWindowDetails = "In MetricsQL a lookbehind window plac
 	"The result is the same as `rate(foo)`, to calculate it over `5m` put the window inside: `rate(foo[5m])`.\n" +
 	SyntaxCheckMetricsQLDetails
 
+const SyntaxCheckImplicitConversionDetails = "MetricsQL silently rewrites some queries before running them, see " +
+	"[implicit query conversions](https://docs.victoriametrics.com/victoriametrics/metricsql/#implicit-query-conversions).\n" +
+	"A rollup function like `rate()` called on anything other than a time series selector, and a lookbehind window like `[5m]` " +
+	"placed after anything other than a time series selector, become subqueries that use the query step, " +
+	"which returns unexpected results most of the time.\n" +
+	"VictoriaMetrics runs such queries by default, rejects them when started with `-search.disableImplicitConversion` " +
+	"and logs them with `-search.logImplicitConversion`. pint reports the same queries as these flags, " +
+	"it uses the same `IsLikelyInvalid()` function from the MetricsQL parser."
+
+// checkMetricsQL reports MetricsQL queries that are valid but don't do what they look like.
+func (c SyntaxCheck) checkMetricsQL(expr *parser.PromQLExpr) []Problem {
+	problems, reported := c.checkMisplacedWindows(expr)
+	return append(problems, c.checkImplicitConversions(expr, reported)...)
+}
+
 // checkMisplacedWindows reports MetricsQL rollup functions without a lookbehind window
 // that are followed by one, like rate(foo)[5m]. The window doesn't apply to rate(),
 // it creates a subquery that MetricsQL wraps in default_rollup().
-func (c SyntaxCheck) checkMisplacedWindows(expr *parser.PromQLExpr) (problems []Problem) {
+// It also returns positions of reported subqueries.
+func (c SyntaxCheck) checkMisplacedWindows(expr *parser.PromQLExpr) (problems []Problem, spans []ast.PositionRange) {
 	query := expr.Value.Value
 	for _, node := range parser.WalkDownExpr[*ast.SubqueryExpr](expr.Query()) {
 		sq := node.Expr.(*ast.SubqueryExpr)
@@ -66,8 +85,158 @@ func (c SyntaxCheck) checkMisplacedWindows(expr *parser.PromQLExpr) (problems []
 			},
 			Severity: Warning,
 		})
+		spans = append(spans, sq.PosRange)
+	}
+	return problems, spans
+}
+
+// checkImplicitConversions reports queries that VictoriaMetrics rejects when started with
+// -search.disableImplicitConversion. Subqueries at skip positions are already reported.
+func (c SyntaxCheck) checkImplicitConversions(expr *parser.PromQLExpr, skip []ast.PositionRange) (problems []Problem) {
+	query := expr.Value.Value
+	e, err := mql.Parse(query)
+	if err != nil || !mql.IsLikelyInvalid(e) {
+		return nil
+	}
+
+	conversions := implicitConversions(e, len(query))
+	if len(conversions) == 0 {
+		// IsLikelyInvalid() found a conversion implicitConversions() doesn't know about.
+		conversions = append(conversions, implicitConversion{
+			node:  e,
+			inner: nil,
+			span:  ast.PositionRange{Start: 0, End: ast.Pos(len(query))},
+		})
+	}
+	for _, ic := range conversions {
+		if slices.Contains(skip, ic.span) {
+			continue
+		}
+		problems = append(problems, Problem{
+			Anchor:   AnchorAfter,
+			Lines:    expr.Value.Pos.Lines(),
+			Reporter: c.Reporter(),
+			Summary:  "implicit subquery conversion",
+			Details:  SyntaxCheckImplicitConversionDetails,
+			Diagnostics: []diags.Diagnostic{
+				{
+					Message:     ic.message(query),
+					Pos:         expr.Value.Pos,
+					Expr:        expr.Query().Expr,
+					FirstColumn: int(ic.span.Start) + 1,
+					LastColumn:  int(ic.span.End),
+					Kind:        diags.Issue,
+				},
+			},
+			Severity: Warning,
+		})
 	}
 	return problems
+}
+
+// implicitConversion is a part of a MetricsQL query that VictoriaMetrics converts into a subquery.
+type implicitConversion struct {
+	// node is a *mql.RollupExpr for a window after a non-selector, like sum(foo)[5m],
+	// or a *mql.FuncExpr for a rollup function called on a non-selector, like rate(sum(foo)).
+	node mql.Expr
+	// inner is the expression turned into a subquery.
+	inner mql.Expr
+	span  ast.PositionRange
+}
+
+// implicitConversions returns all conversions metricsql.IsLikelyInvalid() reports.
+// It must find something for every query IsLikelyInvalid() returns true for, which is
+// verified against the parser test corpus.
+func implicitConversions(e mql.Expr, queryLen int) (found []implicitConversion) {
+	add := func(node, inner mql.Expr) {
+		found = append(found, implicitConversion{node: node, inner: inner, span: sourceSpan(node, queryLen)})
+	}
+	mql.VisitAll(e, func(n mql.Expr) {
+		switch t := n.(type) {
+		case *mql.RollupExpr:
+			// sum(foo)[5m] is sum(foo)[5m:1i], only foo[5m] is a range selector.
+			if t.Window != nil && !t.ForSubquery() {
+				if _, ok := t.Expr.(*mql.MetricExpr); !ok {
+					add(t, t.Expr)
+				}
+			}
+		case *mql.FuncExpr:
+			// IsLikelyInvalid() treats timestamp() as a transform function, like Prometheus.
+			if t.Name == "timestamp" {
+				return
+			}
+			idx := mql.GetRollupArgIdx(t)
+			if idx < 0 || idx >= len(t.Args) {
+				return
+			}
+			// rate(sum(foo)) is rate((sum(foo))[1i:1i]).
+			switch arg := t.Args[idx].(type) {
+			case *mql.MetricExpr:
+			case *mql.RollupExpr:
+				if _, ok := arg.Expr.(*mql.MetricExpr); !ok && arg.Window == nil {
+					add(t, arg)
+				}
+			default:
+				add(t, arg)
+			}
+		}
+	})
+	return found
+}
+
+func (ic implicitConversion) message(query string) string {
+	switch t := ic.node.(type) {
+	case *mql.RollupExpr:
+		window := string(t.Window.AppendString(nil))
+		return fmt.Sprintf(
+			"`[%s]` is placed after `%s`, which isn't a time series selector, so MetricsQL turns it into a subquery that uses the query step, as if it was written `%s[%s:]`.",
+			window, sourceText(query, t.Expr), subqueryOperand(query, t.Expr), window,
+		)
+	case *mql.FuncExpr:
+		return fmt.Sprintf(
+			"`%s()` is called on `%s`, which isn't a time series selector, so MetricsQL turns it into the subquery `%s[1i:1i]` and `%s()` is calculated over the query step.",
+			t.Name, sourceText(query, ic.inner), subqueryOperand(query, ic.inner), t.Name,
+		)
+	default:
+		return "This query requires an implicit subquery conversion."
+	}
+}
+
+// sourceSpan returns the position of e in the query, or the whole query if e
+// was expanded from a WITH template or doesn't have a valid position.
+func sourceSpan(e mql.Expr, queryLen int) ast.PositionRange {
+	si := mql.SourceOf(e)
+	if si == nil || si.Pos.Start < 0 || si.Pos.End > queryLen || si.Pos.Start >= si.Pos.End {
+		return ast.PositionRange{Start: 0, End: ast.Pos(queryLen)}
+	}
+	return ast.PositionRange{Start: ast.Pos(si.Pos.Start), End: ast.Pos(si.Pos.End)}
+}
+
+// sourceText returns e as written in the query, including parentheses around it,
+// or its string representation if it was expanded from a WITH template.
+func sourceText(query string, e mql.Expr) string {
+	si := mql.SourceOf(e)
+	if si != nil && si.Origin.IsZero() {
+		pos := si.OuterPos()
+		if pos.Start >= 0 && pos.Start < pos.End && pos.End <= len(query) {
+			return query[pos.Start:pos.End]
+		}
+	}
+	return string(e.AppendString(nil))
+}
+
+// subqueryOperand returns e as written in the query, wrapped in parentheses if it
+// needs them to be used as a subquery.
+func subqueryOperand(query string, e mql.Expr) string {
+	text := sourceText(query, e)
+	switch e.(type) {
+	case *mql.MetricExpr, *mql.FuncExpr, *mql.AggrFuncExpr:
+		return text
+	}
+	if si := mql.SourceOf(e); si != nil && len(si.Parens) > 0 && si.Origin.IsZero() {
+		return text
+	}
+	return "(" + text + ")"
 }
 
 // isRollupFuncArg returns true if the node is passed to a function that expects a range vector.
