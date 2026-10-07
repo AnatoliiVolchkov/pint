@@ -58,6 +58,18 @@ Setting `cluster` label on alerting rule will override `external_labels` and
 can cause confusion when alert sent from `cluster="staging"` Prometheus has `cluster="dev"`
 label set.
 
+### VictoriaMetrics
+
+VictoriaMetrics servers (`backend = "victoriametrics"`) have no configuration API. pint takes
+their external labels from `externalLabels` of the server in the config and from the
+`--external-label` flag, set them to the same labels as vmalert `-external.label` flags.
+
+vmalert merges external labels into the labels of every alerting and recording rule, rule
+labels take priority. A rule label with the same name and value as an external label is
+redundant for both rule types, a rule label with a different value overrides the external
+label for that rule. The check doesn't send any queries to VictoriaMetrics servers, so it also
+runs with `--offline`.
+
 ## Configuration
 
 This check doesn't have any configuration options.

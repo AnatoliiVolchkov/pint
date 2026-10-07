@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cloudflare/pint/internal/checks"
 	"github.com/cloudflare/pint/internal/config"
 )
 
@@ -145,4 +146,43 @@ discovery {
 	cfg.Prometheus[1].ExternalLabels["only"] = "here"
 	require.NotContains(t, cfg.Prometheus[0].ExternalLabels, "only")
 	require.NotContains(t, tmpls[0].ExternalLabels, "only")
+}
+
+func TestDisableOnlineChecksWithVictoriaMetrics(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := path.Join(dir, ".pint.hcl")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri     = "http://vm:8428"
+  backend = "victoriametrics"
+}
+prometheus "vm2" {
+  uri     = "http://vm2:8428"
+  backend = "victoriametrics"
+}
+`), 0o644))
+
+	cfg, _, err := config.Load(cfgPath, true)
+	require.NoError(t, err)
+	cfg.Prometheus = append(cfg.Prometheus, config.PrometheusConfig{Name: "prom", URI: "http://prometheus:9090"})
+
+	cfg.DisableOnlineChecks()
+
+	// External labels of VictoriaMetrics servers come from the config, these checks
+	// still run for them offline and are only disabled for Prometheus servers.
+	for _, name := range []string{checks.AlertsExternalLabelsCheckName, checks.LabelsConflictCheckName} {
+		require.NotContains(t, cfg.Checks.Disabled, name)
+		require.Contains(t, cfg.Checks.Disabled, name+"(prom)")
+		require.NotContains(t, cfg.Checks.Disabled, name+"(vm)")
+		require.NotContains(t, cfg.Checks.Disabled, name+"(vm2)")
+	}
+	for _, name := range checks.OnlineChecks {
+		if checks.StaticOnVictoriaMetrics(name) {
+			continue
+		}
+		require.Contains(t, cfg.Checks.Disabled, name)
+	}
 }

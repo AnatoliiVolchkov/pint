@@ -3,10 +3,12 @@ package config
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/prometheus/common/model"
 
+	"github.com/cloudflare/pint/internal/checks"
 	"github.com/cloudflare/pint/internal/promapi"
 )
 
@@ -36,6 +38,32 @@ func ParseExternalLabels(items []string) (map[string]string, error) {
 		labels[name] = value
 	}
 	return labels, nil
+}
+
+// disableOnlyForPrometheus disables an online check only for Prometheus servers if it doesn't
+// query VictoriaMetrics servers, it then still runs for them with --offline. Offline mode
+// doesn't run discovery, so all servers are static. It returns false for other checks and
+// for configs without VictoriaMetrics servers, which are handled exactly like upstream.
+func (cfg *Config) disableOnlyForPrometheus(name string) bool {
+	if !checks.StaticOnVictoriaMetrics(name) {
+		return false
+	}
+	// Without VictoriaMetrics servers disable it like upstream does.
+	if !slices.ContainsFunc(cfg.Prometheus, func(p PrometheusConfig) bool {
+		return p.getBackend() == promapi.BackendVictoriaMetrics
+	}) {
+		return false
+	}
+	for _, prom := range cfg.Prometheus {
+		if prom.getBackend() == promapi.BackendVictoriaMetrics {
+			continue
+		}
+		instance := fmt.Sprintf("%s(%s)", name, prom.Name)
+		if !slices.Contains(cfg.Checks.Disabled, instance) {
+			cfg.Checks.Disabled = append(cfg.Checks.Disabled, instance)
+		}
+	}
+	return true
 }
 
 // SetExternalLabels adds labels to externalLabels of every VictoriaMetrics server and

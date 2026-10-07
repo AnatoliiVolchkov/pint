@@ -19,7 +19,7 @@ cases:
         summary: invalid label
         lines: "4"
         diagnostics:
-          - message: The template is using `cluster` external label but `vm` Prometheus server at $URI doesn't have this label configured in global:external_labels.
+          - message: The template is using `cluster` external label but it isn't set for `vm` VictoriaMetrics server at $URI, so vmalert renders it as an empty string. If vmalert sets it with `-external.label`, add it to `externalLabels` of this server or pass it with `--external-label`.
             fragment: down in {{ $externalLabels.cluster }}
             start: 0
             end: 37
@@ -60,7 +60,7 @@ cases:
         summary: invalid label
         lines: "4"
         diagnostics:
-          - message: The template is using `cluster` external label but `vm` Prometheus server at $URI doesn't have this label configured in global:external_labels.
+          - message: The template is using `cluster` external label but it isn't set for `vm` VictoriaMetrics server at $URI, so vmalert renders it as an empty string. If vmalert sets it with `-external.label`, add it to `externalLabels` of this server or pass it with `--external-label`.
             fragment: '{{ $externalLabels.cluster }}'
             start: 0
             end: 29

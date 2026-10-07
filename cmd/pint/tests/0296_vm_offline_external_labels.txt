@@ -1,0 +1,66 @@
+# External labels of VictoriaMetrics servers come from the config, so alerts/external_labels
+# and labels/conflict also run with --offline, no queries are sent.
+! exec pint --no-color --offline lint rules
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=3 workers=10 online=false
+level=INFO msg="Offline mode, skipping Prometheus discovery"
+Bug: invalid label (alerts/external_labels)
+  ---> rules/1.yml:7 -> `UnknownExternalLabel`
+7 |           summary: 'Down in {{ $externalLabels.cluster }}'
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        The template is using `cluster` external label but it isn't set for `vm`
+                        VictoriaMetrics server at http://127.0.0.1:7296/select/0/prometheus, so vmalert
+                        renders it as an empty string. If vmalert sets it with `-external.label`, add it
+                        to `externalLabels` of this server or pass it with `--external-label`.
+
+Warning: conflicting labels (labels/conflict)
+  ---> rules/1.yml:11 -> `RedundantLabel`
+11 |           account: acc-example
+               ^^^^^^^
+               This label is redundant. `account="acc-example"` is an external label of `vm`
+               VictoriaMetrics server at http://127.0.0.1:7296/select/0/prometheus and vmalert adds it to
+               all alerts and recording rule results, there's no need to set it manually.
+
+Warning: conflicting labels (labels/conflict)
+  ---> rules/1.yml:15 -> `ConflictingLabel`
+15 |           datacenter: EU
+               ^^^^^^^^^^
+               `datacenter="US"` is an external label of `vm` VictoriaMetrics server at
+               http://127.0.0.1:7296/select/0/prometheus and vmalert adds it to all alerts and recording
+               rule results, this rule overrides it with "EU". Please choose a different name for this
+               label to avoid any conflicts.
+
+level=INFO msg="Problems found" Bug=1 Warning=2
+level=ERROR msg="Execution completed with error(s)" err="found 1 problem(s) with severity Bug or higher"
+-- rules/1.yml --
+groups:
+  - name: demo
+    rules:
+      - alert: UnknownExternalLabel
+        expr: up == 0
+        annotations:
+          summary: 'Down in {{ $externalLabels.cluster }}'
+      - alert: RedundantLabel
+        expr: up == 0
+        labels:
+          account: acc-example
+      - alert: ConflictingLabel
+        expr: up == 0
+        labels:
+          datacenter: EU
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri            = "http://127.0.0.1:7296/select/0/prometheus"
+  backend        = "victoriametrics"
+  externalLabels = { account = "acc-example", datacenter = "US" }
+}

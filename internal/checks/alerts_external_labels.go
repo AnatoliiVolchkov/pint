@@ -34,7 +34,8 @@ func (c AlertsExternalLabelsCheck) Meta() CheckMeta {
 			discovery.Modified,
 			discovery.Moved,
 		},
-		Online:        true,
+		// VictoriaMetrics external labels come from pint config, no queries are sent.
+		Online:        !isVictoriaMetrics(c.prom),
 		AlwaysEnabled: false,
 	}
 }
@@ -77,11 +78,11 @@ func (c AlertsExternalLabelsCheck) Check(ctx context.Context, entry *discovery.E
 				},
 				Reporter: c.Reporter(),
 				Summary:  "invalid label",
-				Details:  fmt.Sprintf("[Click here](%s/config) to see `%s` Prometheus runtime configuration.", cfg.URI, c.prom.Name()),
+				Details:  externalLabelsDetails(c.prom, cfg.URI),
 				Severity: Bug,
 				Diagnostics: []diags.Diagnostic{
 					{
-						Message:     fmt.Sprintf("The template is using `%s` external label but %s doesn't have this label configured in global:external_labels.", name, promText(c.prom.Name(), cfg.URI)),
+						Message:     missingExternalLabelText(c.prom, cfg.URI, name),
 						Pos:         label.Value.Pos,
 						Expr:        nil,
 						FirstColumn: 1,
@@ -104,11 +105,11 @@ func (c AlertsExternalLabelsCheck) Check(ctx context.Context, entry *discovery.E
 					},
 					Reporter: c.Reporter(),
 					Summary:  "invalid label",
-					Details:  fmt.Sprintf("[Click here](%s/config) to see `%s` Prometheus runtime configuration.", cfg.URI, c.prom.Name()),
+					Details:  externalLabelsDetails(c.prom, cfg.URI),
 					Severity: Bug,
 					Diagnostics: []diags.Diagnostic{
 						{
-							Message:     fmt.Sprintf("The template is using `%s` external label but %s doesn't have this label configured in global:external_labels.", name, promText(c.prom.Name(), cfg.URI)),
+							Message:     missingExternalLabelText(c.prom, cfg.URI, name),
 							Pos:         annotation.Value.Pos,
 							Expr:        nil,
 							FirstColumn: 1,

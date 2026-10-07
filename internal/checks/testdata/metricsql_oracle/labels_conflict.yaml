@@ -21,7 +21,7 @@ cases:
         summary: conflicting labels
         lines: "4"
         diagnostics:
-          - message: '`vm` Prometheus server at $URI external_labels already has cluster="demo" label set, please choose a different name for this label to avoid any conflicts.'
+          - message: '`cluster="demo"` is an external label of `vm` VictoriaMetrics server at $URI and vmalert adds it to all alerts and recording rule results, this rule overrides it with "dev". Please choose a different name for this label to avoid any conflicts.'
             fragment: cluster
             start: 0
             end: 7
@@ -62,7 +62,7 @@ cases:
         summary: conflicting labels
         lines: "4"
         diagnostics:
-          - message: '`vm` Prometheus server at $URI external_labels already has cluster="demo" label set, please choose a different name for this label to avoid any conflicts.'
+          - message: This label is redundant. `cluster="demo"` is an external label of `vm` VictoriaMetrics server at $URI and vmalert adds it to all alerts and recording rule results, there's no need to set it manually.
             fragment: cluster
             start: 0
             end: 7

@@ -1809,15 +1809,16 @@
   output: |
     4 |     summary: '{{ $externalLabels.region }}'
                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                      The template is using `region` external label but `prom` Prometheus server at
-                      https://simple.example.com doesn't have this label configured in
-                      global:external_labels.
+                      The template is using `region` external label but it isn't set for `prom`
+                      VictoriaMetrics server at https://simple.example.com, so vmalert renders it as an
+                      empty string. If vmalert sets it with `-external.label`, add it to `externalLabels` of
+                      this server or pass it with `--external-label`.
   problem:
     reporter: alerts/external_labels
     summary: invalid label
-    details: '[Click here](https://simple.example.com/config) to see `prom` Prometheus runtime configuration.'
+    details: vmalert adds labels set with `-external.label` flags to all alerts and recording rule results, see [vmalert docs](https://docs.victoriametrics.com/victoriametrics/vmalert/). pint reads them from `externalLabels` of this server and from the `--external-label` flag, keep them the same as on vmalert.
     diagnostics:
-        - message: The template is using `region` external label but `prom` Prometheus server at https://simple.example.com doesn't have this label configured in global:external_labels.
+        - message: The template is using `region` external label but it isn't set for `prom` VictoriaMetrics server at https://simple.example.com, so vmalert renders it as an empty string. If vmalert sets it with `-external.label`, add it to `externalLabels` of this server or pass it with `--external-label`.
           firstcolumn: 1
           lastcolumn: 28
           kind: 0
@@ -1839,14 +1840,16 @@
   output: |
     4 |     cluster: dev
             ^^^^^^^
-            `prom` Prometheus server at https://simple.example.com external_labels already has
-            cluster="demo" label set, please choose a different name for this label to avoid any conflicts.
+            `cluster="demo"` is an external label of `prom` VictoriaMetrics server at
+            https://simple.example.com and vmalert adds it to all alerts and recording rule results, this
+            rule overrides it with "dev". Please choose a different name for this label to avoid any
+            conflicts.
   problem:
     reporter: labels/conflict
     summary: conflicting labels
-    details: '[Click here](https://simple.example.com/config) to see `prom` Prometheus runtime configuration.'
+    details: vmalert adds labels set with `-external.label` flags to all alerts and recording rule results, see [vmalert docs](https://docs.victoriametrics.com/victoriametrics/vmalert/). pint reads them from `externalLabels` of this server and from the `--external-label` flag, keep them the same as on vmalert.
     diagnostics:
-        - message: '`prom` Prometheus server at https://simple.example.com external_labels already has cluster="demo" label set, please choose a different name for this label to avoid any conflicts.'
+        - message: '`cluster="demo"` is an external label of `prom` VictoriaMetrics server at https://simple.example.com and vmalert adds it to all alerts and recording rule results, this rule overrides it with "dev". Please choose a different name for this label to avoid any conflicts.'
           firstcolumn: 1
           lastcolumn: 7
           kind: 0

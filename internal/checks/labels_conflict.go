@@ -35,7 +35,8 @@ func (c LabelsConflictCheck) Meta() CheckMeta {
 			discovery.Modified,
 			discovery.Moved,
 		},
-		Online:        true,
+		// VictoriaMetrics external labels come from pint config, no queries are sent.
+		Online:        !isVictoriaMetrics(c.prom),
 		AlwaysEnabled: false,
 	}
 }
@@ -81,7 +82,7 @@ func (c LabelsConflictCheck) Check(ctx context.Context, entry *discovery.Entry, 
 					},
 					Reporter: c.Reporter(),
 					Summary:  "conflicting labels",
-					Details:  fmt.Sprintf("[Click here](%s/config) to see `%s` Prometheus runtime configuration.", cfg.URI, c.prom.Name()),
+					Details:  externalLabelsDetails(c.prom, cfg.URI),
 					Severity: Warning,
 					Diagnostics: []diags.Diagnostic{
 						{
@@ -102,6 +103,9 @@ func (c LabelsConflictCheck) Check(ctx context.Context, entry *discovery.Entry, 
 }
 
 func (c LabelsConflictCheck) formatText(k, lv, ev string, kind parser.RuleType, cfg *promapi.ConfigResult) string {
+	if isVictoriaMetrics(c.prom) {
+		return vmalertLabelConflictText(c.prom, cfg.URI, k, lv, ev)
+	}
 	if (lv == ev) && kind == parser.AlertingRuleType {
 		return fmt.Sprintf("This label is redundant. %s external_labels already has %s=%q label set and it will be automatically added to all alerts, there's no need to set it manually.", promText(c.prom.Name(), cfg.URI), k, ev)
 	}

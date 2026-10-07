@@ -17,7 +17,7 @@ exec pint --no-color --external-label account=alpha,dc=test lint rules
 stderr 'msg="Using external labels from the command line" labels=\{"account":"alpha","dc":"test"\} servers=1'
 ! stderr 'alerts/external_labels'
 stderr 'Warning: conflicting labels \(labels/conflict\)'
-stderr 'already has dc="test" label set'
+stderr '`dc="test"` is an external label of `vm` VictoriaMetrics server'
 
 # The flag can be repeated.
 exec pint --no-color --external-label account=alpha --external-label dc=test lint rules

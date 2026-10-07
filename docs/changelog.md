@@ -34,6 +34,11 @@
   retention of vmstorage nodes. Set it with the new `retention` option of VictoriaMetrics
   servers, without it pint logs a warning and doesn't check ranges and offsets against
   retention there. On single-node VictoriaMetrics `retention` overrides `-retentionPeriod`.
+- [alerts/external_labels](checks/alerts/external_labels.md) and
+  [labels/conflict](checks/labels/conflict.md) messages for VictoriaMetrics servers point to
+  `externalLabels` and `--external-label` instead of `global:external_labels` and the Prometheus
+  `/config` page, and describe how vmalert applies external labels. Both checks run with
+  `--offline` for VictoriaMetrics servers, their external labels come from the config.
 - [query/cost](checks/query/cost.md) check no longer estimates memory usage for
   VictoriaMetrics servers. The estimate uses metrics of the Prometheus process itself, which
   VictoriaMetrics doesn't have.

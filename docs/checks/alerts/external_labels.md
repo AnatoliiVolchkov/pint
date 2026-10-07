@@ -36,6 +36,14 @@ But if we try to do that without `cluster` in `global:external_labels` configura
 then `$externalLabels.cluster` will be empty, and this is what this check would
 report.
 
+## VictoriaMetrics
+
+VictoriaMetrics servers (`backend = "victoriametrics"`) have no configuration API. pint takes
+their external labels from `externalLabels` of the server in the config and from the
+`--external-label` flag, set them to the same labels as vmalert `-external.label` flags.
+The check doesn't send any queries to VictoriaMetrics servers, so it also runs with
+`--offline`.
+
 ## Configuration
 
 This check doesn't have any configuration options.
