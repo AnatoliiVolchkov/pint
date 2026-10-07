@@ -125,6 +125,9 @@ func (p *Parser) parseNode(node, parent *yaml.Node, group *Group, offsetLine, of
 		// First check for group list
 		for _, n := range unpackNodes(node) {
 			if g, rulesMap, ok := tryParseGroup(n, offsetLine, offsetColumn, contentLines); ok {
+				if p.isVMAlert() {
+					g.VMAlert = vmalertGroupSettings(n)
+				}
 				groups = append(groups, p.parseNode(rulesMap.val, rulesMap.key, &g, offsetLine, offsetColumn, contentLines)...)
 			}
 		}

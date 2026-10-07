@@ -3,6 +3,7 @@ package parser_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -223,6 +224,83 @@ func TestVMAlertRuleFileSchema(t *testing.T) {
 			require.Equal(t, tc.err, got)
 			if tc.err == "" {
 				require.Positive(t, rules, "no rules parsed")
+			}
+		})
+	}
+}
+
+func TestVMAlertGroupSettings(t *testing.T) {
+	offset := 30 * time.Second
+	disabled := false
+
+	type testCaseT struct {
+		expected    *parser.VMAlertGroup
+		description string
+		content     string
+		language    string
+		relaxed     bool
+	}
+
+	testCases := []testCaseT{
+		{
+			description: "no vmalert settings",
+			content:     vmalertGroupHeader + vmalertRule,
+		},
+		{
+			description: "params, eval_offset and eval_alignment",
+			content: vmalertGroupHeader + `
+    eval_offset: 30s
+    eval_alignment: false
+    params:
+      step: ["10m", "1m"]
+      nocache: ["1"]
+` + vmalertRule,
+			expected: &parser.VMAlertGroup{
+				Params:        map[string][]string{"step": {"10m", "1m"}, "nocache": {"1"}},
+				EvalOffset:    &offset,
+				EvalAlignment: &disabled,
+			},
+		},
+		{
+			description: "relaxed mode",
+			content:     vmalertGroupHeader + "    params:\n      step: [\"10m\"]\n" + vmalertRule,
+			relaxed:     true,
+			expected:    &parser.VMAlertGroup{Params: map[string][]string{"step": {"10m"}}},
+		},
+		{
+			description: "promql relaxed mode ignores params",
+			content:     vmalertGroupHeader + "    params:\n      step: [\"10m\"]\n" + vmalertRule,
+			language:    "promql",
+			relaxed:     true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			name := tc.language
+			if name == "" {
+				name = "metricsql"
+			}
+			lang, err := parser.NewLanguage(name)
+			require.NoError(t, err)
+			p := parser.NewParser(parser.Options{
+				Language: lang,
+				Names:    model.UTF8Validation,
+				Schema:   parser.PrometheusSchema,
+				IsStrict: !tc.relaxed,
+			})
+			f := p.Parse(strings.NewReader(tc.content))
+			got, _ := firstParseError(f)
+			require.Empty(t, got)
+			require.Len(t, f.Groups, 1)
+			require.Equal(t, tc.expected, f.Groups[0].VMAlert)
+
+			step, ok := f.Groups[0].VMAlert.Param("step")
+			if tc.expected != nil && len(tc.expected.Params["step"]) > 0 {
+				require.True(t, ok)
+				require.Equal(t, tc.expected.Params["step"][0], step)
+			} else {
+				require.False(t, ok)
 			}
 		})
 	}

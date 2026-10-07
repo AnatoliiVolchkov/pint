@@ -204,3 +204,67 @@ func parseSignedDuration(s string, allowNegative bool) (time.Duration, error) {
 	}
 	return time.Duration(d), nil
 }
+
+// VMAlertGroup holds vmalert group fields that change how vmalert queries data and
+// timestamps rule results, see Group.Start and adjustReqTimestamp in
+// app/vmalert/rule/group.go.
+type VMAlertGroup struct {
+	// Params are extra query arguments vmalert sends with every query of the group.
+	// They replace arguments vmalert sets itself, like step.
+	Params map[string][]string
+	// EvalOffset is set when the group is evaluated at a fixed offset within its interval.
+	EvalOffset *time.Duration
+	// EvalAlignment is nil when eval_alignment isn't set, it's enabled by default.
+	EvalAlignment *bool
+}
+
+// Param returns the first value of a group query argument, vmalert sends all of them
+// and VictoriaMetrics uses the first one.
+func (vg *VMAlertGroup) Param(name string) (string, bool) {
+	if vg == nil || len(vg.Params[name]) == 0 {
+		return "", false
+	}
+	return vg.Params[name][0], true
+}
+
+// vmalertGroupSettings returns vmalert group fields used by checks, or nil if there are
+// none. Invalid values are skipped, strict mode reports them.
+func vmalertGroupSettings(node *yaml.Node) *VMAlertGroup {
+	var vg VMAlertGroup
+	var found bool
+	for _, entry := range mappingNodes(node) {
+		val := resolveNode(entry.val)
+		switch nodeValue(entry.key) {
+		case vmalertParamsKey:
+			if val.Kind != yaml.MappingNode {
+				continue
+			}
+			for _, param := range mappingNodes(val) {
+				if !isStringList(param.val) {
+					continue
+				}
+				if vg.Params == nil {
+					vg.Params = map[string][]string{}
+				}
+				for _, v := range resolveNode(param.val).Content {
+					vg.Params[nodeValue(param.key)] = append(vg.Params[nodeValue(param.key)], resolveNode(v).Value)
+				}
+				found = true
+			}
+		case vmalertEvalOffsetKey:
+			if d, err := parseSignedDuration(val.Value, true); err == nil {
+				vg.EvalOffset = &d
+				found = true
+			}
+		case vmalertEvalAlignmentKey:
+			if b, err := strconv.ParseBool(val.Value); err == nil && val.ShortTag() == boolTag {
+				vg.EvalAlignment = &b
+				found = true
+			}
+		}
+	}
+	if !found {
+		return nil
+	}
+	return &vg
+}

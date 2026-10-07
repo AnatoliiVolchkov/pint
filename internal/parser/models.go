@@ -355,6 +355,7 @@ type Group struct {
 	Interval    *YamlDuration
 	QueryOffset *YamlDuration
 	Limit       *YamlInt
+	VMAlert     *VMAlertGroup
 	Name        YamlNode
 	Rules       []Rule
 	Error       ParseError
