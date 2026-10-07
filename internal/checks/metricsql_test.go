@@ -1251,6 +1251,8 @@ func TestMetricsQLVectorMatchingCheck(t *testing.T) {
 }
 
 func TestMetricsQLCostCheck(t *testing.T) {
+	// The memory estimate query (checks.BytesPerSampleQuery) is never sent to VictoriaMetrics,
+	// there is no mock for it and an unexpected request fails the test.
 	runTests(t, withMetricsQL([]checkTest{
 		{
 			description: "series count",
@@ -1268,10 +1270,6 @@ func TestMetricsQLCostCheck(t *testing.T) {
 						seriesFetched: 7,
 						execTimeMsec:  10,
 					},
-				},
-				{
-					conds: []requestCondition{requireQueryPath, formCond{key: "query", value: checks.BytesPerSampleQuery}},
-					resp:  respondWithEmptyVector(),
 				},
 			},
 		},
@@ -1292,10 +1290,6 @@ func TestMetricsQLCostCheck(t *testing.T) {
 						execTimeMsec:  10,
 					},
 				},
-				{
-					conds: []requestCondition{requireQueryPath, formCond{key: "query", value: checks.BytesPerSampleQuery}},
-					resp:  respondWithEmptyVector(),
-				},
 			},
 		},
 		{
@@ -1314,10 +1308,6 @@ func TestMetricsQLCostCheck(t *testing.T) {
 						seriesFetched: 7,
 						execTimeMsec:  2500,
 					},
-				},
-				{
-					conds: []requestCondition{requireQueryPath, formCond{key: "query", value: checks.BytesPerSampleQuery}},
-					resp:  respondWithEmptyVector(),
 				},
 			},
 		},

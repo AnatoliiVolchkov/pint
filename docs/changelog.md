@@ -29,6 +29,9 @@
   the same queries VictoriaMetrics rejects with `-search.disableImplicitConversion`.
 - pint warns that `sampleRateLimit` has no effect on VictoriaMetrics servers, their query
   statistics don't include the number of samples a query read.
+- [query/cost](checks/query/cost.md) check no longer estimates memory usage for
+  VictoriaMetrics servers. The estimate uses metrics of the Prometheus process itself, which
+  VictoriaMetrics doesn't have.
 
 ### Fixed
 

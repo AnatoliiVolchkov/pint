@@ -98,7 +98,10 @@ func (c CostCheck) Check(ctx context.Context, entry *discovery.Entry, entries []
 	}
 
 	var estimate string
-	if series > 0 {
+	// The memory estimate uses metrics of the Prometheus process itself. VictoriaMetrics
+	// doesn't have them, and if it stores them for some Prometheus the estimate would
+	// describe that Prometheus, not VictoriaMetrics.
+	if series > 0 && c.prom.Backend() != promapi.BackendVictoriaMetrics {
 		result, err := c.prom.Query(ctx, BytesPerSampleQuery).Wait()
 		if err == nil {
 			for _, s := range result.Series {
