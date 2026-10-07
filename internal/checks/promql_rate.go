@@ -31,17 +31,17 @@ const (
 The type of your metric is defined by the application that exports that metric.
 The number of samples depends on how often your application is being scraped by Prometheus.
 Each scrape produces a sample, so if your application is scraped every minute then the minimal time window you can use is two minutes.`
-	RateCheckMetricsQLDetails = `Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate) and [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) function comes with a few requirements:
+	RateCheckMetricsQLDetails = `Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
 
-- The metric you calculate (i)rate from must be a counter or a native histogram.
-- The time window of the (i)rate function must have at least 1 sample.
+- The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+- The time window of the (i)rate or increase function must have at least 1 sample.
 
-VictoriaMetrics also uses the last sample before the time window when calculating ` + "`rate()`, `irate()` and `deriv()`" + `,
+VictoriaMetrics also uses the last sample before the time window when calculating ` + "`rate()`, `irate()`, `increase()` and `deriv()`" + `,
 so the minimal time window you can use is one scrape interval.
-` + "`rate_prometheus()`" + ` follows Prometheus semantics and needs at least two scrape intervals.`
+` + "`rate_prometheus()` and `increase_prometheus()`" + ` follow Prometheus semantics and need at least two scrape intervals.`
 
-	// metricsQLMinIntervals is the minimal number of scrape intervals for rate(), irate() and deriv()
-	// in MetricsQL, VictoriaMetrics includes the last sample before the window in calculations.
+	// metricsQLMinIntervals is the minimal number of scrape intervals for rate(), irate(), increase()
+	// and deriv() in MetricsQL, VictoriaMetrics includes the last sample before the window in calculations.
 	metricsQLMinIntervals = 1
 )
 
@@ -188,7 +188,7 @@ func (c RateCheck) checkSources(
 				return
 			}
 			minIntervals := c.minIntervals
-			if metricsQL && call.Func.Name != "rate_prometheus" {
+			if metricsQL && !isPrometheusSemantics(call.Func.Name) {
 				minIntervals = metricsQLMinIntervals
 			}
 
@@ -357,14 +357,20 @@ func findRateCall(s *source.Source, metricsQL bool) (*ast.Call, bool) {
 		switch call.Func.Name {
 		case "rate", "irate", "increase", "deriv":
 			return call, true
-		case "rate_prometheus":
-			// MetricsQL version of rate() with Prometheus semantics.
+		case "rate_prometheus", "increase_prometheus":
+			// MetricsQL versions of rate() and increase() with Prometheus semantics.
 			if metricsQL {
 				return call, true
 			}
 		}
 	}
 	return nil, false
+}
+
+// isPrometheusSemantics returns true for MetricsQL functions that follow Prometheus
+// semantics and only use samples inside the time window.
+func isPrometheusSemantics(name string) bool {
+	return name == "rate_prometheus" || name == "increase_prometheus"
 }
 
 func isMetricsQL(expr *parser.PromQLExpr) bool {

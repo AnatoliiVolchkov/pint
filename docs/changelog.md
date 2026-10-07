@@ -40,10 +40,10 @@
 - [alerts/template](checks/alerts/template.md) check now matches vmalert v1.153.0 templates
   when using MetricsQL: `$interval` can be used, and Prometheus-only functions vmalert doesn't
   have (`toDuration`, `urlQueryEscape`, `graphLink`, `tableLink`, `tmpl`) are reported.
-- [promql/rate](checks/promql/rate.md) check requires `rate()`, `irate()` and
+- [promql/rate](checks/promql/rate.md) check requires `rate()`, `irate()`, `increase()` and
   `deriv()` time ranges to be at least 1x `scrape_interval` when using MetricsQL,
-  VictoriaMetrics uses the last sample before the time range. `rate_prometheus()`
-  is now checked and still requires 2x `scrape_interval`.
+  VictoriaMetrics uses the last sample before the time range. `rate_prometheus()` and
+  `increase_prometheus()` are checked too and still require 2x `scrape_interval`.
 
 ## v0.89.0
 

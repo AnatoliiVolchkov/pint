@@ -2060,14 +2060,14 @@
     reporter: promql/rate
     summary: duration too small
     details: |-
-        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate) and [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) function comes with a few requirements:
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
 
-        - The metric you calculate (i)rate from must be a counter or a native histogram.
-        - The time window of the (i)rate function must have at least 1 sample.
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
 
-        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()` and `deriv()`,
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
         so the minimal time window you can use is one scrape interval.
-        `rate_prometheus()` follows Prometheus semantics and needs at least two scrape intervals.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
     diagnostics:
         - message: Duration for `deriv()` must be at least 1 x scrape_interval, `prom` Prometheus server at https://simple.example.com is using `1m` scrape_interval.
           firstcolumn: 1
@@ -2078,6 +2078,86 @@
         last: 2
     severity: 2
     anchor: 0
+
+---
+
+[TestMetricsQLRateCheck/increase_<_1x_default_scrape_interval - 1]
+- description: increase < 1x default scrape interval
+  content: |
+    - record: foo
+      expr: increase(foo[30s])
+  output: |
+    2 |   expr: increase(foo[30s])
+                ^^^^^^^^^^^^^^^^^^
+                Duration for `increase()` must be at least 1 x scrape_interval, `prom` Prometheus server at
+                https://simple.example.com is using `1m` scrape_interval.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: |-
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
+
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
+
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
+        so the minimal time window you can use is one scrape interval.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
+    diagnostics:
+        - message: Duration for `increase()` must be at least 1 x scrape_interval, `prom` Prometheus server at https://simple.example.com is using `1m` scrape_interval.
+          firstcolumn: 1
+          lastcolumn: 18
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLRateCheck/increase_=_1x_default_scrape_interval - 1]
+[]
+
+---
+
+[TestMetricsQLRateCheck/increase_prometheus_<_2x_default_scrape_interval - 1]
+- description: increase_prometheus < 2x default scrape interval
+  content: |
+    - record: foo
+      expr: increase_prometheus(foo[1m])
+  output: |
+    2 |   expr: increase_prometheus(foo[1m])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                Duration for `increase_prometheus()` must be at least 2 x scrape_interval, `prom` Prometheus
+                server at https://simple.example.com is using `1m` scrape_interval.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: |-
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
+
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
+
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
+        so the minimal time window you can use is one scrape interval.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
+    diagnostics:
+        - message: Duration for `increase_prometheus()` must be at least 2 x scrape_interval, `prom` Prometheus server at https://simple.example.com is using `1m` scrape_interval.
+          firstcolumn: 1
+          lastcolumn: 28
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLRateCheck/increase_prometheus_=_2x_default_scrape_interval - 1]
+[]
 
 ---
 
@@ -2100,14 +2180,14 @@
     reporter: promql/rate
     summary: duration too small
     details: |-
-        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate) and [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) function comes with a few requirements:
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
 
-        - The metric you calculate (i)rate from must be a counter or a native histogram.
-        - The time window of the (i)rate function must have at least 1 sample.
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
 
-        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()` and `deriv()`,
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
         so the minimal time window you can use is one scrape interval.
-        `rate_prometheus()` follows Prometheus semantics and needs at least two scrape intervals.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
     diagnostics:
         - message: Duration for `rate()` must be at least 1 x scrape_interval, `prom` Prometheus server at https://simple.example.com is using `1m` scrape_interval.
           firstcolumn: 1
@@ -2140,14 +2220,14 @@
     reporter: promql/rate
     summary: duration too small
     details: |-
-        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate) and [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) function comes with a few requirements:
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
 
-        - The metric you calculate (i)rate from must be a counter or a native histogram.
-        - The time window of the (i)rate function must have at least 1 sample.
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
 
-        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()` and `deriv()`,
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
         so the minimal time window you can use is one scrape interval.
-        `rate_prometheus()` follows Prometheus semantics and needs at least two scrape intervals.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
     diagnostics:
         - message: Duration for `rate_prometheus()` must be at least 2 x scrape_interval, `prom` Prometheus server at https://simple.example.com is using `1m` scrape_interval.
           firstcolumn: 1
