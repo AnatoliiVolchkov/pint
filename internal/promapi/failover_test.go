@@ -190,7 +190,7 @@ func TestFailoverGroupStaticExternalLabels(t *testing.T) {
 	require.Equal(t, "alpha", labels["account"], "returned labels must be a copy")
 
 	prom := NewFailoverGroup("prom", "http://prom", []*Prometheus{
-		NewPrometheus("prom", "http://prom", "", nil, time.Second, 1, 100, nil),
+		NewPrometheus("prom", "http://prom", "", nil, time.Second, 1, 100, 0, nil),
 	}, true, "up", nil, nil, nil)
 	labels, ok = prom.StaticExternalLabels()
 	require.False(t, ok)

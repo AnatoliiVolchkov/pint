@@ -1115,6 +1115,38 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			mocks:       []*prometheusMock{counterMetadata},
 		},
 		{
+			// VictoriaMetrics' increase() uses the last sample before the window, like rate().
+			description: "increase = 1x default scrape interval",
+			content:     "- record: foo\n  expr: increase(foo[1m])\n",
+			checker:     newRateCheck,
+			prometheus:  newSimpleVM,
+			mocks:       []*prometheusMock{counterMetadata},
+		},
+		{
+			description: "increase < 1x default scrape interval",
+			content:     "- record: foo\n  expr: increase(foo[30s])\n",
+			checker:     newRateCheck,
+			prometheus:  newSimpleVM,
+			problems:    true,
+			mocks:       []*prometheusMock{counterMetadata},
+		},
+		{
+			// increase_prometheus() has Prometheus semantics and needs two samples inside the window.
+			description: "increase_prometheus < 2x default scrape interval",
+			content:     "- record: foo\n  expr: increase_prometheus(foo[1m])\n",
+			checker:     newRateCheck,
+			prometheus:  newSimpleVM,
+			problems:    true,
+			mocks:       []*prometheusMock{counterMetadata},
+		},
+		{
+			description: "increase_prometheus = 2x default scrape interval",
+			content:     "- record: foo\n  expr: increase_prometheus(foo[2m])\n",
+			checker:     newRateCheck,
+			prometheus:  newSimpleVM,
+			mocks:       []*prometheusMock{counterMetadata},
+		},
+		{
 			description: "rate with configured scrape interval",
 			content:     "- record: foo\n  expr: rate(foo[1m])\n",
 			checker:     newRateCheck,

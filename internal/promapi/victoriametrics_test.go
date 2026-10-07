@@ -27,7 +27,7 @@ func TestVictoriaMetricsBackend(t *testing.T) {
 	fg := newVictoriaMetricsGroup(t, "http://localhost", promapi.VictoriaMetricsOptions{})
 	require.Equal(t, promapi.BackendVictoriaMetrics, fg.Backend())
 
-	prom := promapi.NewPrometheus("prom", "http://localhost", "", nil, time.Second, 1, 100, nil)
+	prom := promapi.NewPrometheus("prom", "http://localhost", "", nil, time.Second, 1, 100, 0, nil)
 	require.Equal(t, promapi.BackendPrometheus, prom.Backend())
 }
 
