@@ -86,6 +86,21 @@ Instead of calculating `rate(foo_total[5m])` in both rules we can simply query `
 
 This check will try to find cases like this and emit an information report for it.
 
+## VictoriaMetrics
+
+With `backend = "victoriametrics"` the check runs the same `count(...)` query, but
+VictoriaMetrics returns different query statistics, only `seriesFetched` and
+`executionTimeMsec`:
+
+| Feature                              | VictoriaMetrics |
+|--------------------------------------|-----------------|
+| Number of series returned by a rule  | Supported. |
+| `maxSeries`                          | Supported. |
+| `maxEvaluationDuration`              | Supported, uses `executionTimeMsec`, which has millisecond precision. |
+| Optimization suggestions             | Supported, compares `seriesFetched` instead of samples. |
+| `maxTotalSamples`, `maxPeakSamples`  | Not supported, VictoriaMetrics doesn't report the number of queried samples. pint reports an `unsupported query cost limit` warning when they are set. |
+| Memory usage estimate                | Not reported. It is calculated from metrics of the Prometheus process itself (`go_memstats_alloc_bytes`, `prometheus_tsdb_head_series`), which don't describe VictoriaMetrics. |
+
 ## Configuration
 
 Syntax:
