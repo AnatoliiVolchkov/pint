@@ -135,6 +135,9 @@ Push the branch and open a pull request against `main`:
 
 ```sh
 git push -u origin "$BRANCH"
+# Build versions are counted from the newest upstream release tag in this repository
+# (git describe), push the merged release tag too:
+git push origin "refs/upstream-tags/$TAG:refs/tags/$TAG"
 gh pr create --repo AnatoliiVolchkov/pint --base main --head "$BRANCH" \
   --title "Sync with upstream release $TAG" \
   --body "Merge of upstream cloudflare/pint $TAG into main."
@@ -244,7 +247,8 @@ What it does:
    opens (or comments on) an issue titled `Upstream sync conflict: release <tag>` with the
    exact commands to resolve it, and fails. Nothing is pushed.
 4. On a clean merge it runs `go build`, `go vet` and `go test ./...`, pushes the sync branch
-   and opens or updates a pull request against `main` (a draft if tests failed).
+   and the upstream release tag (build versions like `v0.89.0-12-g1234abcd` are counted from
+   it), and opens or updates a pull request against `main` (a draft if tests failed).
 5. It never pushes to `main` and never resolves conflicts by itself.
 
 Tokens:
