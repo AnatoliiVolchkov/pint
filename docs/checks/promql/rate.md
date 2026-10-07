@@ -6,7 +6,7 @@ grand_parent: Documentation
 
 # promql/rate
 
-This check inspects `rate()` and `irate()` function calls used in queries
+This check inspects `rate()`, `irate()` and `increase()` function calls used in queries
 to verify that:
 
 - [Range queries](https://prometheus.io/docs/prometheus/latest/querying/basics/#range-vector-selectors)
@@ -21,9 +21,9 @@ to verify that:
   because VictoriaMetrics also uses the last sample before the time range when
   calculating them. `rate_prometheus()` follows Prometheus semantics and is still
   required to use at least 2x `scrape_interval`.
-- Metrics passed to `rate()` and `irate()` are counters.
-  Both functions only work with counters and, although any metric type can be
-  passed to it and will return calculated value, using a non-counter will cause
+- Metrics passed to `rate()`, `irate()` and `increase()` are counters.
+  All three functions only work with counters and, although any metric type can be
+  passed to them and will return calculated value, using a non-counter will cause
   problems. This is because counters are only allowed to increase in value and any
   value drop is interpreted as counter overflow.
   For gauge metrics use [`delta()`](https://prometheus.io/docs/prometheus/latest/querying/functions/#delta)

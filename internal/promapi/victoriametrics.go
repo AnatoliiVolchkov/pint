@@ -53,7 +53,8 @@ type victoriaMetrics struct {
 }
 
 func NewVictoriaMetrics(name, uri, publicURI string, headers map[string]string, timeout time.Duration, concurrency, rl int, tlsConf *tls.Config, opts VictoriaMetricsOptions) *Prometheus {
-	prom := NewPrometheus(name, uri, publicURI, headers, timeout, concurrency, rl, tlsConf)
+	// VictoriaMetrics doesn't report how many samples a query read, sampleRateLimit can't work.
+	prom := NewPrometheus(name, uri, publicURI, headers, timeout, concurrency, rl, 0, tlsConf)
 	prom.backend = BackendVictoriaMetrics
 	prom.vm = newVictoriaMetrics(strings.TrimSuffix(uri, "/"), opts)
 	return prom

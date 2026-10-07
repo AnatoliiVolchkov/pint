@@ -327,20 +327,21 @@ Syntax:
 
 ```js
 prometheus "$name" {
-  uri            = "https://..."
-  publicURI      = "https://..."
-  backend        = "prometheus|victoriametrics"
-  failover       = ["https://...", ...]
-  tags           = ["...", ...]
-  headers        = { "...": "..." }
-  timeout        = "2m"
-  concurrency    = 16
-  rateLimit      = 100
-  required       = true|false
-  include        = ["...", ...]
-  exclude        = ["...", ...]
-  scrapeInterval = "1m"
-  externalLabels = { "...": "..." }
+  uri             = "https://..."
+  publicURI       = "https://..."
+  backend         = "prometheus|victoriametrics"
+  failover        = ["https://...", ...]
+  tags            = ["...", ...]
+  headers         = { "...": "..." }
+  timeout         = "2m"
+  concurrency     = 16
+  rateLimit       = 100
+  sampleRateLimit = 10000
+  required        = true|false
+  include         = ["...", ...]
+  exclude         = ["...", ...]
+  scrapeInterval  = "1m"
+  externalLabels  = { "...": "..." }
   tls {
     serverName = "..."
     caCert     = "..."
@@ -422,6 +423,12 @@ prometheus "$name" {
 - `rateLimit` - per second rate limit for all API requests sent to this Prometheus server.
   Setting it to `1000` would allow for up to 1000 requests per each wall clock second.
   Optional, default to 100 requests per second.
+- `sampleRateLimit` - per second rate limit for the number of samples Prometheus had to read
+  to process all queries sent from pint. If you set it to 10000 and pint sends a query that
+  loads 20000 samples then pint will wait one second before sending another query.
+  This requires Prometheus API responses to include [query statistics](https://prometheus.io/docs/prometheus/latest/querying/api/#query-statistics), if statistics are not present
+  then this limit is no-op.
+  Optional, default is 0 (disabled).
 - `uptime` - metric selector used to detect gaps in Prometheus uptime.
   Since some checks are sending queries to validate if given metric always present in Prometheus
   they might find gaps when Prometheus itself was down. Pint tries to detect that by querying
@@ -599,20 +606,21 @@ Fields that are allowed to be templated are:
 
 ```js
 template {
-  name           = "..."
-  uri            = "https://..."
-  backend        = "prometheus|victoriametrics"
-  failover       = ["https://...", ...]
-  tags           = ["...", ...]
-  headers        = { "...": "..." }
-  timeout        = "2m"
-  concurrency    = 16
-  rateLimit      = 100
-  required       = true|false
-  include        = ["...", ...]
-  exclude        = ["...", ...]
-  scrapeInterval = "1m"
-  externalLabels = { "...": "..." }
+  name            = "..."
+  uri             = "https://..."
+  backend         = "prometheus|victoriametrics"
+  failover        = ["https://...", ...]
+  tags            = ["...", ...]
+  headers         = { "...": "..." }
+  timeout         = "2m"
+  concurrency     = 16
+  rateLimit       = 100
+  sampleRateLimit = 10000
+  required        = true|false
+  include         = ["...", ...]
+  exclude         = ["...", ...]
+  scrapeInterval  = "1m"
+  externalLabels  = { "...": "..." }
   tls {
     serverName = "..."
     caCert     = "..."

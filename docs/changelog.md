@@ -45,6 +45,23 @@
   VictoriaMetrics uses the last sample before the time range. `rate_prometheus()`
   is now checked and still requires 2x `scrape_interval`.
 
+## v0.89.0
+
+### Added
+
+- Added `sampleRateLimit` option to Prometheus server configuration.
+  It limits the number of samples Prometheus reads per second to process
+  queries sent by pint. It requires [query statistics](https://prometheus.io/docs/prometheus/latest/querying/api/#query-statistics)
+  to be enabled.
+- Added `pint_prometheus_sample_rate_limit` and `pint_prometheus_query_samples_total`
+  metrics for the `sampleRateLimit` option.
+
+### Fixed
+
+- `promql/rate` check now reports `increase()` calls on non-counter metrics
+  and validates the time window passed to `increase()`, same as for `rate()`
+  and `irate()` - [#1989](https://github.com/cloudflare/pint/issues/1989).
+
 ## v0.88.0
 
 ### Added
