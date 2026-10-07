@@ -1,6 +1,7 @@
 package checks_test
 
 import (
+	"errors"
 	"regexp"
 	"testing"
 	"time"
@@ -821,6 +822,21 @@ func TestMetricsQLGroupIntervalCheck(t *testing.T) {
 				"- name: readers\n  interval: 1m\n  rules:\n  - alert: DownSilenced\n    expr: absent(ALERTS{alertname=\"Down\"})\n",
 			),
 			problems: true,
+		},
+		{
+			// Entries of groups that failed to parse have no rule.
+			description: "entries without a rule",
+			content:     "- name: writer\n  interval: 10m\n  rules:\n  - alert: Down\n    expr: up == 0\n",
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries: append(
+				mustParseMetricsQL("- name: writer\n  interval: 10m\n  rules:\n  - alert: Down\n    expr: up == 0\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n"),
+				&discovery.Entry{Path: discovery.Path{Name: "fake.yml", SymlinkTarget: "fake.yml"}},
+				&discovery.Entry{
+					Path: discovery.Path{Name: "fake.yml", SymlinkTarget: "fake.yml"},
+					Rule: parser.Rule{Error: parser.ParseError{Line: 2, Err: errors.New("broken group")}},
+				},
+			),
 		},
 		{
 			description: "-search.minStalenessInterval covers the interval",

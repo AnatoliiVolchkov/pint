@@ -61,8 +61,10 @@ const (
 )
 
 func isVMAlertRule(entry *discovery.Entry) bool {
-	expr := entry.Rule.Expr()
-	return expr != nil && expr.Language().Name() == metricsql.Name
+	if entry.Rule.AlertingRule == nil && entry.Rule.RecordingRule == nil {
+		return false
+	}
+	return entry.Rule.Expr().Language().Name() == metricsql.Name
 }
 
 // WithServers returns a copy of the check that knows the servers vmalert queries when it
@@ -258,8 +260,11 @@ func groupIntervalReads(entry *discovery.Entry, entries []*discovery.Entry, sett
 		if other.Group == nil || other.Path.Name == entry.Path.Name && other.Rule.Lines == entry.Rule.Lines {
 			continue
 		}
+		if !isVMAlertRule(other) {
+			continue
+		}
 		expr := other.Rule.Expr()
-		if expr == nil || !isVMAlertRule(other) || !strings.Contains(expr.Value.Value, name) || expr.SyntaxError() != nil {
+		if !strings.Contains(expr.Value.Value, name) || expr.SyntaxError() != nil {
 			continue
 		}
 		step := parseVMQueryParam(other, vmalertParamStep)
@@ -366,9 +371,12 @@ func (c GroupIntervalCheck) checkVMAlert(ctx context.Context, entry *discovery.E
 	}
 	// Alerting rules are only reported when other rules read their ALERTS series,
 	// don't read server flags for the rest.
-	if entry.Rule.AlertingRule != nil && !slices.ContainsFunc(entries, func(e *discovery.Entry) bool {
-		expr := e.Rule.Expr()
-		return expr != nil && strings.Contains(expr.Value.Value, "ALERTS") && strings.Contains(expr.Value.Value, entry.Rule.Name())
+	if entry.Rule.AlertingRule != nil && !slices.ContainsFunc(nonRemovedEntries(entries), func(e *discovery.Entry) bool {
+		if !isVMAlertRule(e) {
+			return false
+		}
+		expr := e.Rule.Expr().Value.Value
+		return strings.Contains(expr, "ALERTS") && strings.Contains(expr, entry.Rule.Name())
 	}) {
 		return nil
 	}

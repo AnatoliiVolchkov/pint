@@ -2534,6 +2534,11 @@
 
 ---
 
+[TestMetricsQLGroupIntervalCheck/entries_without_a_rule - 1]
+[]
+
+---
+
 [TestMetricsQLGroupIntervalCheck/flags_are_not_read_offline - 1]
 - description: flags are not read offline
   content: |4
