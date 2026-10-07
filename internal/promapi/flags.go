@@ -63,9 +63,16 @@ func (q flagsQuery) Run() queryResult {
 
 	parse := parseFlags
 	if q.prom.vm != nil {
-		parse = parseVictoriaMetricsFlags
+		parse = q.prom.vm.parseFlags
 	}
 	flags, err := parse(resp.Body)
+	if q.prom.vm != nil && err == nil {
+		if _, ok := flags[promFlagRetention]; !ok {
+			slog.LogAttrs(ctx, slog.LevelWarn,
+				"VictoriaMetrics server doesn't report its retention, set retention in the prometheus block to check query ranges and offsets",
+				slog.String("name", q.prom.name), slog.String("uri", q.prom.safeURI))
+		}
+	}
 	qr.value, qr.err = flags, err
 	return qr
 }

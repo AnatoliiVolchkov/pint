@@ -98,6 +98,11 @@ func (c RangeQueryCheck) Check(ctx context.Context, entry *discovery.Entry, _ []
 		return problems
 	}
 
+	// vmselect doesn't know its retention, only check it when it is configured.
+	if promapi.RetentionUnknown(c.prom, flags.Flags) {
+		return problems
+	}
+
 	retention, p := retentionFromFlags(flags.Flags, c.Reporter(), expr)
 	if p != nil {
 		problems = append(problems, *p)

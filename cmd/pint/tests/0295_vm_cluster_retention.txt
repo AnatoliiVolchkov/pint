@@ -1,0 +1,45 @@
+# vmselect doesn't know the retention of vmstorage nodes, it can be set with retention.
+http response vmselect ^/flags$ 200 -storageNode="vmstorage:8401"
+http start vmselect 127.0.0.1:7295
+
+exec pint --no-color --offline config
+! stdout .
+stderr '"retention": "30d"'
+
+exec pint --no-color -e promql/offset lint rules
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=2 workers=10 online=true
+Warning: query offset beyond configured retention (promql/offset)
+  ---> rules/1.yml:5 -> `offset`
+5 |     expr: sum(rate(http_requests_total offset 40d))
+                                           ^^^^^^^^^^
+                                           `http_requests_total offset 40d` selector is using a 40d
+                                           offset, but `vm` Prometheus server at
+                                           http://127.0.0.1:7295/select/0/prometheus is configured to
+                                           only keep 30d of metrics history.
+
+level=INFO msg="Problems found" Warning=1
+-- rules/1.yml --
+groups:
+- name: vm
+  rules:
+  - record: offset
+    expr: sum(rate(http_requests_total offset 40d))
+  - record: ok
+    expr: sum(rate(http_requests_total offset 20d))
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri       = "http://127.0.0.1:7295/select/0/prometheus"
+  backend   = "victoriametrics"
+  retention = "30d"
+}

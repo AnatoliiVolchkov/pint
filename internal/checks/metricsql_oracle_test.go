@@ -624,6 +624,7 @@ func oracleProm(uri string, settings oracleSettings) *promapi.FailoverGroup {
 		promapi.NewVictoriaMetrics("vm", uri, "", nil, 30*time.Second, 4, 1000, nil, promapi.VictoriaMetricsOptions{
 			ExternalLabels: extLabels,
 			ScrapeInterval: settings.dur("scrapeInterval", 0),
+			Retention:      settings.dur("retention", 0),
 		}),
 	}, true, settings.str("uptime", "up"), nil, nil, nil)
 }

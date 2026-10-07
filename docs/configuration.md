@@ -341,6 +341,7 @@ prometheus "$name" {
   include         = ["...", ...]
   exclude         = ["...", ...]
   scrapeInterval  = "1m"
+  retention       = "90d"
   externalLabels  = { "...": "..." }
   tls {
     serverName = "..."
@@ -380,6 +381,13 @@ prometheus "$name" {
   [promql/rate](checks/promql/rate.md). Only valid with `backend = "victoriametrics"`,
   Prometheus servers expose it via the configuration API.
   Default value is `1m`.
+- `retention` - how long VictoriaMetrics keeps data, used by
+  [promql/range_query](checks/promql/range_query.md) and [promql/offset](checks/promql/offset.md).
+  Only valid with `backend = "victoriametrics"`. Single-node VictoriaMetrics reports its
+  `-retentionPeriod` and doesn't need it, a value set here overrides it.
+  vmselect (cluster) doesn't know the retention of vmstorage nodes: set it to their
+  `-retentionPeriod`, otherwise pint logs a warning and doesn't check query ranges and
+  offsets against retention. Use days or years, for example `90d` or `1y`, not `1M`.
 - `externalLabels` - external labels used by checks that need them, for example
   [alerts/external_labels](checks/alerts/external_labels.md).
   Only valid with `backend = "victoriametrics"`, Prometheus servers expose them via the
@@ -622,6 +630,7 @@ template {
   include         = ["...", ...]
   exclude         = ["...", ...]
   scrapeInterval  = "1m"
+  retention       = "90d"
   externalLabels  = { "...": "..." }
   tls {
     serverName = "..."

@@ -1947,6 +1947,29 @@ func TestConfigErrors(t *testing.T) {
 			err: `invalid scrapeInterval "abc": not a valid duration string: "abc"`,
 		},
 		{
+			config: `prometheus "prom" {
+  uri       = "http://localhost"
+  retention = "90d"
+}`,
+			err: `retention can only be set when using "victoriametrics" backend, pint reads it from Prometheus flags`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri       = "http://localhost"
+  backend   = "victoriametrics"
+  retention = "1M"
+}`,
+			err: `invalid retention "1M", expected a positive duration like 90d or 1y`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri       = "http://localhost"
+  backend   = "victoriametrics"
+  retention = "0s"
+}`,
+			err: `invalid retention "0s", expected a positive duration like 90d or 1y`,
+		},
+		{
 			config: `parser {
   query_language = "metricsql"
 }

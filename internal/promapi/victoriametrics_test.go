@@ -38,6 +38,7 @@ func TestVictoriaMetricsFlags(t *testing.T) {
 		flags     v1.FlagsResult
 		name      string
 		prefix    string
+		retention time.Duration
 	}
 
 	testCases := []testCaseT{
@@ -82,7 +83,8 @@ func TestVictoriaMetricsFlags(t *testing.T) {
 			},
 		},
 		{
-			name:   "cluster vmselect, default retention",
+			// vmselect doesn't know the retention of vmstorage nodes.
+			name:   "cluster vmselect, retention unknown",
 			prefix: "/select/0/prometheus",
 			mock: httpmock.New(func(s *httpmock.Server) {
 				s.ExpectGet("/flags").
@@ -90,19 +92,71 @@ func TestVictoriaMetricsFlags(t *testing.T) {
 					Once()
 			}),
 			flags: v1.FlagsResult{
-				"storageNode":                 "vmstorage:8401",
-				"storage.tsdb.retention.time": "31d",
+				"storageNode": "vmstorage:8401",
 			},
 		},
 		{
-			name:   "cluster vmselect with project ID",
+			name:   "cluster vmselect with project ID, retention unknown",
 			prefix: "/select/1:2/prometheus/",
 			mock: httpmock.New(func(s *httpmock.Server) {
 				s.ExpectGet("/flags").
 					Return("").
 					Once()
 			}),
+			flags: v1.FlagsResult{},
+		},
+		{
+			// vmselect behind a proxy path is still detected by -storageNode.
+			name:   "vmselect behind a proxy, retention unknown",
+			prefix: "/prometheus",
+			mock: httpmock.New(func(s *httpmock.Server) {
+				s.ExpectGet("/flags").
+					Return("-storageNode=\"vmstorage:8401\"\n").
+					Once()
+			}),
 			flags: v1.FlagsResult{
+				"storageNode": "vmstorage:8401",
+			},
+		},
+		{
+			name:      "cluster vmselect, configured retention",
+			prefix:    "/select/0/prometheus",
+			retention: time.Hour * 24 * 90,
+			mock: httpmock.New(func(s *httpmock.Server) {
+				s.ExpectGet("/flags").
+					Return("-storageNode=\"vmstorage:8401\"\n").
+					Once()
+			}),
+			flags: v1.FlagsResult{
+				"storageNode":                 "vmstorage:8401",
+				"storage.tsdb.retention.time": "90d",
+			},
+		},
+		{
+			name:      "configured retention overrides -retentionPeriod",
+			prefix:    "",
+			retention: time.Hour * 24 * 7,
+			mock: httpmock.New(func(s *httpmock.Server) {
+				s.ExpectGet("/flags").
+					Return("-retentionPeriod=\"1y\"\n").
+					Once()
+			}),
+			flags: v1.FlagsResult{
+				"retentionPeriod":             "1y",
+				"storage.tsdb.retention.time": "1w",
+			},
+		},
+		{
+			// Single-node VictoriaMetrics doesn't list flags left at their default (1 month).
+			name:   "single-node without -retentionPeriod uses the default",
+			prefix: "",
+			mock: httpmock.New(func(s *httpmock.Server) {
+				s.ExpectGet("/flags").
+					Return("-search.maxQueryDuration=\"30s\"\n").
+					Once()
+			}),
+			flags: v1.FlagsResult{
+				"search.maxQueryDuration":     "30s",
 				"storage.tsdb.retention.time": "31d",
 			},
 		},
@@ -148,7 +202,7 @@ func TestVictoriaMetricsFlags(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := tc.mock(t)
-			fg := newVictoriaMetricsGroup(t, srv.URL()+tc.prefix, promapi.VictoriaMetricsOptions{})
+			fg := newVictoriaMetricsGroup(t, srv.URL()+tc.prefix, promapi.VictoriaMetricsOptions{Retention: tc.retention})
 
 			flags, err := fg.Flags(t.Context()).Wait()
 			if tc.assertErr != nil {
@@ -157,6 +211,8 @@ func TestVictoriaMetricsFlags(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.flags, flags.Flags)
+			_, known := tc.flags["storage.tsdb.retention.time"]
+			require.Equal(t, !known, promapi.RetentionUnknown(fg, flags.Flags))
 		})
 	}
 }

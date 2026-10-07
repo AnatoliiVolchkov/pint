@@ -24,6 +24,8 @@ const (
 	vmPathFlags = "/flags"
 	// Flag with the retention period on VictoriaMetrics single-node and vmstorage.
 	vmFlagRetentionPeriod = "retentionPeriod"
+	// Flag only vmselect has, it lists vmstorage nodes.
+	vmFlagStorageNode = "storageNode"
 	// Prometheus flag used by pint checks.
 	promFlagRetention = "storage.tsdb.retention.time"
 	// Default -retentionPeriod value, one month.
@@ -42,6 +44,8 @@ var vmAPIPrefix = regexp.MustCompile(`(/select/[^/]+)?/prometheus/?$`)
 type VictoriaMetricsOptions struct {
 	ExternalLabels map[string]string
 	ScrapeInterval time.Duration
+	// Retention overrides -retentionPeriod, vmselect doesn't know it.
+	Retention time.Duration
 }
 
 type victoriaMetrics struct {
@@ -49,6 +53,7 @@ type victoriaMetrics struct {
 	// rootURI is the URI of the VictoriaMetrics HTTP server, without any API prefix.
 	rootURI        string
 	scrapeInterval time.Duration
+	retention      time.Duration
 	cluster        bool
 }
 
@@ -65,6 +70,7 @@ func newVictoriaMetrics(uri string, opts VictoriaMetricsOptions) *victoriaMetric
 		externalLabels: opts.ExternalLabels,
 		rootURI:        uri,
 		scrapeInterval: opts.ScrapeInterval,
+		retention:      opts.Retention,
 		cluster:        false,
 	}
 	if u, err := url.Parse(uri); err == nil {
@@ -95,9 +101,10 @@ func (vm *victoriaMetrics) config() PrometheusConfig {
 	return cfg
 }
 
-// parseVictoriaMetricsFlags parses /flags response which uses `-name="value"` lines.
-// It also sets Prometheus retention flag used by pint checks.
-func parseVictoriaMetricsFlags(r io.Reader) (v1.FlagsResult, error) {
+// parseFlags parses /flags response which uses `-name="value"` lines.
+// It also sets the Prometheus retention flag used by pint checks, unless the retention
+// is unknown: vmselect doesn't know the retention of vmstorage nodes.
+func (vm *victoriaMetrics) parseFlags(r io.Reader) (v1.FlagsResult, error) {
 	defer dummyReadAll(r)
 
 	flags := v1.FlagsResult{}
@@ -128,9 +135,8 @@ func parseVictoriaMetricsFlags(r io.Reader) (v1.FlagsResult, error) {
 		}
 	}
 
-	// vmselect doesn't know the retention of vmstorage nodes, assume the default.
-	retention := vmDefaultRetention
-	if v, ok := flags[vmFlagRetentionPeriod]; ok {
+	retention := vm.retention
+	if v, ok := flags[vmFlagRetentionPeriod]; ok && retention == 0 {
 		r, err := parseVictoriaMetricsRetention(v)
 		if err != nil {
 			return nil, APIError{
@@ -141,9 +147,27 @@ func parseVictoriaMetricsFlags(r io.Reader) (v1.FlagsResult, error) {
 		}
 		retention = r
 	}
+	if retention == 0 {
+		if _, isSelect := flags[vmFlagStorageNode]; vm.cluster || isSelect {
+			// vmselect doesn't know the retention of vmstorage nodes.
+			return flags, nil
+		}
+		// Single-node VictoriaMetrics doesn't list flags left at their default.
+		retention = vmDefaultRetention
+	}
 	flags[promFlagRetention] = model.Duration(retention).String()
 
 	return flags, nil
+}
+
+// RetentionUnknown returns true for VictoriaMetrics servers that don't report
+// their retention and don't have it configured, vmselect doesn't know it.
+func RetentionUnknown(prom *FailoverGroup, flags map[string]string) bool {
+	if prom.Backend() != BackendVictoriaMetrics {
+		return false
+	}
+	_, ok := flags[promFlagRetention]
+	return !ok
 }
 
 // parseVictoriaMetricsRetention parses -retentionPeriod value.

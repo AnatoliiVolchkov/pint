@@ -47,7 +47,7 @@ func TestVictoriaMetricsIntegration(t *testing.T) {
 				vmtest.Series{Metric: metric + `{job="b"}`, Values: vmtest.Counter(40, 10000, 30)},
 			)
 			t.Run("api", func(t *testing.T) {
-				testVMIntegration(t, newVMIntegrationGroup(t, tg.QueryURL), metric)
+				testVMIntegration(t, newVMIntegrationGroup(t, tg.QueryURL), metric, tg.Name == "cluster")
 			})
 		})
 	}
@@ -126,7 +126,7 @@ func TestVictoriaMetricsAPI(t *testing.T) {
 	}
 }
 
-func testVMIntegration(t *testing.T, fg *promapi.FailoverGroup, metric string) {
+func testVMIntegration(t *testing.T, fg *promapi.FailoverGroup, metric string, cluster bool) {
 	t.Run("config", func(t *testing.T) {
 		cfg, err := fg.Config(t.Context(), 0).Wait()
 		require.NoError(t, err)
@@ -139,6 +139,12 @@ func testVMIntegration(t *testing.T, fg *promapi.FailoverGroup, metric string) {
 		flags, err := fg.Flags(t.Context()).Wait()
 		require.NoError(t, err)
 		v, ok := flags.Flags["storage.tsdb.retention.time"]
+		if cluster {
+			// vmselect doesn't know the retention of vmstorage nodes.
+			require.False(t, ok, "vmselect can't report retention: %v", flags.Flags)
+			require.True(t, promapi.RetentionUnknown(fg, flags.Flags))
+			return
+		}
 		require.True(t, ok, "retention flag missing: %v", flags.Flags)
 		d, err := model.ParseDuration(v)
 		require.NoError(t, err)

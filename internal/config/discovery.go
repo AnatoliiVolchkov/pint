@@ -141,6 +141,7 @@ type PrometheusTemplate struct {
 	Timeout         string            `hcl:"timeout,optional"  json:"timeout"`
 	Uptime          string            `hcl:"uptime,optional" json:"uptime"`
 	ScrapeInterval  string            `hcl:"scrapeInterval,optional" json:"scrapeInterval,omitempty"`
+	Retention       string            `hcl:"retention,optional" json:"retention,omitempty"`
 	Failover        []string          `hcl:"failover,optional" json:"failover,omitempty"`
 	Include         []string          `hcl:"include,optional" json:"include,omitempty"`
 	Exclude         []string          `hcl:"exclude,optional" json:"exclude,omitempty"`
@@ -167,7 +168,7 @@ func (pt PrometheusTemplate) validate() (err error) {
 		return errors.New("prometheus template URI cannot be empty")
 	}
 
-	if err = validateBackend(pt.getBackend(), pt.ScrapeInterval, pt.ExternalLabels); err != nil {
+	if err = validateBackend(pt.getBackend(), pt.ScrapeInterval, pt.Retention, pt.ExternalLabels); err != nil {
 		return err
 	}
 
@@ -277,6 +278,7 @@ func (pt PrometheusTemplate) Render(data map[string]string) (*promapi.FailoverGr
 		TLS:             pt.TLS,
 		Backend:         pt.Backend,
 		ScrapeInterval:  pt.ScrapeInterval,
+		Retention:       pt.Retention,
 		ExternalLabels:  pt.ExternalLabels,
 	}
 	prom.applyDefaults()

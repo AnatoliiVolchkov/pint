@@ -16,17 +16,9 @@ level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=
 level=INFO msg="Checking Prometheus rules" entries=2 workers=1 online=true
 level=WARN msg="No results for Prometheus uptime metric, you might have set uptime config option to a missing metric, please check your config" name=vm metric=up
 level=WARN msg="Using dummy Prometheus uptime metric results with no gaps" name=vm metric=up
+level=WARN msg="VictoriaMetrics server doesn't report its retention, set retention in the prometheus block to check query ranges and offsets" name=vm uri=http://127.0.0.1:7280/select/0/prometheus
 level=WARN msg="No results for Prometheus uptime metric, you might have set uptime config option to a missing metric, please check your config" name=vm metric=up
 level=WARN msg="Using dummy Prometheus uptime metric results with no gaps" name=vm metric=up
-Warning: query offset beyond configured retention (promql/offset)
-  ---> rules/1.yml:5 -> `offset`
-5 |     expr: sum(rate(http_requests_total offset 40d))
-                                           ^^^^^^^^^^
-                                           `http_requests_total offset 40d` selector is using a 40d
-                                           offset, but `vm` Prometheus server at
-                                           http://127.0.0.1:7280/select/0/prometheus is configured to
-                                           only keep 31d of metrics history.
-
 Warning: query on nonexistent series (promql/series)
   ---> rules/1.yml:5 -> `offset` [+1 duplicates]
 5 |     expr: sum(rate(http_requests_total offset 40d))
@@ -36,8 +28,8 @@ Warning: query on nonexistent series (promql/series)
                        `http_requests_total` matches `promql/series` check ignore regexp
                        `^http_requests_total$`.
 
-level=INFO msg="Some problems are duplicated between rules and all the duplicates were hidden, pass `--show-duplicates` to see them" total=3 duplicates=1 shown=2
-level=INFO msg="Problems found" Warning=3
+level=INFO msg="Some problems are duplicated between rules and all the duplicates were hidden, pass `--show-duplicates` to see them" total=2 duplicates=1 shown=1
+level=INFO msg="Problems found" Warning=2
 -- rules/1.yml --
 groups:
 - name: vm

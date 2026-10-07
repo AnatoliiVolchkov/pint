@@ -29,6 +29,11 @@
   the same queries VictoriaMetrics rejects with `-search.disableImplicitConversion`.
 - pint warns that `sampleRateLimit` has no effect on VictoriaMetrics servers, their query
   statistics don't include the number of samples a query read.
+- [promql/range_query](checks/promql/range_query.md) and [promql/offset](checks/promql/offset.md)
+  no longer assume 31 days of retention on VictoriaMetrics clusters, vmselect doesn't know the
+  retention of vmstorage nodes. Set it with the new `retention` option of VictoriaMetrics
+  servers, without it pint logs a warning and doesn't check ranges and offsets against
+  retention there. On single-node VictoriaMetrics `retention` overrides `-retentionPeriod`.
 - [query/cost](checks/query/cost.md) check no longer estimates memory usage for
   VictoriaMetrics servers. The estimate uses metrics of the Prometheus process itself, which
   VictoriaMetrics doesn't have.

@@ -2,7 +2,9 @@ check: promql/range_query
 cases:
   - name: range longer than retention
     kind: positive
-    comment: The test deployments keep two months (62 days) of data.
+    comment: The test deployments keep two months (62 days) of data. vmselect doesn't know it, so it is configured with retention.
+    settings:
+      retention: 1488h
     rules: |
       - record: x
         expr: 'rate(rq_long_total[90d])'
@@ -23,18 +25,30 @@ cases:
             start: 5
             end: 23
             line: 2
-    expect_cluster:
+  - name: range longer than retention without configured retention
+    kind: positive
+    comment: Single-node VictoriaMetrics reports its retention, vmselect doesn't know it, so without configured retention pint doesn't guess and reports nothing on the cluster.
+    rules: |
+      - record: x
+        expr: 'rate(rq_unknown_total[90d])'
+    data:
+      step: 1m
+      series:
+        - metric: rq_unknown_total{job="a"}
+          values: 0+60x30
+    expect:
       - rule: x
         reporter: promql/range_query
         severity: warning
         summary: query beyond configured retention
         lines: "2"
         diagnostics:
-          - message: '`rq_long_total[90d]` selector is trying to query Prometheus for 90d worth of metrics, but `vm` Prometheus server at $URI is configured to only keep 31d of metrics history.'
-            fragment: rq_long_total[90d]
+          - message: '`rq_unknown_total[90d]` selector is trying to query Prometheus for 90d worth of metrics, but `vm` Prometheus server at $URI is configured to only keep 62d of metrics history.'
+            fragment: rq_unknown_total[90d]
             start: 5
-            end: 23
+            end: 26
             line: 2
+    expect_cluster: []
   - name: range within retention
     kind: negative
     rules: |
@@ -51,6 +65,8 @@ cases:
     expect: []
   - name: range equal to retention
     kind: boundary
+    settings:
+      retention: 1488h
     rules: |
       - record: x
         expr: 'rate(rq_equal_total[62d])'
@@ -60,18 +76,6 @@ cases:
         - metric: rq_equal_total{job="a"}
           values: 0+60x30
     expect: []
-    expect_cluster:
-      - rule: x
-        reporter: promql/range_query
-        severity: warning
-        summary: query beyond configured retention
-        lines: "2"
-        diagnostics:
-          - message: '`rq_equal_total[62d]` selector is trying to query Prometheus for 62d worth of metrics, but `vm` Prometheus server at $URI is configured to only keep 31d of metrics history.'
-            fragment: rq_equal_total[62d]
-            start: 5
-            end: 24
-            line: 2
   - name: range longer than configured limit
     kind: positive
     settings:

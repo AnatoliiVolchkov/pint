@@ -30,6 +30,10 @@ prometheus "vm-cluster" {
   failover = ["http://vmselect-2:8481/select/0/prometheus"]
   backend  = "victoriametrics"
   include  = ["rules/cluster/.+"]
+
+  # vmselect doesn't know the retention of vmstorage nodes, set their -retentionPeriod
+  # so promql/range_query and promql/offset can check queries against it.
+  retention = "1y"
 }
 
 rule {

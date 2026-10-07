@@ -998,11 +998,26 @@ func TestMetricsQLOffsetCheck(t *testing.T) {
 			mocks:       []*prometheusMock{flags("7d")},
 		},
 		{
-			description: "vmselect uses default retention",
+			// vmselect doesn't know the retention of vmstorage nodes, pint doesn't guess it.
+			description: "vmselect without configured retention",
 			content:     "- record: foo\n  expr: foo offset 40d\n",
 			checker:     newOffsetCheck,
 			prometheus: func(uri string) *promapi.FailoverGroup {
 				return newSimpleVM(uri + "/select/0/prometheus")
+			},
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{"storageNode": "vmstorage:8401"}},
+				},
+			},
+		},
+		{
+			description: "vmselect with configured retention",
+			content:     "- record: foo\n  expr: foo offset 40d\n",
+			checker:     newOffsetCheck,
+			prometheus: func(uri string) *promapi.FailoverGroup {
+				return newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: 0, Retention: time.Hour * 24 * 30})(uri + "/select/0/prometheus")
 			},
 			problems: true,
 			mocks: []*prometheusMock{
@@ -1017,6 +1032,36 @@ func TestMetricsQLOffsetCheck(t *testing.T) {
 
 func TestMetricsQLRangeQueryCheck(t *testing.T) {
 	runTests(t, withMetricsQL([]checkTest{
+		{
+			// vmselect doesn't know the retention of vmstorage nodes, pint doesn't guess it.
+			description: "vmselect without configured retention",
+			content:     "- record: foo\n  expr: rate(foo[90d])\n",
+			checker:     newRangeQueryCheck,
+			prometheus: func(uri string) *promapi.FailoverGroup {
+				return newSimpleVM(uri + "/select/0/prometheus")
+			},
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{"storageNode": "vmstorage:8401"}},
+				},
+			},
+		},
+		{
+			description: "vmselect with configured retention",
+			content:     "- record: foo\n  expr: rate(foo[90d])\n",
+			checker:     newRangeQueryCheck,
+			prometheus: func(uri string) *promapi.FailoverGroup {
+				return newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: 0, Retention: time.Hour * 24 * 60})(uri + "/select/0/prometheus")
+			},
+			problems: true,
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{"storageNode": "vmstorage:8401"}},
+				},
+			},
+		},
 		{
 			description: "range beyond retention",
 			content:     "- record: foo\n  expr: rate(foo[30d])\n",

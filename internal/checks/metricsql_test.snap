@@ -1915,6 +1915,38 @@
 
 ---
 
+[TestMetricsQLOffsetCheck/vmselect_with_configured_retention - 1]
+- description: vmselect with configured retention
+  content: |
+    - record: foo
+      expr: foo offset 40d
+  output: |
+    2 |   expr: foo offset 40d
+                    ^^^^^^^^^^
+                    `foo offset 40d` selector is using a 40d offset, but `prom` Prometheus server at
+                    https://simple.example.com is configured to only keep 30d of metrics history.
+  problem:
+    reporter: promql/offset
+    summary: query offset beyond configured retention
+    details: ""
+    diagnostics:
+        - message: '`foo offset 40d` selector is using a 40d offset, but `prom` Prometheus server at https://simple.example.com is configured to only keep 30d of metrics history.'
+          firstcolumn: 5
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLOffsetCheck/vmselect_without_configured_retention - 1]
+[]
+
+---
+
 [TestMetricsQLOffsetCheck/offset_beyond_retention - 1]
 - description: offset beyond retention
   content: |
@@ -1971,33 +2003,6 @@
 
 ---
 
-[TestMetricsQLOffsetCheck/vmselect_uses_default_retention - 1]
-- description: vmselect uses default retention
-  content: |
-    - record: foo
-      expr: foo offset 40d
-  output: |
-    2 |   expr: foo offset 40d
-                    ^^^^^^^^^^
-                    `foo offset 40d` selector is using a 40d offset, but `prom` Prometheus server at
-                    https://simple.example.com is configured to only keep 31d of metrics history.
-  problem:
-    reporter: promql/offset
-    summary: query offset beyond configured retention
-    details: ""
-    diagnostics:
-        - message: '`foo offset 40d` selector is using a 40d offset, but `prom` Prometheus server at https://simple.example.com is configured to only keep 31d of metrics history.'
-          firstcolumn: 5
-          lastcolumn: 14
-          kind: 0
-    lines:
-        first: 2
-        last: 2
-    severity: 1
-    anchor: 0
-
----
-
 [TestMetricsQLRangeQueryCheck/range_beyond_retention - 1]
 - description: range beyond retention
   content: |
@@ -2027,6 +2032,39 @@
 ---
 
 [TestMetricsQLRangeQueryCheck/range_within_retention - 1]
+[]
+
+---
+
+[TestMetricsQLRangeQueryCheck/vmselect_with_configured_retention - 1]
+- description: vmselect with configured retention
+  content: |
+    - record: foo
+      expr: rate(foo[90d])
+  output: |
+    2 |   expr: rate(foo[90d])
+                     ^^^^^^^^
+                     `foo[90d]` selector is trying to query Prometheus for 90d worth of metrics, but `prom`
+                     Prometheus server at https://simple.example.com is configured to only keep 60d of
+                     metrics history.
+  problem:
+    reporter: promql/range_query
+    summary: query beyond configured retention
+    details: ""
+    diagnostics:
+        - message: '`foo[90d]` selector is trying to query Prometheus for 90d worth of metrics, but `prom` Prometheus server at https://simple.example.com is configured to only keep 60d of metrics history.'
+          firstcolumn: 6
+          lastcolumn: 13
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLRangeQueryCheck/vmselect_without_configured_retention - 1]
 []
 
 ---

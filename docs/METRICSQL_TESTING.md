@@ -63,8 +63,8 @@ cases:
 ```
 
 Positive cases must report at least one problem and negative cases none; `expect_cluster`
-overrides `expect` where the cluster legitimately differs (vmselect doesn't report its
-retention). Values use `<v>x<n>`, `<v>+<d>x<n>`, `<v>-<d>x<n>` and `_x<n>` (gaps).
+overrides `expect` where the cluster legitimately differs, for example vmselect doesn't
+report its retention, so cases without `settings.retention` expect nothing on the cluster. Values use `<v>x<n>`, `<v>+<d>x<n>`, `<v>-<d>x<n>` and `_x<n>` (gaps).
 
 Writing new cases:
 
@@ -186,9 +186,10 @@ GOWORK=off go test -count=1 ./...
   `promql/counter` and `promql/rate` then report a counter as a gauge if an exporter declares
   it with a wrong `TYPE`.
 - `promql/features` doesn't apply to VictoriaMetrics, which has no feature flags.
-- vmselect doesn't report its retention, pint assumes VictoriaMetrics' default of 31 days on
-  clusters, so `promql/offset` and `promql/range_query` can report offsets and ranges
-  between 31 days and the real retention (`expect_cluster` in the oracle documents this).
+- vmselect doesn't report its retention (VictoriaMetrics v1.153.0 cluster: only vmstorage has
+  `-retentionPeriod`). Without `retention` in the server config pint doesn't guess it,
+  `promql/offset` and `promql/range_query` don't check retention on clusters and pint logs a
+  warning. Oracle cases set `retention: 1488h` (62 days, the test deployments' value).
 - Upstream pint only checks range selectors, not subquery ranges, against retention.
 - VictoriaMetrics keeps the metric name for some rollup functions like `max_over_time()`,
   pint doesn't model metric names dropped by functions in either language.
@@ -218,8 +219,8 @@ Regenerate with `UPDATE_ORACLE_MATRIX=1 go test ./internal/checks -run TestMetri
 | `promql/fragile` | query, offline | 2 | 2 | 1 | 0 |  |
 | `promql/impossible` | query, offline | 3 | 3 | 1 | 0 |  |
 | `promql/nan` | query, offline | 2 | 3 | 1 | 2 |  |
-| `promql/offset` | query, online | 3 | 1 | 0 | 4 |  |
-| `promql/range_query` | query, online | 2 | 1 | 2 | 5 |  |
+| `promql/offset` | query, online | 4 | 1 | 0 | 5 |  |
+| `promql/range_query` | query, online | 3 | 1 | 2 | 6 |  |
 | `promql/rate` | query, online | 2 | 3 | 2 | 7 |  |
 | `promql/regexp` | query, offline | 3 | 2 | 1 | 0 |  |
 | `promql/selector` | query, offline | 3 | 2 | 1 | 0 |  |
