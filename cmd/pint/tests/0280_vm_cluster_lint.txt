@@ -4,7 +4,8 @@ http response vmselect ^/select/0/prometheus/api/v1/query_range$ 200 {"status":"
 http response vmselect ^/select/0/prometheus/api/v1/query$ 200 {"status":"success","isPartial":false,"data":{"resultType":"vector","result":[]},"stats":{"seriesFetched":"0","executionTimeMsec":0}}
 http start vmselect 127.0.0.1:7280
 
-exec pint --no-color lint rules
+# Two rules log the same uptime warnings, one worker keeps their order stable.
+exec pint --no-color --workers 1 lint rules
 ! stdout .
 cmp stderr stderr.txt
 
@@ -12,7 +13,7 @@ cmp stderr stderr.txt
 level=INFO msg="Loading configuration file" path=.pint.hcl
 level=INFO msg="Finding all rules to check" paths=["rules"]
 level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
-level=INFO msg="Checking Prometheus rules" entries=2 workers=10 online=true
+level=INFO msg="Checking Prometheus rules" entries=2 workers=1 online=true
 level=WARN msg="No results for Prometheus uptime metric, you might have set uptime config option to a missing metric, please check your config" name=vm metric=up
 level=WARN msg="Using dummy Prometheus uptime metric results with no gaps" name=vm metric=up
 level=WARN msg="No results for Prometheus uptime metric, you might have set uptime config option to a missing metric, please check your config" name=vm metric=up
