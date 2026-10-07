@@ -9,7 +9,7 @@ x-healthcheck: &healthcheck
 
 services:
   vmsingle:
-    image: victoriametrics/victoria-metrics:v1.115.0@sha256:d8ac3a1776c8a9beead8bbd42a489c82249b1bfe9071dfd4813f34ebe36354bb
+    image: victoriametrics/victoria-metrics:v1.153.0@sha256:5eff7af5341e401471002f58d106d399e614a62f3d240f2dbc21901e49eed5dd
     command:
       - -retentionPeriod=2
       - -inmemoryDataFlushInterval=1s
@@ -22,7 +22,7 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
 
   vmstorage:
-    image: victoriametrics/vmstorage:v1.115.0-cluster@sha256:f2bfb3236c27decdefb42ef6f65350a54017fd8d4a95e36e74de7eebabc8aaa7
+    image: victoriametrics/vmstorage:v1.153.0-cluster@sha256:83e67bde1b2aa23b8393b0165c427cbd413696c9398cbdd75a709422786747f4
     command:
       - -retentionPeriod=2
       - -inmemoryDataFlushInterval=1s
@@ -33,7 +33,7 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8482/health"]
 
   vminsert:
-    image: victoriametrics/vminsert:v1.115.0-cluster@sha256:28aedc63ca69c8d9a98e2bd6fe045b3f07bf24e3d2f0526cb6f761c08ca8bdf9
+    image: victoriametrics/vminsert:v1.153.0-cluster@sha256:629d128af12ff951ad3bb2c3b2d45edb77fb561ce6b29ed644b8039e2bf218a7
     command:
       - -storageNode=vmstorage:8400
     depends_on:
@@ -46,7 +46,7 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8480/health"]
 
   vmselect:
-    image: victoriametrics/vmselect:v1.115.0-cluster@sha256:22e3d68ff1e231b414122979c10614d9d71794e734635a9def0507ca5c77f828
+    image: victoriametrics/vmselect:v1.153.0-cluster@sha256:3a593a1d02f765f366f50712c68d0e9418ab04f07a61517882bdb7ff620b0f38
     command:
       - -storageNode=vmstorage:8401
       - -search.latencyOffset=1s

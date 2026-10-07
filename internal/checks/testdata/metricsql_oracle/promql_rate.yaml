@@ -67,12 +67,11 @@ cases:
         - metric: rate_prom_total{job="a"}
           values: 0+60x30
     vm:
-      # rate_prometheus() is not supported by the VictoriaMetrics version used in tests (v1.115.0),
-      # increase_prometheus() has the same window semantics.
-      - query: increase_prometheus(rate_prom_total[1m])
+      - query: rate_prometheus(rate_prom_total[1m])
         result: empty
-      - query: increase_prometheus(rate_prom_total[2m])
-        result: '{job="a"} 60'
+      # Two samples in the window, 60 apart: 60 / 120s.
+      - query: rate_prometheus(rate_prom_total[2m])
+        result: '{job="a"} 0.5'
     expect:
       - rule: x
         reporter: promql/rate
@@ -130,7 +129,7 @@ cases:
     expect: []
   - name: rate on a gauge without metadata
     kind: negative
-    comment: Detecting rate() on gauges needs metric metadata which the VictoriaMetrics v1.115.0 test images don't serve (stored since v1.130.0), so it's never reported against them.
+    comment: Detecting rate() on gauges needs metric metadata. VictoriaMetrics stores it since v1.130.0, but the oracle imports data without TYPE lines, so it's never reported here.
     settings:
       scrapeInterval: 1m
     rules: |

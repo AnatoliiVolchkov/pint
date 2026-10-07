@@ -118,7 +118,7 @@ them together with the fix.
    optionally `PINT_VM_CLUSTER_STORAGE_URL` (vmstorage) when `PINT_VM_URL` is set;
 2. otherwise starts `internal/promapi/vmtest/docker-compose.yml` with Docker Compose:
    single-node VictoriaMetrics and a vmstorage/vminsert/vmselect cluster, images pinned to
-   `v1.115.0` / `v1.115.0-cluster` by tag and digest, random localhost ports. The project is
+   `v1.153.0` / `v1.153.0-cluster` by tag and digest, random localhost ports. The project is
    shared by all tests of one test binary and removed by a reaper process when the binary
    exits;
 3. skips the test if Docker isn't available, unless `PINT_VM_REQUIRED` is set, in which case
@@ -175,10 +175,11 @@ GOWORK=off go test -count=1 ./...
 
 - Metric metadata depends on the VictoriaMetrics version. Single-node VictoriaMetrics stores
   it since v1.130.0 and has it enabled by default since v1.137.0 (`-enableMetadata`), older
-  versions, including the v1.115.0 test images, return none. The test images can't prove the
-  positive paths of `promql/counter` and of the gauge detection in `promql/rate`, those are
-  covered with mocked metadata, real VictoriaMetrics cases prove there are no false positives
-  when metadata is missing.
+  versions return none. The v1.153.0 test images store metadata from `# TYPE` lines of
+  `/api/v1/import/prometheus`, but the oracle imports data without them. So the positive paths
+  of `promql/counter` and of the gauge detection in `promql/rate` are covered with mocked
+  metadata, real VictoriaMetrics cases prove there are no false positives when metadata is
+  missing.
 - VictoriaMetrics keeps metadata in memory, separately from samples. Entries are refreshed on
   ingestion, dropped after an hour without updates and lost on restart, so a metric can have
   no metadata. VictoriaMetrics v1.145.0 returned a single entry per metric name, and when
@@ -214,7 +215,7 @@ Regenerate with `UPDATE_ORACLE_MATRIX=1 go test ./internal/checks -run TestMetri
 | `group/interval` | query, offline | 4 | 5 | 1 | 1 |  |
 | `labels/conflict` | query, online | 1 | 1 | 1 | 3 |  |
 | `promql/aggregate` | query, offline | 3 | 2 | 1 | 0 |  |
-| `promql/counter` | query, online, no VictoriaMetrics positive | 0 | 2 | 0 | 2 | needs metric metadata, the VictoriaMetrics v1.115.0 test images return none; positive cases use mocked metadata in metricsql_test.go |
+| `promql/counter` | query, online, no VictoriaMetrics positive | 0 | 2 | 0 | 2 | needs metric metadata, the oracle imports data without TYPE lines; positive cases use mocked metadata in metricsql_test.go |
 | `promql/features` | query, online, no VictoriaMetrics positive | 0 | 2 | 0 | 2 | VictoriaMetrics has no feature flags, every MetricsQL function is always available |
 | `promql/fragile` | query, offline | 2 | 2 | 1 | 0 |  |
 | `promql/impossible` | query, offline | 3 | 3 | 1 | 0 |  |

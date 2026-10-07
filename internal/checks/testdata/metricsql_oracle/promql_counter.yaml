@@ -2,7 +2,7 @@ check: promql/counter
 cases:
   - name: raw counter value without metadata
     kind: negative
-    comment: Using a counter without rate() is a real problem, but detecting counters needs metric metadata which the VictoriaMetrics v1.115.0 test images don't serve (stored since v1.130.0), so it's never reported against them. Mocked metadata covers the positive path in metricsql_test.go.
+    comment: Using a counter without rate() is a real problem, but detecting counters needs metric metadata. VictoriaMetrics stores it since v1.130.0, but the oracle imports data without TYPE lines, so it's never reported here. Mocked metadata covers the positive path in metricsql_test.go.
     rules: |
       - alert: Errors
         expr: 'counter_errors_total > 10'
