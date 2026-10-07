@@ -26,7 +26,7 @@ cases:
             end: 23
             line: 2
   - name: range longer than retention without configured retention
-    kind: positive
+    kind: boundary
     comment: Single-node VictoriaMetrics reports its retention, vmselect doesn't know it, so without configured retention pint doesn't guess and reports nothing on the cluster.
     rules: |
       - record: x
