@@ -1342,36 +1342,6 @@
 
 ---
 
-[TestMetricsQLGroupIntervalCheck/interval_above_5m - 1]
-- description: interval above 5m
-  content: |4
-
-    - name: test
-      interval: 10m
-      rules:
-      - alert: foo
-        expr: rate(foo) > 0
-  output: |
-    3 |   interval: 10m
-                    ^^^
-                    Using group interval > 5m will cause gaps in recording rule results and flapping alerts.
-  problem:
-    reporter: group/interval
-    summary: interval too long
-    details: ""
-    diagnostics:
-        - message: Using group interval > 5m will cause gaps in recording rule results and flapping alerts.
-          firstcolumn: 1
-          lastcolumn: 3
-          kind: 0
-    lines:
-        first: 3
-        last: 3
-    severity: 1
-    anchor: 0
-
----
-
 [TestMetricsQLAggregationCheck/job_removed_inside_WITH - 1]
 - description: job removed inside WITH
   content: |
@@ -2472,6 +2442,42 @@
         first: 5
         last: 5
     severity: 3
+    anchor: 0
+
+---
+
+[TestMetricsQLGroupIntervalCheck/alerting_rule_with_interval_above_5m - 1]
+[]
+
+---
+
+[TestMetricsQLGroupIntervalCheck/recording_rule_with_interval_above_5m - 1]
+- description: recording rule with interval above 5m
+  content: |4
+
+    - name: test
+      interval: 10m
+      rules:
+      - record: foo
+        expr: sum(rate(foo))
+  output: |
+    3 |   interval: 10m
+                    ^^^
+                    Using group interval > 5m will cause gaps in recording rule results, VictoriaMetrics
+                    instant queries only look back as far as the query step, which is 5m by default.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: ""
+    diagnostics:
+        - message: Using group interval > 5m will cause gaps in recording rule results, VictoriaMetrics instant queries only look back as far as the query step, which is 5m by default.
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 1
     anchor: 0
 
 ---

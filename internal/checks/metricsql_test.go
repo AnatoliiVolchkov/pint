@@ -652,13 +652,26 @@ func TestMetricsQLNaNCheck(t *testing.T) {
 func TestMetricsQLGroupIntervalCheck(t *testing.T) {
 	runTests(t, withMetricsQL([]checkTest{
 		{
-			description: "interval above 5m",
+			// vmalert keeps firing alerts active between evaluations, they don't flap.
+			description: "alerting rule with interval above 5m",
 			content: `
 - name: test
   interval: 10m
   rules:
   - alert: foo
     expr: rate(foo) > 0
+`,
+			checker:    newGroupIntervalCheck,
+			prometheus: noProm,
+		},
+		{
+			description: "recording rule with interval above 5m",
+			content: `
+- name: test
+  interval: 10m
+  rules:
+  - record: foo
+    expr: sum(rate(foo))
 `,
 			checker:    newGroupIntervalCheck,
 			prometheus: noProm,

@@ -39,6 +39,9 @@
   `externalLabels` and `--external-label` instead of `global:external_labels` and the Prometheus
   `/config` page, and describe how vmalert applies external labels. Both checks run with
   `--offline` for VictoriaMetrics servers, their external labels come from the config.
+- [group/interval](checks/group/interval.md) check no longer reports alerting rules evaluated
+  by vmalert, it keeps firing alerts active between evaluations so they don't flap. Recording
+  rules are still reported, their results have gaps in VictoriaMetrics too.
 - [query/cost](checks/query/cost.md) check no longer estimates memory usage for
   VictoriaMetrics servers. The estimate uses metrics of the Prometheus process itself, which
   VictoriaMetrics doesn't have.

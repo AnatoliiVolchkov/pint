@@ -48,6 +48,10 @@ func (c GroupIntervalCheck) Check(_ context.Context, entry *discovery.Entry, _ [
 		return nil
 	}
 
+	if skipGroupIntervalForVMAlert(entry) {
+		return nil
+	}
+
 	if entry.Rule.AlertingRule != nil && entry.Rule.AlertingRule.KeepFiringFor != nil && entry.Rule.AlertingRule.KeepFiringFor.ParseError == nil {
 		if entry.Rule.AlertingRule.KeepFiringFor.Value >= entry.Group.Interval.Value {
 			return nil
@@ -63,7 +67,7 @@ func (c GroupIntervalCheck) Check(_ context.Context, entry *discovery.Entry, _ [
 		Severity: Warning,
 		Diagnostics: []diags.Diagnostic{
 			{
-				Message:     "Using group interval > 5m will cause gaps in recording rule results and flapping alerts.",
+				Message:     groupIntervalMessage(entry, "Using group interval > 5m will cause gaps in recording rule results and flapping alerts."),
 				Pos:         entry.Group.Interval.Pos,
 				Expr:        nil,
 				FirstColumn: 1,

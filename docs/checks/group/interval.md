@@ -44,6 +44,17 @@ To fix this problem, either lower the `interval` to `5m` or less, or, for
 alerting rules, set `keep_firing_for` to a value greater than or equal to
 the group `interval`.
 
+## VictoriaMetrics
+
+With `query_language = "metricsql"` rules are evaluated by vmalert:
+
+- Recording rules are reported the same way. VictoriaMetrics instant queries only look back as
+  far as the query step, 5m by default, so results written every 10m have gaps. This was checked
+  against VictoriaMetrics: a series with a sample every 10m returns nothing 6m after a sample.
+- Alerting rules are not reported. vmalert sends firing alerts with `EndsAt` set to
+  4 x max(group `interval`, `-rule.resendDelay`) from now and resends them on every evaluation,
+  so Alertmanager doesn't resolve them between evaluations and they don't flap.
+
 ## Configuration
 
 This check doesn't have any configuration options.

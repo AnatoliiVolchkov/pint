@@ -211,7 +211,7 @@ Regenerate with `UPDATE_ORACLE_MATRIX=1 go test ./internal/checks -run TestMetri
 | `alerts/external_labels` | query, online | 2 | 1 | 0 | 3 |  |
 | `alerts/for` | language agnostic | 1 | 1 | 0 | 0 |  |
 | `alerts/template` | query, offline | 2 | 2 | 1 | 0 |  |
-| `group/interval` | language agnostic | 1 | 1 | 1 | 0 |  |
+| `group/interval` | language agnostic | 2 | 2 | 1 | 1 |  |
 | `labels/conflict` | query, online | 1 | 1 | 1 | 3 |  |
 | `promql/aggregate` | query, offline | 3 | 2 | 1 | 0 |  |
 | `promql/counter` | query, online, no VictoriaMetrics positive | 0 | 2 | 0 | 2 | needs metric metadata, the VictoriaMetrics v1.115.0 test images return none; positive cases use mocked metadata in metricsql_test.go |

@@ -16,11 +16,60 @@ cases:
         summary: interval too long
         lines: "3"
         diagnostics:
-          - message: Using group interval > 5m will cause gaps in recording rule results and flapping alerts.
+          - message: Using group interval > 5m will cause gaps in recording rule results, VictoriaMetrics instant queries only look back as far as the query step, which is 5m by default.
             fragment: 10m
             start: 0
             end: 3
             line: 3
+  - name: recording rule results with a long interval have gaps
+    kind: positive
+    comment: >-
+      gi_gap_10m has a sample every 10 minutes, like a recording rule in a group with
+      interval: 10m. 6 minutes after a sample (offset 4m before the newest one) VictoriaMetrics
+      returns nothing, because instant queries only look back as far as the query step (5m).
+    rules: |
+      groups:
+        - name: vm
+          interval: 10m
+          rules:
+            - record: gi_gap_10m
+              expr: 'sum(rate(foo[5m]))'
+    data:
+      step: 10m
+      series:
+        - metric: gi_gap_10m{job="a"}
+          values: 1x12
+    vm:
+      - query: gi_gap_10m offset 7m
+        result: '{__name__="gi_gap_10m", job="a"} 1'
+      - query: gi_gap_10m offset 4m
+        result: empty
+    expect:
+      - rule: gi_gap_10m
+        reporter: group/interval
+        severity: warning
+        summary: interval too long
+        lines: "3"
+        diagnostics:
+          - message: Using group interval > 5m will cause gaps in recording rule results, VictoriaMetrics instant queries only look back as far as the query step, which is 5m by default.
+            fragment: 10m
+            start: 0
+            end: 3
+            line: 3
+  - name: alerting rules in a group with a long interval
+    kind: negative
+    comment: >-
+      vmalert sends firing alerts with EndsAt set to 4 x max(group interval, -rule.resendDelay)
+      from now and resends them on every evaluation (getResolveDuration in
+      app/vmalert/rule/group.go, v1.153.0), so a long interval doesn't cause flapping alerts.
+    rules: |
+      groups:
+        - name: vm
+          interval: 10m
+          rules:
+            - alert: Down
+              expr: 'up{job="a" or job="b"} == 0'
+    expect: []
   - name: MetricsQL rules in a group with a normal interval
     kind: negative
     rules: |
