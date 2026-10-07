@@ -27,6 +27,8 @@
 - [promql/syntax](checks/promql/syntax.md) check now warns about MetricsQL queries that
   VictoriaMetrics turns into implicit subqueries, like `rate(sum(foo))` or `sum(foo)[5m]`,
   the same queries VictoriaMetrics rejects with `-search.disableImplicitConversion`.
+- pint warns that `sampleRateLimit` has no effect on VictoriaMetrics servers, their query
+  statistics don't include the number of samples a query read.
 
 ### Fixed
 

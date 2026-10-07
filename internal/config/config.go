@@ -256,14 +256,17 @@ func Load(path string, failOnMissing bool) (cfg Config, fromFile bool, err error
 
 // validateBackends checks that the query language can be used with all configured servers.
 func (cfg Config) validateBackends() error {
-	type server struct{ name, backend string }
+	type server struct {
+		name, backend   string
+		sampleRateLimit int
+	}
 	servers := make([]server, 0, len(cfg.Prometheus))
 	for _, prom := range cfg.Prometheus {
-		servers = append(servers, server{name: prom.Name, backend: prom.getBackend()})
+		servers = append(servers, server{name: prom.Name, backend: prom.getBackend(), sampleRateLimit: prom.SampleRateLimit})
 	}
 	if cfg.Discovery != nil {
 		for _, pt := range cfg.Discovery.templates() {
-			servers = append(servers, server{name: pt.Name, backend: pt.getBackend()})
+			servers = append(servers, server{name: pt.Name, backend: pt.getBackend(), sampleRateLimit: pt.SampleRateLimit})
 		}
 	}
 
@@ -279,6 +282,15 @@ func (cfg Config) validateBackends() error {
 			slog.LogAttrs(
 				context.Background(), slog.LevelWarn,
 				"VictoriaMetrics server is configured but rules will be parsed as PromQL, set query_language = \"metricsql\" in the parser block to allow MetricsQL syntax",
+				slog.String("name", s.name),
+			)
+		}
+		// sampleRateLimit needs the number of samples each query read, VictoriaMetrics
+		// query statistics only have seriesFetched and executionTimeMsec.
+		if s.backend == promapi.BackendVictoriaMetrics && s.sampleRateLimit > 0 {
+			slog.LogAttrs(
+				context.Background(), slog.LevelWarn,
+				"sampleRateLimit has no effect on VictoriaMetrics servers, their query statistics don't include the number of samples read",
 				slog.String("name", s.name),
 			)
 		}

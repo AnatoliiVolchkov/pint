@@ -1,0 +1,34 @@
+# sampleRateLimit needs the number of samples read by each query, VictoriaMetrics
+# doesn't report it, so the limit has no effect and pint warns about it.
+exec pint --no-color --offline lint rules
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=WARN msg="sampleRateLimit has no effect on VictoriaMetrics servers, their query statistics don't include the number of samples read" name=vm
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Configured new Prometheus server" name=vm2 uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=1 workers=10 online=false
+level=INFO msg="Offline mode, skipping Prometheus discovery"
+-- rules/1.yml --
+groups:
+  - name: vm
+    rules:
+      - record: job:up:sum
+        expr: sum(up) by (job)
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri             = "http://127.0.0.1:7294"
+  backend         = "victoriametrics"
+  sampleRateLimit = 10000
+}
+prometheus "vm2" {
+  uri     = "http://127.0.0.1:7294"
+  backend = "victoriametrics"
+}

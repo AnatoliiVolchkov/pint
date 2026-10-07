@@ -428,6 +428,8 @@ prometheus "$name" {
   loads 20000 samples then pint will wait one second before sending another query.
   This requires Prometheus API responses to include [query statistics](https://prometheus.io/docs/prometheus/latest/querying/api/#query-statistics), if statistics are not present
   then this limit is no-op.
+  VictoriaMetrics query statistics don't include the number of samples read, so this limit
+  has no effect on servers with `backend = "victoriametrics"` and pint logs a warning.
   Optional, default is 0 (disabled).
 - `uptime` - metric selector used to detect gaps in Prometheus uptime.
   Since some checks are sending queries to validate if given metric always present in Prometheus
