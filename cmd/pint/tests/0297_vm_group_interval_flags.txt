@@ -1,0 +1,58 @@
+# group/interval reads VictoriaMetrics flags that change how far back instant queries look,
+# here -search.minStalenessInterval covers the 10m interval. Offline it uses the defaults.
+http response vm ^/flags$ 200 -search.minStalenessInterval="30m0s"
+http start vm 127.0.0.1:7297
+
+exec pint --no-color --offline lint rules
+! stdout .
+cmp stderr offline.txt
+
+exec pint --no-color -e group/interval lint rules
+! stdout .
+cmp stderr online.txt
+
+exec pint --no-color --offline config
+! stdout .
+stderr '"queryStep": "5m"'
+
+-- offline.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=2 workers=10 online=false
+level=INFO msg="Offline mode, skipping Prometheus discovery"
+Warning: interval too long (group/interval)
+  ---> rules/1.yml:3 -> `job:requests:rate10m`
+3 |   interval: 10m
+                ^^^
+                `HighRequests` reads `job:requests:rate10m` with a 5m lookback, shorter than this 10m
+                interval, so it gets empty results between evaluations of this group.
+
+level=INFO msg="Problems found" Warning=1
+-- online.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=2 workers=10 online=true
+-- rules/1.yml --
+groups:
+- name: writer
+  interval: 10m
+  rules:
+  - record: job:requests:rate10m
+    expr: sum(rate(http_requests_total[10m])) by (job)
+- name: readers
+  interval: 1m
+  rules:
+  - alert: HighRequests
+    expr: job:requests:rate10m > 100
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri       = "http://127.0.0.1:7297"
+  backend   = "victoriametrics"
+  queryStep = "5m"
+}

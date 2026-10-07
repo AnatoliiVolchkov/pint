@@ -43,6 +43,7 @@ type Config struct {
 }
 
 func (cfg *Config) DisableOnlineChecks() {
+	cfg.setStaticChecksOffline()
 	for _, name := range checks.OnlineChecks {
 		if cfg.disableOnlyForPrometheus(name) {
 			continue

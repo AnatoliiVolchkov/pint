@@ -649,33 +649,228 @@ func TestMetricsQLNaNCheck(t *testing.T) {
 	}))
 }
 
+// groupIntervalWriter is a group with a recording and an alerting rule, evaluated every 10m.
+const groupIntervalWriter = `
+- name: writer
+  interval: 10m
+  rules:
+  - record: job:foo:sum
+    expr: sum(foo) by (job)
+`
+
+// groupIntervalEntries returns the writer group followed by groups reading its results.
+func groupIntervalEntries(writer, readers string) []*discovery.Entry {
+	return mustParseMetricsQL(writer + readers)
+}
+
+func newGroupIntervalVMCheck(prom *promapi.FailoverGroup) checks.RuleChecker {
+	return checks.NewGroupIntervalCheck().WithServers([]*promapi.FailoverGroup{prom})
+}
+
 func TestMetricsQLGroupIntervalCheck(t *testing.T) {
+	const reader = `
+- name: readers
+  interval: 1m
+  rules:
+  - alert: FooHigh
+    expr: job:foo:sum > 10
+`
+	const reader2x = `
+- name: readers
+  interval: 1m
+  params:
+    step: ["20m"]
+  rules:
+  - alert: FooHigh
+    expr: job:foo:sum > 10
+`
+	const reader15m = `
+- name: readers
+  interval: 1m
+  params:
+    step: ["15m"]
+  rules:
+  - alert: FooHigh
+    expr: job:foo:sum > 10
+`
 	runTests(t, withMetricsQL([]checkTest{
 		{
-			// vmalert keeps firing alerts active between evaluations, they don't flap.
-			description: "alerting rule with interval above 5m",
-			content: `
-- name: test
-  interval: 10m
-  rules:
-  - alert: foo
-    expr: rate(foo) > 0
-`,
-			checker:    newGroupIntervalCheck,
-			prometheus: noProm,
+			// Nothing reads it, instant queries with the default 5m step see gaps.
+			description: "recording rule nobody reads",
+			content:     groupIntervalWriter,
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries:     groupIntervalEntries(groupIntervalWriter, ""),
+			problems:    true,
 		},
 		{
-			description: "recording rule with interval above 5m",
-			content: `
-- name: test
-  interval: 10m
-  rules:
-  - record: foo
-    expr: sum(rate(foo))
-`,
-			checker:    newGroupIntervalCheck,
-			prometheus: noProm,
+			description: "recording rule nobody reads with interval 5m",
+			content:     "- name: writer\n  interval: 5m\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n",
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries:     mustParseMetricsQL("- name: writer\n  interval: 5m\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n"),
+		},
+		{
+			// vmalert keeps firing alerts active between evaluations, they don't flap.
+			description: "alerting rule nobody reads",
+			content:     "- name: writer\n  interval: 10m\n  rules:\n  - alert: Down\n    expr: up == 0\n",
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries:     mustParseMetricsQL("- name: writer\n  interval: 10m\n  rules:\n  - alert: Down\n    expr: up == 0\n"),
+		},
+		{
+			description: "read with the default 5m query step",
+			content:     groupIntervalWriter,
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries:     groupIntervalEntries(groupIntervalWriter, reader),
+			problems:    true,
+		},
+		{
+			description: "read with a step of 2 x interval",
+			content:     groupIntervalWriter,
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries:     groupIntervalEntries(groupIntervalWriter, reader2x),
+		},
+		{
+			// Timestamps are aligned to the interval, results appear up to 10m late.
+			description: "read with a step between interval and 2 x interval",
+			content:     groupIntervalWriter,
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries:     groupIntervalEntries(groupIntervalWriter, reader15m),
+			problems:    true,
+		},
+		{
+			description: "writer with eval_offset read with a step of interval",
+			content:     "- name: writer\n  interval: 10m\n  eval_offset: 1m\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n",
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries: groupIntervalEntries(
+				"- name: writer\n  interval: 10m\n  eval_offset: 1m\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n",
+				"- name: readers\n  interval: 1m\n  params:\n    step: [\"10m\"]\n  rules:\n  - alert: FooHigh\n    expr: job:foo:sum > 10\n",
+			),
+		},
+		{
+			description: "writer without eval_alignment read with the default step",
+			content:     "- name: writer\n  interval: 10m\n  eval_alignment: false\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n",
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries: groupIntervalEntries(
+				"- name: writer\n  interval: 10m\n  eval_alignment: false\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n",
+				reader,
+			),
+			problems: true,
+		},
+		{
+			description: "read in the same group",
+			content:     "- name: writer\n  interval: 10m\n  params:\n    step: [\"10m\"]\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n",
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries: mustParseMetricsQL(
+				"- name: writer\n  interval: 10m\n  params:\n    step: [\"10m\"]\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n" +
+					"  - alert: FooHigh\n    expr: job:foo:sum > 10\n",
+			),
+			problems: true,
+		},
+		{
+			// It always sees the result of the previous evaluation.
+			description: "read in the same group with a step longer than interval",
+			content:     "- name: writer\n  interval: 10m\n  params:\n    step: [\"11m\"]\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n",
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries: mustParseMetricsQL(
+				"- name: writer\n  interval: 10m\n  params:\n    step: [\"11m\"]\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n" +
+					"  - alert: FooHigh\n    expr: job:foo:sum > 10\n",
+			),
+		},
+		{
+			description: "read with a window shorter than interval",
+			content:     groupIntervalWriter,
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries: groupIntervalEntries(groupIntervalWriter,
+				"- name: readers\n  interval: 1m\n  rules:\n  - record: job:foo:max\n    expr: max_over_time(job:foo:sum[5m])\n"),
+			problems: true,
+		},
+		{
+			description: "read with a window of 2 x interval",
+			content:     groupIntervalWriter,
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries: groupIntervalEntries(groupIntervalWriter,
+				"- name: readers\n  interval: 1m\n  rules:\n  - record: job:foo:max\n    expr: max_over_time(job:foo:sum[20m])\n"),
+		},
+		{
+			// Subqueries are range queries, they look back as far as the interval between samples.
+			description: "read with a subquery",
+			content:     groupIntervalWriter,
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries: groupIntervalEntries(groupIntervalWriter,
+				"- name: readers\n  interval: 1m\n  rules:\n  - record: job:foo:max\n    expr: max_over_time(job:foo:sum[1h:1m])\n"),
+		},
+		{
+			description: "alerting rule read with ALERTS",
+			content:     "- name: writer\n  interval: 10m\n  rules:\n  - alert: Down\n    expr: up == 0\n",
+			checker:     newGroupIntervalCheck,
+			prometheus:  noProm,
+			entries: groupIntervalEntries(
+				"- name: writer\n  interval: 10m\n  rules:\n  - alert: Down\n    expr: up == 0\n",
+				"- name: readers\n  interval: 1m\n  rules:\n  - alert: DownSilenced\n    expr: absent(ALERTS{alertname=\"Down\"})\n",
+			),
+			problems: true,
+		},
+		{
+			description: "-search.minStalenessInterval covers the interval",
+			content:     groupIntervalWriter,
+			checker:     newGroupIntervalVMCheck,
+			prometheus:  newSimpleVM,
+			entries:     groupIntervalEntries(groupIntervalWriter, reader),
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{"search.minStalenessInterval": "30m0s"}},
+				},
+			},
+		},
+		{
+			description: "-search.maxStalenessInterval limits the lookback",
+			content:     "- name: writer\n  interval: 2m\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n",
+			checker:     newGroupIntervalVMCheck,
+			prometheus:  newSimpleVM,
+			entries:     groupIntervalEntries("- name: writer\n  interval: 2m\n  rules:\n  - record: job:foo:sum\n    expr: sum(foo) by (job)\n", reader),
+			problems:    true,
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{"search.maxStalenessInterval": "1m0s"}},
+				},
+			},
+		},
+		{
+			description: "flags are not read offline",
+			content:     groupIntervalWriter,
+			checker: func(prom *promapi.FailoverGroup) checks.RuleChecker {
+				return checks.NewGroupIntervalCheck().WithServers([]*promapi.FailoverGroup{prom}).Offline()
+			},
+			prometheus: newSimpleVM,
+			entries:    groupIntervalEntries(groupIntervalWriter, reader),
 			problems:   true,
+		},
+		{
+			description: "queryStep set in pint config",
+			content:     groupIntervalWriter,
+			checker:     newGroupIntervalVMCheck,
+			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: 0, Retention: 0, QueryStep: time.Minute * 20}),
+			entries:     groupIntervalEntries(groupIntervalWriter, reader),
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{}},
+				},
+			},
 		},
 	}))
 }

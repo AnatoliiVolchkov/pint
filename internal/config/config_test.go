@@ -1970,6 +1970,29 @@ func TestConfigErrors(t *testing.T) {
 			err: `invalid retention "0s", expected a positive duration like 90d or 1y`,
 		},
 		{
+			config: `prometheus "prom" {
+  uri       = "http://localhost"
+  queryStep = "10m"
+}`,
+			err: `queryStep can only be set when using "victoriametrics" backend, it's the vmalert -datasource.queryStep flag`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri       = "http://localhost"
+  backend   = "victoriametrics"
+  queryStep = "0s"
+}`,
+			err: `invalid queryStep "0s", expected a positive duration like 5m`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri       = "http://localhost"
+  backend   = "victoriametrics"
+  queryStep = "abc"
+}`,
+			err: `invalid queryStep "abc", expected a positive duration like 5m`,
+		},
+		{
 			config: `parser {
   query_language = "metricsql"
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
+	"github.com/cloudflare/pint/internal/promapi"
 )
 
 const (
@@ -13,10 +14,13 @@ const (
 )
 
 func NewGroupIntervalCheck() GroupIntervalCheck {
-	return GroupIntervalCheck{}
+	return GroupIntervalCheck{servers: nil, offline: false}
 }
 
-type GroupIntervalCheck struct{}
+type GroupIntervalCheck struct {
+	servers []*promapi.FailoverGroup
+	offline bool
+}
 
 func (c GroupIntervalCheck) Meta() CheckMeta {
 	return CheckMeta{
@@ -39,16 +43,16 @@ func (c GroupIntervalCheck) Reporter() string {
 	return GroupIntervalCheckName
 }
 
-func (c GroupIntervalCheck) Check(_ context.Context, entry *discovery.Entry, _ []*discovery.Entry) (problems []Problem) {
+func (c GroupIntervalCheck) Check(ctx context.Context, entry *discovery.Entry, entries []*discovery.Entry) (problems []Problem) {
 	if entry.Group.Interval == nil {
 		return nil
 	}
 
-	if entry.Group.Interval.Value <= time.Minute*5 {
-		return nil
+	if isVMAlertRule(entry) {
+		return c.checkVMAlert(ctx, entry, entries)
 	}
 
-	if skipGroupIntervalForVMAlert(entry) {
+	if entry.Group.Interval.Value <= time.Minute*5 {
 		return nil
 	}
 
@@ -67,7 +71,7 @@ func (c GroupIntervalCheck) Check(_ context.Context, entry *discovery.Entry, _ [
 		Severity: Warning,
 		Diagnostics: []diags.Diagnostic{
 			{
-				Message:     groupIntervalMessage(entry, "Using group interval > 5m will cause gaps in recording rule results and flapping alerts."),
+				Message:     "Using group interval > 5m will cause gaps in recording rule results and flapping alerts.",
 				Pos:         entry.Group.Interval.Pos,
 				Expr:        nil,
 				FirstColumn: 1,

@@ -39,9 +39,18 @@
   `externalLabels` and `--external-label` instead of `global:external_labels` and the Prometheus
   `/config` page, and describe how vmalert applies external labels. Both checks run with
   `--offline` for VictoriaMetrics servers, their external labels come from the config.
-- [group/interval](checks/group/interval.md) check no longer reports alerting rules evaluated
-  by vmalert, it keeps firing alerts active between evaluations so they don't flap. Recording
-  rules are still reported, their results have gaps in VictoriaMetrics too.
+- [group/interval](checks/group/interval.md) check works differently for rules evaluated by
+  vmalert. VictoriaMetrics has no fixed 5m lookback: an instant query looks back as far as its
+  `step`, which vmalert sets to `-datasource.queryStep`. The check now reports groups whose
+  results are read by other rules with a lookback shorter than the interval (Warning), or
+  shorter than 2 x interval when vmalert aligns result timestamps (Information), and
+  recording rules nobody reads that instant queries can't see between evaluations
+  (Information). It reads `step` from group `params`, `eval_offset` and `eval_alignment` from
+  rule files, and `-search.maxLookback`, `-search.maxStalenessInterval`,
+  `-search.minStalenessInterval` and `-search.setLookbackToStep` flags from VictoriaMetrics.
+  Alerting rules nobody reads are no longer reported, vmalert alerts don't flap.
+- New `queryStep` option for VictoriaMetrics servers, the vmalert `-datasource.queryStep` used
+  by [group/interval](checks/group/interval.md), 5m by default.
 - [query/cost](checks/query/cost.md) check no longer estimates memory usage for
   VictoriaMetrics servers. The estimate uses metrics of the Prometheus process itself, which
   VictoriaMetrics doesn't have.

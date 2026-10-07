@@ -50,7 +50,7 @@ var oracleRequirements = map[string]struct {
 		reason: "VictoriaMetrics has no feature flags, every MetricsQL function is always available",
 	},
 	checks.FragileCheckName:        {req: reqQueryOffline},
-	checks.GroupIntervalCheckName:  {req: reqLanguageAgnostic},
+	checks.GroupIntervalCheckName:  {req: reqQueryOffline},
 	checks.ImpossibleCheckName:     {req: reqQueryOffline},
 	checks.NaNCheckName:            {req: reqQueryOffline},
 	checks.OffsetCheckName:         {req: reqQueryOnline},

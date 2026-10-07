@@ -2446,37 +2446,399 @@
 
 ---
 
-[TestMetricsQLGroupIntervalCheck/alerting_rule_with_interval_above_5m - 1]
+[TestMetricsQLGroupIntervalCheck/-search.maxStalenessInterval_limits_the_lookback - 1]
+- description: -search.maxStalenessInterval limits the lookback
+  content: |
+    - name: writer
+      interval: 2m
+      rules:
+      - record: job:foo:sum
+        expr: sum(foo) by (job)
+  output: |
+    2 |   interval: 2m
+                    ^^
+                    `FooHigh` reads `job:foo:sum` with a 1m lookback, shorter than this 2m interval, so it
+                    gets empty results between evaluations of this group.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: |-
+        vmalert evaluates rules with instant queries. VictoriaMetrics answers an instant query with the newest sample in the lookback window, which is the query step: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the group `params`. Range queries used by graphs are not affected, VictoriaMetrics looks back as far as the interval between samples.
+
+        This group writes `job:foo:sum` every 2m. vmalert aligns the timestamp of results to the group interval, so a new result appears up to 2m after its timestamp, depending on when vmalert evaluates the group.
+
+        Rules reading `job:foo:sum`:
+
+        - `FooHigh` at `fake.yml:10` looks back 1m, the query step, default vmalert -datasource.queryStep (5m), limited by -search.maxStalenessInterval=1m on `prom`: no data for at least 1m of every 2m.
+
+        To fix it read `job:foo:sum` with a lookback of at least 4m, for example with `params: {step: ["4m"]}` on the reading groups, or set `eval_offset` on this group and read it with a lookback of at least 2m, or lower the interval of this group.
+    diagnostics:
+        - message: '`FooHigh` reads `job:foo:sum` with a 1m lookback, shorter than this 2m interval, so it gets empty results between evaluations of this group.'
+          firstcolumn: 1
+          lastcolumn: 2
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLGroupIntervalCheck/-search.minStalenessInterval_covers_the_interval - 1]
 []
 
 ---
 
-[TestMetricsQLGroupIntervalCheck/recording_rule_with_interval_above_5m - 1]
-- description: recording rule with interval above 5m
-  content: |4
+[TestMetricsQLGroupIntervalCheck/alerting_rule_nobody_reads - 1]
+[]
 
-    - name: test
+---
+
+[TestMetricsQLGroupIntervalCheck/alerting_rule_read_with_ALERTS - 1]
+- description: alerting rule read with ALERTS
+  content: |
+    - name: writer
       interval: 10m
       rules:
-      - record: foo
-        expr: sum(rate(foo))
+      - alert: Down
+        expr: up == 0
   output: |
-    3 |   interval: 10m
+    2 |   interval: 10m
                     ^^^
-                    Using group interval > 5m will cause gaps in recording rule results, VictoriaMetrics
-                    instant queries only look back as far as the query step, which is 5m by default.
+                    `DownSilenced` reads `ALERTS{alertname="Down"}` with a 5m lookback, shorter than this
+                    10m interval, so it gets empty results between evaluations of this group.
   problem:
     reporter: group/interval
     summary: interval too long
-    details: ""
+    details: |-
+        vmalert evaluates rules with instant queries. VictoriaMetrics answers an instant query with the newest sample in the lookback window, which is the query step: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the group `params`. Range queries used by graphs are not affected, VictoriaMetrics looks back as far as the interval between samples.
+
+        This group writes `ALERTS{alertname="Down"}` every 10m. vmalert aligns the timestamp of results to the group interval, so a new result appears up to 10m after its timestamp, depending on when vmalert evaluates the group.
+
+        Rules reading `ALERTS{alertname="Down"}`:
+
+        - `DownSilenced` at `fake.yml:9` looks back 5m, the query step, default vmalert -datasource.queryStep (5m): no data for at least 5m of every 10m.
+
+        To fix it read `ALERTS{alertname="Down"}` with a lookback of at least 20m, for example with `params: {step: ["20m"]}` on the reading groups, or set `eval_offset` on this group and read it with a lookback of at least 10m, or lower the interval of this group.
     diagnostics:
-        - message: Using group interval > 5m will cause gaps in recording rule results, VictoriaMetrics instant queries only look back as far as the query step, which is 5m by default.
+        - message: '`DownSilenced` reads `ALERTS{alertname="Down"}` with a 5m lookback, shorter than this 10m interval, so it gets empty results between evaluations of this group.'
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLGroupIntervalCheck/flags_are_not_read_offline - 1]
+- description: flags are not read offline
+  content: |4
+
+    - name: writer
+      interval: 10m
+      rules:
+      - record: job:foo:sum
+        expr: sum(foo) by (job)
+  output: |
+    3 |   interval: 10m
+                    ^^^
+                    `FooHigh` reads `job:foo:sum` with a 5m lookback, shorter than this 10m interval, so it
+                    gets empty results between evaluations of this group.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: |-
+        vmalert evaluates rules with instant queries. VictoriaMetrics answers an instant query with the newest sample in the lookback window, which is the query step: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the group `params`. Range queries used by graphs are not affected, VictoriaMetrics looks back as far as the interval between samples.
+
+        This group writes `job:foo:sum` every 10m. vmalert aligns the timestamp of results to the group interval, so a new result appears up to 10m after its timestamp, depending on when vmalert evaluates the group.
+
+        Rules reading `job:foo:sum`:
+
+        - `FooHigh` at `fake.yml:11` looks back 5m, the query step, default vmalert -datasource.queryStep (5m): no data for at least 5m of every 10m.
+
+        To fix it read `job:foo:sum` with a lookback of at least 20m, for example with `params: {step: ["20m"]}` on the reading groups, or set `eval_offset` on this group and read it with a lookback of at least 10m, or lower the interval of this group.
+    diagnostics:
+        - message: '`FooHigh` reads `job:foo:sum` with a 5m lookback, shorter than this 10m interval, so it gets empty results between evaluations of this group.'
           firstcolumn: 1
           lastcolumn: 3
           kind: 0
     lines:
         first: 3
         last: 3
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLGroupIntervalCheck/queryStep_set_in_pint_config - 1]
+[]
+
+---
+
+[TestMetricsQLGroupIntervalCheck/read_in_the_same_group - 1]
+- description: read in the same group
+  content: |
+    - name: writer
+      interval: 10m
+      params:
+        step: ["10m"]
+      rules:
+      - record: job:foo:sum
+        expr: sum(foo) by (job)
+  output: |
+    2 |   interval: 10m
+                    ^^^
+                    `FooHigh` reads `job:foo:sum` with a 10m lookback, in the same group with this 10m
+                    interval, so it gets empty results between evaluations of this group.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: |-
+        vmalert evaluates rules with instant queries. VictoriaMetrics answers an instant query with the newest sample in the lookback window, which is the query step: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the group `params`. Range queries used by graphs are not affected, VictoriaMetrics looks back as far as the interval between samples.
+
+        This group writes `job:foo:sum` every 10m. vmalert aligns the timestamp of results to the group interval, so a new result appears up to 10m after its timestamp, depending on when vmalert evaluates the group.
+
+        Rules reading `job:foo:sum`:
+
+        - `FooHigh` at `fake.yml:8` looks back 10m, the query step from `params` of its group (10m): it runs in the same group, results of the previous evaluation are already 10m old, so it gets no data.
+
+        To fix it read `job:foo:sum` with a lookback of at least 20m, for example with `params: {step: ["20m"]}` on the reading groups, or set `eval_offset` on this group and read it with a lookback of at least 10m, or lower the interval of this group. Rules in the same group need a lookback longer than 10m, or move them to another group.
+    diagnostics:
+        - message: '`FooHigh` reads `job:foo:sum` with a 10m lookback, in the same group with this 10m interval, so it gets empty results between evaluations of this group.'
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLGroupIntervalCheck/read_in_the_same_group_with_a_step_longer_than_interval - 1]
+[]
+
+---
+
+[TestMetricsQLGroupIntervalCheck/read_with_a_step_between_interval_and_2_x_interval - 1]
+- description: read with a step between interval and 2 x interval
+  content: |4
+
+    - name: writer
+      interval: 10m
+      rules:
+      - record: job:foo:sum
+        expr: sum(foo) by (job)
+  output: |
+    3 |   interval: 10m
+                    ^^^
+                    `FooHigh` reads `job:foo:sum` with a 15m lookback, less than 2 x this interval, so it
+                    can get empty results: vmalert aligns result timestamps to the interval.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: |-
+        vmalert evaluates rules with instant queries. VictoriaMetrics answers an instant query with the newest sample in the lookback window, which is the query step: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the group `params`. Range queries used by graphs are not affected, VictoriaMetrics looks back as far as the interval between samples.
+
+        This group writes `job:foo:sum` every 10m. vmalert aligns the timestamp of results to the group interval, so a new result appears up to 10m after its timestamp, depending on when vmalert evaluates the group.
+
+        Rules reading `job:foo:sum`:
+
+        - `FooHigh` at `fake.yml:13` looks back 15m, the query step from `params` of its group (15m): no data for up to 5m of every 10m, depending on when vmalert evaluates this group.
+
+        To fix it read `job:foo:sum` with a lookback of at least 20m, for example with `params: {step: ["20m"]}` on the reading groups, or set `eval_offset` on this group and read it with a lookback of at least 10m, or lower the interval of this group.
+    diagnostics:
+        - message: '`FooHigh` reads `job:foo:sum` with a 15m lookback, less than 2 x this interval, so it can get empty results: vmalert aligns result timestamps to the interval.'
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 0
+    anchor: 0
+
+---
+
+[TestMetricsQLGroupIntervalCheck/read_with_a_step_of_2_x_interval - 1]
+[]
+
+---
+
+[TestMetricsQLGroupIntervalCheck/read_with_a_subquery - 1]
+[]
+
+---
+
+[TestMetricsQLGroupIntervalCheck/read_with_a_window_of_2_x_interval - 1]
+[]
+
+---
+
+[TestMetricsQLGroupIntervalCheck/read_with_a_window_shorter_than_interval - 1]
+- description: read with a window shorter than interval
+  content: |4
+
+    - name: writer
+      interval: 10m
+      rules:
+      - record: job:foo:sum
+        expr: sum(foo) by (job)
+  output: |
+    3 |   interval: 10m
+                    ^^^
+                    `job:foo:max` reads `job:foo:sum` with a 5m lookback, shorter than this 10m interval, so
+                    it gets empty results between evaluations of this group.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: |-
+        vmalert evaluates rules with instant queries. VictoriaMetrics answers an instant query with the newest sample in the lookback window, which is the query step: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the group `params`. Range queries used by graphs are not affected, VictoriaMetrics looks back as far as the interval between samples.
+
+        This group writes `job:foo:sum` every 10m. vmalert aligns the timestamp of results to the group interval, so a new result appears up to 10m after its timestamp, depending on when vmalert evaluates the group.
+
+        Rules reading `job:foo:sum`:
+
+        - `job:foo:max` at `fake.yml:10` looks back 5m, the `[5m]` window: no data for at least 5m of every 10m.
+
+        To fix it read `job:foo:sum` with a lookback of at least 20m, for example with `params: {step: ["20m"]}` on the reading groups, or set `eval_offset` on this group and read it with a lookback of at least 10m, or lower the interval of this group.
+    diagnostics:
+        - message: '`job:foo:max` reads `job:foo:sum` with a 5m lookback, shorter than this 10m interval, so it gets empty results between evaluations of this group.'
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLGroupIntervalCheck/read_with_the_default_5m_query_step - 1]
+- description: read with the default 5m query step
+  content: |4
+
+    - name: writer
+      interval: 10m
+      rules:
+      - record: job:foo:sum
+        expr: sum(foo) by (job)
+  output: |
+    3 |   interval: 10m
+                    ^^^
+                    `FooHigh` reads `job:foo:sum` with a 5m lookback, shorter than this 10m interval, so it
+                    gets empty results between evaluations of this group.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: |-
+        vmalert evaluates rules with instant queries. VictoriaMetrics answers an instant query with the newest sample in the lookback window, which is the query step: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the group `params`. Range queries used by graphs are not affected, VictoriaMetrics looks back as far as the interval between samples.
+
+        This group writes `job:foo:sum` every 10m. vmalert aligns the timestamp of results to the group interval, so a new result appears up to 10m after its timestamp, depending on when vmalert evaluates the group.
+
+        Rules reading `job:foo:sum`:
+
+        - `FooHigh` at `fake.yml:11` looks back 5m, the query step, default vmalert -datasource.queryStep (5m): no data for at least 5m of every 10m.
+
+        To fix it read `job:foo:sum` with a lookback of at least 20m, for example with `params: {step: ["20m"]}` on the reading groups, or set `eval_offset` on this group and read it with a lookback of at least 10m, or lower the interval of this group.
+    diagnostics:
+        - message: '`FooHigh` reads `job:foo:sum` with a 5m lookback, shorter than this 10m interval, so it gets empty results between evaluations of this group.'
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLGroupIntervalCheck/recording_rule_nobody_reads - 1]
+- description: recording rule nobody reads
+  content: |4
+
+    - name: writer
+      interval: 10m
+      rules:
+      - record: job:foo:sum
+        expr: sum(foo) by (job)
+  output: |
+    3 |   interval: 10m
+                    ^^^
+                    Instant queries of `job:foo:sum` with the default 5m step find no data for at least 5m
+                    of every 10m, graphs are not affected.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: |-
+        vmalert evaluates rules with instant queries. VictoriaMetrics answers an instant query with the newest sample in the lookback window, which is the query step: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the group `params`. Range queries used by graphs are not affected, VictoriaMetrics looks back as far as the interval between samples.
+
+        No checked rule reads `job:foo:sum`. Instant queries of it, like stat panels in Grafana, use the default step (5m) when they don't set one.
+    diagnostics:
+        - message: Instant queries of `job:foo:sum` with the default 5m step find no data for at least 5m of every 10m, graphs are not affected.
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 0
+    anchor: 0
+
+---
+
+[TestMetricsQLGroupIntervalCheck/recording_rule_nobody_reads_with_interval_5m - 1]
+[]
+
+---
+
+[TestMetricsQLGroupIntervalCheck/writer_with_eval_offset_read_with_a_step_of_interval - 1]
+[]
+
+---
+
+[TestMetricsQLGroupIntervalCheck/writer_without_eval_alignment_read_with_the_default_step - 1]
+- description: writer without eval_alignment read with the default step
+  content: |
+    - name: writer
+      interval: 10m
+      eval_alignment: false
+      rules:
+      - record: job:foo:sum
+        expr: sum(foo) by (job)
+  output: |
+    2 |   interval: 10m
+                    ^^^
+                    `FooHigh` reads `job:foo:sum` with a 5m lookback, shorter than this 10m interval, so it
+                    gets empty results between evaluations of this group.
+  problem:
+    reporter: group/interval
+    summary: interval too long
+    details: |-
+        vmalert evaluates rules with instant queries. VictoriaMetrics answers an instant query with the newest sample in the lookback window, which is the query step: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the group `params`. Range queries used by graphs are not affected, VictoriaMetrics looks back as far as the interval between samples.
+
+        This group writes `job:foo:sum` every 10m.
+
+        Rules reading `job:foo:sum`:
+
+        - `FooHigh` at `fake.yml:11` looks back 5m, the query step, default vmalert -datasource.queryStep (5m): no data for at least 5m of every 10m.
+
+        To fix it read `job:foo:sum` with a lookback of at least 10m, for example with `params: {step: ["10m"]}` on the reading groups, or lower the interval of this group.
+    diagnostics:
+        - message: '`FooHigh` reads `job:foo:sum` with a 5m lookback, shorter than this 10m interval, so it gets empty results between evaluations of this group.'
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 2
+        last: 2
     severity: 1
     anchor: 0
 

@@ -90,6 +90,7 @@ type PrometheusConfig struct {
 	Uptime          string            `hcl:"uptime,optional" json:"uptime"`
 	ScrapeInterval  string            `hcl:"scrapeInterval,optional" json:"scrapeInterval,omitempty"`
 	Retention       string            `hcl:"retention,optional" json:"retention,omitempty"`
+	QueryStep       string            `hcl:"queryStep,optional" json:"queryStep,omitempty"`
 	Failover        []string          `hcl:"failover,optional" json:"failover,omitempty"`
 	Include         []string          `hcl:"include,optional" json:"include,omitempty"`
 	Exclude         []string          `hcl:"exclude,optional" json:"exclude,omitempty"`
@@ -119,7 +120,7 @@ func (pc PrometheusConfig) validate() error {
 		return fmt.Errorf("prometheus URI %q is invalid: %w", pc.URI, err)
 	}
 
-	if err := validateBackend(pc.getBackend(), pc.ScrapeInterval, pc.Retention, pc.ExternalLabels); err != nil {
+	if err := validateBackend(pc.getBackend(), pc.ScrapeInterval, pc.Retention, pc.QueryStep, pc.ExternalLabels); err != nil {
 		return err
 	}
 
@@ -164,7 +165,7 @@ func (pc PrometheusConfig) validate() error {
 	return nil
 }
 
-func validateBackend(backend, scrapeInterval, retention string, externalLabels map[string]string) error {
+func validateBackend(backend, scrapeInterval, retention, queryStep string, externalLabels map[string]string) error {
 	switch backend {
 	case promapi.BackendPrometheus:
 		if scrapeInterval != "" {
@@ -172,6 +173,9 @@ func validateBackend(backend, scrapeInterval, retention string, externalLabels m
 		}
 		if retention != "" {
 			return fmt.Errorf("retention can only be set when using %q backend, pint reads it from Prometheus flags", promapi.BackendVictoriaMetrics)
+		}
+		if queryStep != "" {
+			return fmt.Errorf("queryStep can only be set when using %q backend, it's the vmalert -datasource.queryStep flag", promapi.BackendVictoriaMetrics)
 		}
 		if len(externalLabels) > 0 {
 			return fmt.Errorf("externalLabels can only be set when using %q backend", promapi.BackendVictoriaMetrics)
@@ -185,6 +189,11 @@ func validateBackend(backend, scrapeInterval, retention string, externalLabels m
 		if retention != "" {
 			if d, err := parseDuration(retention); err != nil || d <= 0 {
 				return fmt.Errorf("invalid retention %q, expected a positive duration like 90d or 1y", retention)
+			}
+		}
+		if queryStep != "" {
+			if d, err := parseDuration(queryStep); err != nil || d <= 0 {
+				return fmt.Errorf("invalid queryStep %q, expected a positive duration like 5m", queryStep)
 			}
 		}
 	default:
@@ -220,10 +229,12 @@ func newFailoverGroup(prom PrometheusConfig) *promapi.FailoverGroup {
 		if prom.getBackend() == promapi.BackendVictoriaMetrics {
 			scrapeInterval, _ := parseDuration(prom.ScrapeInterval)
 			retention, _ := parseDuration(prom.Retention)
+			queryStep, _ := parseDuration(prom.QueryStep)
 			return promapi.NewVictoriaMetrics(prom.Name, uri, prom.PublicURI, prom.Headers, timeout, prom.Concurrency, prom.RateLimit, tlsConf, promapi.VictoriaMetricsOptions{
 				ExternalLabels: prom.ExternalLabels,
 				ScrapeInterval: scrapeInterval,
 				Retention:      retention,
+				QueryStep:      queryStep,
 			})
 		}
 		return promapi.NewPrometheus(prom.Name, uri, prom.PublicURI, prom.Headers, timeout, prom.Concurrency, prom.RateLimit, prom.SampleRateLimit, tlsConf)

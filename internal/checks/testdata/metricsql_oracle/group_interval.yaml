@@ -1,6 +1,107 @@
 check: group/interval
 cases:
-  - name: MetricsQL rules in a group with a long interval
+  - name: recording rule results with a long interval have gaps
+    kind: positive
+    comment: >-
+      gi_gap_10m has a sample every 10 minutes, like a recording rule in a group with
+      interval: 10m. 6 minutes after a sample (offset 4m before the newest one) an instant query
+      with the default 5m step returns nothing, a 15m window still finds the sample. vmalert sends
+      -datasource.queryStep (5m by default) as the step, so GapHigh gets empty results.
+    rules: |
+      groups:
+        - name: vm
+          interval: 10m
+          rules:
+            - record: gi_gap_10m
+              expr: 'sum(rate(foo[5m]))'
+        - name: readers
+          interval: 1m
+          rules:
+            - alert: GapHigh
+              expr: gi_gap_10m > 0
+    data:
+      step: 10m
+      series:
+        - metric: gi_gap_10m{job="a"}
+          values: 1x12
+    vm:
+      - query: gi_gap_10m offset 7m
+        result: '{__name__="gi_gap_10m", job="a"} 1'
+      - query: gi_gap_10m offset 4m
+        result: empty
+      - query: max_over_time(gi_gap_10m[15m] offset 4m)
+        result: '{__name__="gi_gap_10m", job="a"} 1'
+    expect:
+      - rule: gi_gap_10m
+        reporter: group/interval
+        severity: warning
+        summary: interval too long
+        lines: "3"
+        diagnostics:
+          - message: '`GapHigh` reads `gi_gap_10m` with a 5m lookback, shorter than this 10m interval, so it gets empty results between evaluations of this group.'
+            fragment: 10m
+            start: 0
+            end: 3
+            line: 3
+  - name: alert reading ALERTS of an alerting rule with a long interval
+    kind: positive
+    rules: |
+      groups:
+        - name: vm
+          interval: 10m
+          rules:
+            - alert: Down
+              expr: 'up{job="a" or job="b"} == 0'
+        - name: readers
+          interval: 1m
+          rules:
+            - alert: DownMissing
+              expr: 'absent(ALERTS{alertname="Down"})'
+    expect:
+      - rule: Down
+        reporter: group/interval
+        severity: warning
+        summary: interval too long
+        lines: "3"
+        diagnostics:
+          - message: '`DownMissing` reads `ALERTS{alertname="Down"}` with a 5m lookback, shorter than this 10m interval, so it gets empty results between evaluations of this group.'
+            fragment: 10m
+            start: 0
+            end: 3
+            line: 3
+  - name: read with a step below 2 x interval
+    kind: positive
+    comment: >-
+      vmalert aligns result timestamps to the interval, so a result appears in VictoriaMetrics up
+      to one interval after its timestamp. A 15m step can miss it, depending on when vmalert
+      evaluates the group.
+    rules: |
+      groups:
+        - name: vm
+          interval: 10m
+          rules:
+            - record: x
+              expr: 'rate(foo{a="1" or b="2"})'
+        - name: readers
+          interval: 1m
+          params:
+            step: ["15m"]
+          rules:
+            - alert: XHigh
+              expr: x > 0
+    expect:
+      - rule: x
+        reporter: group/interval
+        severity: information
+        summary: interval too long
+        lines: "3"
+        diagnostics:
+          - message: '`XHigh` reads `x` with a 15m lookback, less than 2 x this interval, so it can get empty results: vmalert aligns result timestamps to the interval.'
+            fragment: 10m
+            start: 0
+            end: 3
+            line: 3
+  - name: recording rule nobody reads
     kind: positive
     rules: |
       groups:
@@ -12,51 +113,70 @@ cases:
     expect:
       - rule: x
         reporter: group/interval
-        severity: warning
+        severity: information
         summary: interval too long
         lines: "3"
         diagnostics:
-          - message: Using group interval > 5m will cause gaps in recording rule results, VictoriaMetrics instant queries only look back as far as the query step, which is 5m by default.
+          - message: Instant queries of `x` with the default 5m step find no data for at least 5m of every 10m, graphs are not affected.
             fragment: 10m
             start: 0
             end: 3
             line: 3
-  - name: recording rule results with a long interval have gaps
-    kind: positive
-    comment: >-
-      gi_gap_10m has a sample every 10 minutes, like a recording rule in a group with
-      interval: 10m. 6 minutes after a sample (offset 4m before the newest one) VictoriaMetrics
-      returns nothing, because instant queries only look back as far as the query step (5m).
+  - name: read with a step of 2 x interval
+    kind: negative
     rules: |
       groups:
         - name: vm
           interval: 10m
           rules:
-            - record: gi_gap_10m
-              expr: 'sum(rate(foo[5m]))'
-    data:
-      step: 10m
-      series:
-        - metric: gi_gap_10m{job="a"}
-          values: 1x12
-    vm:
-      - query: gi_gap_10m offset 7m
-        result: '{__name__="gi_gap_10m", job="a"} 1'
-      - query: gi_gap_10m offset 4m
-        result: empty
-    expect:
-      - rule: gi_gap_10m
-        reporter: group/interval
-        severity: warning
-        summary: interval too long
-        lines: "3"
-        diagnostics:
-          - message: Using group interval > 5m will cause gaps in recording rule results, VictoriaMetrics instant queries only look back as far as the query step, which is 5m by default.
-            fragment: 10m
-            start: 0
-            end: 3
-            line: 3
-  - name: alerting rules in a group with a long interval
+            - record: x
+              expr: 'rate(foo{a="1" or b="2"})'
+        - name: readers
+          interval: 1m
+          params:
+            step: ["20m"]
+          rules:
+            - alert: XHigh
+              expr: x > 0
+    expect: []
+  - name: writer with eval_offset read with a step of interval
+    kind: negative
+    comment: >-
+      With eval_offset vmalert timestamps results with the evaluation time, so a step of one
+      interval is enough.
+    rules: |
+      groups:
+        - name: vm
+          interval: 10m
+          eval_offset: 1m
+          rules:
+            - record: x
+              expr: 'rate(foo{a="1" or b="2"})'
+        - name: readers
+          interval: 1m
+          params:
+            step: ["10m"]
+          rules:
+            - alert: XHigh
+              expr: x > 0
+    expect: []
+  - name: read with a subquery
+    kind: negative
+    comment: Subqueries are range queries, they look back as far as the interval between samples.
+    rules: |
+      groups:
+        - name: vm
+          interval: 10m
+          rules:
+            - record: x
+              expr: 'rate(foo{a="1" or b="2"})'
+        - name: readers
+          interval: 1m
+          rules:
+            - record: x:max1h
+              expr: max_over_time(x[1h:1m])
+    expect: []
+  - name: alerting rule nobody reads
     kind: negative
     comment: >-
       vmalert sends firing alerts with EndsAt set to 4 x max(group interval, -rule.resendDelay)
@@ -79,6 +199,11 @@ cases:
           rules:
             - record: x
               expr: 'rate(foo{a="1" or b="2"})'
+        - name: readers
+          interval: 1m
+          rules:
+            - alert: XHigh
+              expr: x > 0
     expect: []
   - name: interval exactly five minutes
     kind: boundary

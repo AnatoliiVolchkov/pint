@@ -46,6 +46,8 @@ type VictoriaMetricsOptions struct {
 	ScrapeInterval time.Duration
 	// Retention overrides -retentionPeriod, vmselect doesn't know it.
 	Retention time.Duration
+	// QueryStep is -datasource.queryStep of vmalert evaluating rules against this server.
+	QueryStep time.Duration
 }
 
 type victoriaMetrics struct {
@@ -54,6 +56,7 @@ type victoriaMetrics struct {
 	rootURI        string
 	scrapeInterval time.Duration
 	retention      time.Duration
+	queryStep      time.Duration
 	cluster        bool
 }
 
@@ -71,6 +74,7 @@ func newVictoriaMetrics(uri string, opts VictoriaMetricsOptions) *victoriaMetric
 		rootURI:        uri,
 		scrapeInterval: opts.ScrapeInterval,
 		retention:      opts.Retention,
+		queryStep:      opts.QueryStep,
 		cluster:        false,
 	}
 	if u, err := url.Parse(uri); err == nil {
@@ -223,4 +227,20 @@ func (s *vmQueryStats) apply(stats *QueryStats) {
 	if stats.Timings.EvalTotalTime == 0 {
 		stats.Timings.EvalTotalTime = s.ExecutionTimeMsec / 1000
 	}
+}
+
+// VMAlertDefaultQueryStep is the default vmalert -datasource.queryStep, vmalert sends it as
+// the step of every instant query and VictoriaMetrics uses it as the lookback window.
+const VMAlertDefaultQueryStep = 5 * time.Minute
+
+// VMAlertQueryStep returns the -datasource.queryStep of vmalert evaluating rules against
+// VictoriaMetrics servers in this group. ok is false for Prometheus servers.
+func (fg *FailoverGroup) VMAlertQueryStep() (step time.Duration, ok bool) {
+	if len(fg.servers) == 0 || fg.servers[0].vm == nil {
+		return 0, false
+	}
+	if step = fg.servers[0].vm.queryStep; step > 0 {
+		return step, true
+	}
+	return VMAlertDefaultQueryStep, true
 }

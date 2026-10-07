@@ -328,8 +328,8 @@ var oracleCheckers = map[string]func(*promapi.FailoverGroup, oracleSettings) che
 	checks.FragileCheckName: func(*promapi.FailoverGroup, oracleSettings) checks.RuleChecker {
 		return checks.NewFragileCheck()
 	},
-	checks.GroupIntervalCheckName: func(*promapi.FailoverGroup, oracleSettings) checks.RuleChecker {
-		return checks.NewGroupIntervalCheck()
+	checks.GroupIntervalCheckName: func(p *promapi.FailoverGroup, _ oracleSettings) checks.RuleChecker {
+		return checks.NewGroupIntervalCheck().WithServers([]*promapi.FailoverGroup{p})
 	},
 	checks.ImpossibleCheckName: func(*promapi.FailoverGroup, oracleSettings) checks.RuleChecker {
 		return checks.NewImpossibleCheck()
@@ -551,6 +551,10 @@ func runOracleCase(t *testing.T, check string, c oracleCase, prom *promapi.Failo
 		all = append(all, oracleEntries(t, o.Rules, oracleState(t, o.State), o.Path)...)
 	}
 	checker := oracleCheckers[check](prom, oracleSettings(c.Settings))
+	if gc, ok := checker.(checks.GroupIntervalCheck); ok && target == "" {
+		// Offline cases must never query the server.
+		checker = gc.Offline()
+	}
 
 	ctx := context.WithValue(t.Context(), promapi.AllPrometheusServers, []*promapi.FailoverGroup{prom})
 	problems := make([][]checks.Problem, 0, len(entries))
@@ -625,6 +629,7 @@ func oracleProm(uri string, settings oracleSettings) *promapi.FailoverGroup {
 			ExternalLabels: extLabels,
 			ScrapeInterval: settings.dur("scrapeInterval", 0),
 			Retention:      settings.dur("retention", 0),
+			QueryStep:      settings.dur("queryStep", 0),
 		}),
 	}, true, settings.str("uptime", "up"), nil, nil, nil)
 }

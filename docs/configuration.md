@@ -342,6 +342,7 @@ prometheus "$name" {
   exclude         = ["...", ...]
   scrapeInterval  = "1m"
   retention       = "90d"
+  queryStep       = "5m"
   externalLabels  = { "...": "..." }
   tls {
     serverName = "..."
@@ -372,6 +373,9 @@ prometheus "$name" {
   - Not query the Prometheus configuration API, VictoriaMetrics doesn't expose one.
     Scrape interval and external labels used by checks are taken from `scrapeInterval`
     and `externalLabels` options instead.
+  - Read `-search.maxLookback`, `-search.maxStalenessInterval`,
+    `-search.minStalenessInterval` and `-search.setLookbackToStep` flags, they change how
+    far back instant queries look for samples, see [group/interval](checks/group/interval.md).
   - Skip Prometheus feature flag checks.
   - Use `seriesFetched` and `executionTimeMsec` query stats reported by VictoriaMetrics,
     VictoriaMetrics doesn't report the number of queried samples so `maxTotalSamples`
@@ -388,6 +392,13 @@ prometheus "$name" {
   vmselect (cluster) doesn't know the retention of vmstorage nodes: set it to their
   `-retentionPeriod`, otherwise pint logs a warning and doesn't check query ranges and
   offsets against retention. Use days or years, for example `90d` or `1y`, not `1M`.
+- `queryStep` - the `-datasource.queryStep` flag of vmalert evaluating rules against this
+  server, used by [group/interval](checks/group/interval.md). vmalert sends it as the `step`
+  of every query and VictoriaMetrics looks back only that far for the newest sample.
+  pint can't read vmalert flags, set it if vmalert doesn't use the default. A `step` set in
+  `params` of a rule group is read from the rule file and takes precedence.
+  Only valid with `backend = "victoriametrics"`.
+  Default value is `5m`, the vmalert default.
 - `externalLabels` - external labels used by checks that need them, for example
   [alerts/external_labels](checks/alerts/external_labels.md).
   Only valid with `backend = "victoriametrics"`, Prometheus servers expose them via the
@@ -631,6 +642,7 @@ template {
   exclude         = ["...", ...]
   scrapeInterval  = "1m"
   retention       = "90d"
+  queryStep       = "5m"
   externalLabels  = { "...": "..." }
   tls {
     serverName = "..."
