@@ -367,9 +367,9 @@ prometheus "$name" {
   Default value is `prometheus`. Setting it to `victoriametrics` tells pint to:
   - Read flags from the `/flags` endpoint at the root of the server (with the
     `/select/<tenant>/prometheus` or `/prometheus` prefix stripped from `uri`) and use
-    the `-retentionPeriod` flag as the retention time. vmselect doesn't know the
-    retention of vmstorage nodes, so for cluster setups pint assumes the default
-    retention of one month.
+    the `-retentionPeriod` flag as the retention time, unless `retention` is set.
+    vmselect doesn't know the retention of vmstorage nodes, set `retention` for
+    cluster setups, see below.
   - Not query the Prometheus configuration API, VictoriaMetrics doesn't expose one.
     Scrape interval and external labels used by checks are taken from `scrapeInterval`
     and `externalLabels` options instead.
