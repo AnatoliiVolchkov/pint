@@ -192,7 +192,7 @@ func astTrimLine(line string, diags []Diagnostic, diagPositions []PositionRanges
 		}
 
 		reps := findReplacements(nodes, diagRanges)
-		if len(reps) == 0 {
+		if len(reps) == 0 || !replacementsFit(reps, len(line)-exprStart) {
 			continue
 		}
 

@@ -57,6 +57,11 @@
 
 ### Fixed
 
+- Fixed a panic in the console output, `slice bounds out of range`, for rules stored in
+  double-quoted YAML strings, like Kubernetes ConfigMap values, when a problem pointed into a
+  long multi-line query. Positions in such strings point at other lines of the file, so pint
+  now prints such lines in full instead of trimming them. Upstream pint v0.89.1 has the same
+  panic; the reported line numbers for such strings are still approximate, as in upstream.
 - [alerts/template](checks/alerts/template.md) check no longer reports vmalert
   template variables and functions as syntax errors, or `alertname`, `alertgroup`
   and rule labels used in annotations as missing labels, when using MetricsQL.

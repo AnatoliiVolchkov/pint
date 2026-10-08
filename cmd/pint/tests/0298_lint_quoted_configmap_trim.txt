@@ -1,0 +1,38 @@
+# Positions of queries inside double-quoted ConfigMap values point at other lines.
+# Trimming such a line used to panic with "slice bounds out of range".
+exec pint --no-color --offline lint k8s
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["k8s"]
+level=INFO msg="Checking Prometheus rules" entries=1 workers=10 online=false
+level=INFO msg="Offline mode, skipping Prometheus discovery"
+Warning: unsafe division in aggregation (promql/nan)
+  ---> k8s/cm.yaml:10-12 -> `x`
+10 |     e: f
+11 |     g: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                        This aggregation can return NaN or Inf if any series for
+                                                        `bar_with_a_very_long_metric_name_that_does_not_fit_on_the_line{job="b"}` evaluates to zero.
+12 |     i: j
+
+level=INFO msg="Problems found" Warning=1
+-- .pint.hcl --
+parser {
+  relaxed = ["(.*/)?k8s/.*"]
+}
+-- k8s/cm.yaml --
+apiVersion: v1
+kind: ConfigMap
+data:
+  rules.yaml: "groups:\n- name: g\n  rules:\n  - record: x\n    expr: |\n      sum(\n        sum(foo_requests_total_with_a_long_name{job=\"a\"}) / sum(bar_with_a_very_long_metric_name_that_does_not_fit_on_the_line{job=\"b\"})\n      )\n"
+metadata:
+  name: a
+  labels:
+    a: b
+    c: d
+    e: f
+    g: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    i: j
