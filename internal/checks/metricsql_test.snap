@@ -1914,6 +1914,45 @@
 
 ---
 
+[TestMetricsQLLabelsConflictCheck/aggregated_metrics - 1]
+[]
+
+---
+
+[TestMetricsQLLabelsConflictCheck/alert_on_more_than_one_metric - 1]
+- description: alert on more than one metric
+  content: |
+    - alert: foo
+      expr: '{__name__=~"dup_x|dup_y"} > 0'
+  output: |
+    2 |   expr: '{__name__=~"dup_x|dup_y"} > 0'
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+                 `{__name__=~"dup_x|dup_y"}` can return series of more than one metric, series that only
+                 differ by the metric name get the same labels once the name is dropped and the whole rule
+                 fails.
+  problem:
+    reporter: labels/conflict
+    summary: rule results can have the same labels
+    details: |-
+        If the query returns series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped, and the rule fails on every evaluation:
+
+        - vmalert drops the metric name from alert labels and replaces it with the record name for recording rules, then fails with `result contains metrics with the same labelset during evaluation`, see [series with the same labelset](https://docs.victoriametrics.com/victoriametrics/vmalert/#series-with-the-same-labelset);
+        - functions like `rate()` drop the metric name in VictoriaMetrics, which then rejects the query with `duplicate output timeseries`.
+
+        To fix it keep the metric name in another label with `label_replace()`, for example `label_replace(<query>, "metric", "$1", "__name__", "(.+)")`, or select a single metric.
+    diagnostics:
+        - message: '`{__name__=~"dup_x|dup_y"}` can return series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped and the whole rule fails.'
+          firstcolumn: 1
+          lastcolumn: 25
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
 [TestMetricsQLLabelsConflictCheck/conflict_with_external_labels - 1]
 - description: conflict with external labels
   content: |
@@ -1942,6 +1981,89 @@
         last: 4
     severity: 1
     anchor: 0
+
+---
+
+[TestMetricsQLLabelsConflictCheck/metric_name_kept_in_another_label - 1]
+[]
+
+---
+
+[TestMetricsQLLabelsConflictCheck/or_between_two_metrics - 1]
+[]
+
+---
+
+[TestMetricsQLLabelsConflictCheck/rate_on_more_than_one_metric - 1]
+- description: rate on more than one metric
+  content: |
+    - record: foo
+      expr: 'rate({__name__=~"dup_x|dup_y"}[5m])'
+  output: |
+    2 |   expr: 'rate({__name__=~"dup_x|dup_y"}[5m])'
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+                      `{__name__=~"dup_x|dup_y"}` can return series of more than one metric, series that
+                      only differ by the metric name get the same labels once the name is dropped and the
+                      whole rule fails.
+  problem:
+    reporter: labels/conflict
+    summary: rule results can have the same labels
+    details: |-
+        If the query returns series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped, and the rule fails on every evaluation:
+
+        - vmalert drops the metric name from alert labels and replaces it with the record name for recording rules, then fails with `result contains metrics with the same labelset during evaluation`, see [series with the same labelset](https://docs.victoriametrics.com/victoriametrics/vmalert/#series-with-the-same-labelset);
+        - functions like `rate()` drop the metric name in VictoriaMetrics, which then rejects the query with `duplicate output timeseries`.
+
+        To fix it keep the metric name in another label with `label_replace()`, for example `label_replace(<query>, "metric", "$1", "__name__", "(.+)")`, or select a single metric.
+    diagnostics:
+        - message: '`{__name__=~"dup_x|dup_y"}` can return series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped and the whole rule fails.'
+          firstcolumn: 6
+          lastcolumn: 30
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLLabelsConflictCheck/recording_rule_on_more_than_one_metric_with_an_or_filter - 1]
+- description: recording rule on more than one metric with an or filter
+  content: |
+    - record: foo
+      expr: '{__name__="dup_x" or __name__="dup_y"}'
+  output: |
+    2 |   expr: '{__name__="dup_x" or __name__="dup_y"}'
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 `{__name__="dup_x" or __name__="dup_y"}` can return series of more than one metric, series
+                 that only differ by the metric name get the same labels once the name is dropped and the
+                 whole rule fails.
+  problem:
+    reporter: labels/conflict
+    summary: rule results can have the same labels
+    details: |-
+        If the query returns series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped, and the rule fails on every evaluation:
+
+        - vmalert drops the metric name from alert labels and replaces it with the record name for recording rules, then fails with `result contains metrics with the same labelset during evaluation`, see [series with the same labelset](https://docs.victoriametrics.com/victoriametrics/vmalert/#series-with-the-same-labelset);
+        - functions like `rate()` drop the metric name in VictoriaMetrics, which then rejects the query with `duplicate output timeseries`.
+
+        To fix it keep the metric name in another label with `label_replace()`, for example `label_replace(<query>, "metric", "$1", "__name__", "(.+)")`, or select a single metric.
+    diagnostics:
+        - message: '`{__name__="dup_x" or __name__="dup_y"}` can return series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped and the whole rule fails.'
+          firstcolumn: 1
+          lastcolumn: 38
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLLabelsConflictCheck/single_metric - 1]
+[]
 
 ---
 

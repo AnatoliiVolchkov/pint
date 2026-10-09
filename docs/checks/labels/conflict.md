@@ -70,6 +70,41 @@ redundant for both rule types, a rule label with a different value overrides the
 label for that rule. The check doesn't send any queries to VictoriaMetrics servers, so it also
 runs with `--offline`.
 
+## Series of more than one metric (vmalert)
+
+With `query_language = "metricsql"` and a server using `backend = "victoriametrics"` this check
+also warns when a rule query can return series of more than one metric. Examples are
+`{__name__=~"foo|bar"}`, `{__name__="foo" or __name__="bar"}`, or a selector without a metric
+name, when the metric name is still there in the results. Series that only differ by the
+metric name get the same labels once the name is dropped, and the whole rule fails on every
+evaluation:
+
+- vmalert drops the metric name from alert labels, and replaces it with the record name for
+  recording rules, then fails with `result contains metrics with the same labelset during
+  evaluation`, see
+  [series with the same labelset](https://docs.victoriametrics.com/victoriametrics/vmalert/#series-with-the-same-labelset);
+- functions like `rate()` drop the metric name in VictoriaMetrics, which then rejects the
+  query with `duplicate output timeseries`.
+
+Keep the metric name in another label to fix it:
+
+```yaml
+- alert: Errors
+  expr: 'label_replace({__name__=~"foo_errors|bar_errors"} > 0, "metric", "$1", "__name__", "(.+)")'
+```
+
+This was checked with vmalert v1.153.0, with two metrics that had series with the same other
+labels:
+
+| Rule | Result |
+|---|---|
+| alert `{__name__=~"x\|y"} > 0` | fails on every evaluation |
+| recording rule `{__name__=~"x\|y"}` | fails, nothing is written |
+| recording rule `rate({__name__=~"x\|y"}[1m])` | VictoriaMetrics rejects the query |
+| alert with `label_replace(...)` as above | works |
+| alert `x > 0 or y > 0` | works, `or` drops right hand series with the same labels |
+| rule labels that override query labels | work, vmalert keeps the query value as `exported_<name>` |
+
 ## Configuration
 
 This check doesn't have any configuration options.

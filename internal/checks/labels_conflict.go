@@ -50,6 +50,8 @@ func (c LabelsConflictCheck) Reporter() string {
 }
 
 func (c LabelsConflictCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*discovery.Entry) (problems []Problem) {
+	problems = c.vmDuplicateLabelsets(entry)
+
 	var labels *parser.YamlMap
 	if entry.Rule.AlertingRule != nil && entry.Rule.AlertingRule.Expr.SyntaxError() == nil && entry.Rule.AlertingRule.Labels != nil {
 		labels = entry.Rule.AlertingRule.Labels

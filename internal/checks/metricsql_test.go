@@ -1197,6 +1197,54 @@ func TestMetricsQLLabelsConflictCheck(t *testing.T) {
 			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: map[string]string{"cluster": "demo"}, ScrapeInterval: 0}),
 			problems:    true,
 		},
+		{
+			// vmalert drops the metric name from alerts, dup_x and dup_y series can collide.
+			description: "alert on more than one metric",
+			content:     "- alert: foo\n  expr: '{__name__=~\"dup_x|dup_y\"} > 0'\n",
+			checker:     newLabelsConflict,
+			prometheus:  newSimpleVM,
+			problems:    true,
+		},
+		{
+			description: "recording rule on more than one metric with an or filter",
+			content:     "- record: foo\n  expr: '{__name__=\"dup_x\" or __name__=\"dup_y\"}'\n",
+			checker:     newLabelsConflict,
+			prometheus:  newSimpleVM,
+			problems:    true,
+		},
+		{
+			// VictoriaMetrics rejects it with "duplicate output timeseries".
+			description: "rate on more than one metric",
+			content:     "- record: foo\n  expr: 'rate({__name__=~\"dup_x|dup_y\"}[5m])'\n",
+			checker:     newLabelsConflict,
+			prometheus:  newSimpleVM,
+			problems:    true,
+		},
+		{
+			description: "metric name kept in another label",
+			content:     "- alert: foo\n  expr: 'label_replace({__name__=~\"dup_x|dup_y\"} > 0, \"metric\", \"$1\", \"__name__\", \"(.+)\")'\n",
+			checker:     newLabelsConflict,
+			prometheus:  newSimpleVM,
+		},
+		{
+			// or drops right hand series with the same labels.
+			description: "or between two metrics",
+			content:     "- alert: foo\n  expr: dup_x > 0 or dup_y > 0\n",
+			checker:     newLabelsConflict,
+			prometheus:  newSimpleVM,
+		},
+		{
+			description: "aggregated metrics",
+			content:     "- record: foo\n  expr: 'sum({__name__=~\"dup_x|dup_y\"}) by (job)'\n",
+			checker:     newLabelsConflict,
+			prometheus:  newSimpleVM,
+		},
+		{
+			description: "single metric",
+			content:     "- alert: foo\n  expr: 'dup_x{job=\"a\" or job=\"b\"} > 0'\n",
+			checker:     newLabelsConflict,
+			prometheus:  newSimpleVM,
+		},
 	}))
 }
 
