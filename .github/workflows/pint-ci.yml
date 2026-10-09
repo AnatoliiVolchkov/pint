@@ -95,8 +95,16 @@ jobs:
           token: ${{ secrets.METRICSQL_READ_TOKEN }}
           ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
 
+      # Registries fail now and then (quay.io returned 502 on 2026-10-09), retry before
+      # failing the job.
       - name: Pull VictoriaMetrics images
-        run: docker compose -f internal/promapi/vmtest/docker-compose.yml pull --quiet
+        run: |
+          for attempt in 1 2 3 4; do
+            docker compose -f internal/promapi/vmtest/docker-compose.yml pull --quiet && exit 0
+            echo "::warning::pulling VictoriaMetrics images failed, attempt $attempt"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       - name: go vet
         run: go vet ./...
