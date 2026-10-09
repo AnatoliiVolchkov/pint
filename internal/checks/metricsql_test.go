@@ -55,6 +55,27 @@ func withMetricsQL(testCases []checkTest) []checkTest {
 func TestMetricsQLSyntaxCheck(t *testing.T) {
 	runTests(t, withMetricsQL([]checkTest{
 		{
+			// vmalert sends -datasource.queryStep, vmui and Grafana the step of the graph.
+			description: "subquery without a step",
+			content:     "- record: foo\n  expr: max_over_time(foo[1h:])\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "subquery without a step and step in group params",
+			content:     "- name: g\n  params:\n    step: [\"2m\"]\n  rules:\n  - record: foo\n    expr: max_over_time(rate(foo[5m])[1h:] offset 5m)\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "subquery with a step",
+			content:     "- record: foo\n  expr: max_over_time(foo[1h:1m]) + max_over_time(foo[1h:1i])\n",
+			checker:     newSyntaxCheck,
+			prometheus:  noProm,
+		},
+		{
 			description: "rollup without lookbehind window",
 			content:     "- record: foo\n  expr: sum(rate(foo))\n",
 			checker:     newSyntaxCheck,
@@ -154,10 +175,12 @@ func TestMetricsQLSyntaxCheck(t *testing.T) {
 			problems:    true,
 		},
 		{
+			// Not an implicit conversion, but [5m:] has no step.
 			description: "explicit subquery of an aggregation",
 			content:     "- record: foo\n  expr: max_over_time(sum(foo)[5m:]) + max_over_time(sum(foo)[5m:1m])\n",
 			checker:     newSyntaxCheck,
 			prometheus:  noProm,
+			problems:    true,
 		},
 		{
 			description: "implicit subquery step inside a rollup function",

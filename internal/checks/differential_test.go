@@ -88,6 +88,14 @@ var languageDifferences = []struct {
 		},
 	},
 	{
+		onlyIn: "metricsql",
+		reason: "a subquery without a step, like foo[5m:], uses the vmalert query step in rules, " +
+			"so promql/syntax warns about it only for MetricsQL",
+		match: func(check, _ string, f finding) bool {
+			return check == checks.SyntaxCheckName && f.summary == "subquery without a step"
+		},
+	},
+	{
 		onlyIn: "both",
 		reason: "constant-only expressions are represented differently: the MetricsQL parser folds numbers " +
 			"while parsing (upstream behavior) and keeps unary minus on durations as a separate node, so " +

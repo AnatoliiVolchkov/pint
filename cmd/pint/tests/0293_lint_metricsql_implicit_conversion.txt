@@ -45,7 +45,7 @@ groups:
       - record: api:requests:max1h
         expr: max_over_time(sum(rate(api_requests_total[5m]))[1h])
       - record: api:requests:max1h:explicit
-        expr: max_over_time(sum(rate(api_requests_total[5m]))[1h:])
+        expr: max_over_time(sum(rate(api_requests_total[5m]))[1h:1m])
 
 -- .pint.hcl --
 parser {

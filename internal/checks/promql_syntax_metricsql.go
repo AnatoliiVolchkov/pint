@@ -3,10 +3,12 @@ package checks
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	mql "github.com/VictoriaMetrics/metricsql"
 
 	"github.com/cloudflare/pint/internal/diags"
+	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/parser"
 	"github.com/cloudflare/pint/internal/parser/ast"
 )
@@ -30,9 +32,10 @@ const SyntaxCheckImplicitConversionDetails = "MetricsQL silently rewrites some q
 	"it uses the same `IsLikelyInvalid()` function from the MetricsQL parser."
 
 // checkMetricsQL reports MetricsQL queries that are valid but don't do what they look like.
-func (c SyntaxCheck) checkMetricsQL(expr *parser.PromQLExpr) []Problem {
+func (c SyntaxCheck) checkMetricsQL(entry *discovery.Entry, expr *parser.PromQLExpr) []Problem {
 	problems, reported := c.checkMisplacedWindows(expr)
-	return append(problems, c.checkImplicitConversions(expr, reported)...)
+	problems = append(problems, c.checkImplicitConversions(expr, reported)...)
+	return append(problems, c.checkSubqueriesWithoutStep(entry, expr)...)
 }
 
 // checkMisplacedWindows reports MetricsQL rollup functions without a lookbehind window
@@ -301,4 +304,82 @@ func withoutParens(node ast.Node) ast.Node {
 		}
 		node = pe.Expr
 	}
+}
+
+// A subquery without a step, like foo[1h:], uses the step of the query, see "subqueries" in
+// the MetricsQL docs. vmalert evaluates rules with instant queries and sends
+// -datasource.queryStep, 5m by default, or `step` from the group params. Checked with
+// VictoriaMetrics v1.153.0, a series with a sample every 15s:
+// count_over_time(foo[1h:]) returned 12, 60 and 240 with step 300s, 60s and 15s, while
+// count_over_time(foo[1h:1m]) always returned 60.
+
+const SyntaxCheckSubqueryStepDetails = "A subquery without a step, like `foo[1h:]`, uses the step of the query, " +
+	"see [subqueries](https://docs.victoriametrics.com/victoriametrics/metricsql/#subqueries).\n" +
+	"vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, " +
+	"or `step` from the group `params`. vmui and Grafana use the step of the graph instead, " +
+	"so the same query returns different results there. Set the step explicitly, like `foo[1h:1m]`, " +
+	"to get the same results everywhere.\n" +
+	SyntaxCheckMetricsQLDetails
+
+// subqueryWithoutStep returns the range text of a subquery written as `[range:]`, ok is false if
+// the subquery has a step or no colon, like sum(foo)[5m], which is an implicit conversion.
+func subqueryWithoutStep(query string, sq *ast.SubqueryExpr) (rangeText string, ok bool) {
+	if sq.Implicit || sq.Step != 0 || sq.StepText != "" {
+		return "", false
+	}
+	text := query[sq.PosRange.Start:sq.PosRange.End]
+	end := strings.LastIndexByte(text, ']')
+	if end < 0 {
+		return "", false
+	}
+	start := strings.LastIndexByte(text[:end], '[')
+	if start < 0 {
+		return "", false
+	}
+	window, step, hasColon := strings.Cut(text[start+1:end], ":")
+	if !hasColon || strings.TrimSpace(step) != "" {
+		return "", false
+	}
+	return strings.TrimSpace(window), true
+}
+
+// checkSubqueriesWithoutStep reports subqueries without a step in rules evaluated by vmalert.
+func (c SyntaxCheck) checkSubqueriesWithoutStep(entry *discovery.Entry, expr *parser.PromQLExpr) (problems []Problem) {
+	query := expr.Value.Value
+	stepText := "the vmalert query step, `-datasource.queryStep`, 5m by default"
+	if entry.Group != nil {
+		if step, ok := entry.Group.VMAlert.Param(vmalertParamStep); ok {
+			stepText = fmt.Sprintf("`%s`, the `step` from `params` of this group", step)
+		}
+	}
+	for _, node := range parser.WalkDownExpr[*ast.SubqueryExpr](expr.Query()) {
+		sq := node.Expr.(*ast.SubqueryExpr)
+		rangeText, ok := subqueryWithoutStep(query, sq)
+		if !ok {
+			continue
+		}
+		problems = append(problems, Problem{
+			Anchor:   AnchorAfter,
+			Lines:    expr.Value.Pos.Lines(),
+			Reporter: c.Reporter(),
+			Summary:  "subquery without a step",
+			Details:  SyntaxCheckSubqueryStepDetails,
+			Diagnostics: []diags.Diagnostic{
+				{
+					Message: fmt.Sprintf(
+						"`[%s:]` has no step, so in vmalert the subquery uses %s, and the step of the graph in vmui or Grafana. "+
+							"Set the step explicitly, like `[%s:1m]`.",
+						rangeText, stepText, rangeText,
+					),
+					Pos:         expr.Value.Pos,
+					Expr:        expr.Query().Expr,
+					FirstColumn: int(sq.PosRange.Start) + 1,
+					LastColumn:  int(sq.PosRange.End),
+					Kind:        diags.Issue,
+				},
+			},
+			Severity: Warning,
+		})
+	}
+	return problems
 }

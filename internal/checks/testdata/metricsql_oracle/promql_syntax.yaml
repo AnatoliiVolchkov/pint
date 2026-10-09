@@ -120,3 +120,30 @@ cases:
             rate(foo[5m]) # per-second rate
           ) by (job)
     expect: []
+  - name: subquery without a step
+    kind: positive
+    comment: >-
+      The step comes from the query, vmalert sends -datasource.queryStep. VictoriaMetrics
+      v1.153.0 returned 12, 60 and 240 for count_over_time(foo[1h:]) with step 300s, 60s and
+      15s, and 60 for count_over_time(foo[1h:1m]).
+    rules: |
+      - record: x
+        expr: 'max_over_time(foo{a="1" or b="2"}[1h:])'
+    expect:
+      - rule: x
+        reporter: promql/syntax
+        severity: warning
+        summary: subquery without a step
+        lines: "2"
+        diagnostics:
+          - message: '`[1h:]` has no step, so in vmalert the subquery uses the vmalert query step, `-datasource.queryStep`, 5m by default, and the step of the graph in vmui or Grafana. Set the step explicitly, like `[1h:1m]`.'
+            fragment: foo{a="1" or b="2"}[1h:]
+            start: 14
+            end: 38
+            line: 2
+  - name: subquery with a step
+    kind: negative
+    rules: |
+      - record: x
+        expr: 'max_over_time(foo{a="1" or b="2"}[1h:1m])'
+    expect: []

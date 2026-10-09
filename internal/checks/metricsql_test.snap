@@ -10,7 +10,33 @@
 ---
 
 [TestMetricsQLSyntaxCheck/explicit_subquery_of_an_aggregation - 1]
-[]
+- description: explicit subquery of an aggregation
+  content: |
+    - record: foo
+      expr: max_over_time(sum(foo)[5m:]) + max_over_time(sum(foo)[5m:1m])
+  output: |
+    2 |   expr: max_over_time(sum(foo)[5m:]) + max_over_time(sum(foo)[5m:1m])
+                              ^^^^^^^^^^^^^
+                              `[5m:]` has no step, so in vmalert the subquery uses the vmalert query step,
+                              `-datasource.queryStep`, 5m by default, and the step of the graph in vmui or
+                              Grafana. Set the step explicitly, like `[5m:1m]`.
+  problem:
+    reporter: promql/syntax
+    summary: subquery without a step
+    details: |-
+        A subquery without a step, like `foo[1h:]`, uses the step of the query, see [subqueries](https://docs.victoriametrics.com/victoriametrics/metricsql/#subqueries).
+        vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, or `step` from the group `params`. vmui and Grafana use the step of the graph instead, so the same query returns different results there. Set the step explicitly, like `foo[1h:1m]`, to get the same results everywhere.
+        [Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.
+    diagnostics:
+        - message: '`[5m:]` has no step, so in vmalert the subquery uses the vmalert query step, `-datasource.queryStep`, 5m by default, and the step of the graph in vmui or Grafana. Set the step explicitly, like `[5m:1m]`.'
+          firstcolumn: 15
+          lastcolumn: 27
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
 
 ---
 
@@ -523,6 +549,77 @@
 
 [TestMetricsQLSyntaxCheck/subquery_of_rate_with_a_window - 1]
 []
+
+---
+
+[TestMetricsQLSyntaxCheck/subquery_with_a_step - 1]
+[]
+
+---
+
+[TestMetricsQLSyntaxCheck/subquery_without_a_step - 1]
+- description: subquery without a step
+  content: |
+    - record: foo
+      expr: max_over_time(foo[1h:])
+  output: |
+    2 |   expr: max_over_time(foo[1h:])
+                              ^^^^^^^^
+                              `[1h:]` has no step, so in vmalert the subquery uses the vmalert query step,
+                              `-datasource.queryStep`, 5m by default, and the step of the graph in vmui or
+                              Grafana. Set the step explicitly, like `[1h:1m]`.
+  problem:
+    reporter: promql/syntax
+    summary: subquery without a step
+    details: |-
+        A subquery without a step, like `foo[1h:]`, uses the step of the query, see [subqueries](https://docs.victoriametrics.com/victoriametrics/metricsql/#subqueries).
+        vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, or `step` from the group `params`. vmui and Grafana use the step of the graph instead, so the same query returns different results there. Set the step explicitly, like `foo[1h:1m]`, to get the same results everywhere.
+        [Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.
+    diagnostics:
+        - message: '`[1h:]` has no step, so in vmalert the subquery uses the vmalert query step, `-datasource.queryStep`, 5m by default, and the step of the graph in vmui or Grafana. Set the step explicitly, like `[1h:1m]`.'
+          firstcolumn: 15
+          lastcolumn: 22
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLSyntaxCheck/subquery_without_a_step_and_step_in_group_params - 1]
+- description: subquery without a step and step in group params
+  content: |
+    - name: g
+      params:
+        step: ["2m"]
+      rules:
+      - record: foo
+        expr: max_over_time(rate(foo[5m])[1h:] offset 5m)
+  output: |
+    6 |     expr: max_over_time(rate(foo[5m])[1h:] offset 5m)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                `[1h:]` has no step, so in vmalert the subquery uses `2m`, the `step` from
+                                `params` of this group, and the step of the graph in vmui or Grafana. Set
+                                the step explicitly, like `[1h:1m]`.
+  problem:
+    reporter: promql/syntax
+    summary: subquery without a step
+    details: |-
+        A subquery without a step, like `foo[1h:]`, uses the step of the query, see [subqueries](https://docs.victoriametrics.com/victoriametrics/metricsql/#subqueries).
+        vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, or `step` from the group `params`. vmui and Grafana use the step of the graph instead, so the same query returns different results there. Set the step explicitly, like `foo[1h:1m]`, to get the same results everywhere.
+        [Click here](https://docs.victoriametrics.com/victoriametrics/metricsql/) for MetricsQL documentation.
+    diagnostics:
+        - message: '`[1h:]` has no step, so in vmalert the subquery uses `2m`, the `step` from `params` of this group, and the step of the graph in vmui or Grafana. Set the step explicitly, like `[1h:1m]`.'
+          firstcolumn: 15
+          lastcolumn: 42
+          kind: 0
+    lines:
+        first: 6
+        last: 6
+    severity: 1
+    anchor: 0
 
 ---
 

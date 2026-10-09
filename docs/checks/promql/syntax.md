@@ -38,7 +38,14 @@ default, rejects them when started with `-search.disableImplicitConversion` and 
 with `-search.logImplicitConversion`. pint reports exactly the queries these flags act on,
 using the same `IsLikelyInvalid()` function from the MetricsQL parser.
 Write subqueries explicitly, for example `sum(rate(foo[5m]))` instead of `rate(sum(foo))`,
-or `max_over_time(sum(foo)[1h:])` instead of `max_over_time(sum(foo)[1h])`.
+or `max_over_time(sum(foo)[1h:1m])` instead of `max_over_time(sum(foo)[1h])`.
+
+It also warns about subqueries without a step, like `max_over_time(foo[1h:])`. Their step
+comes from the query: vmalert sends `-datasource.queryStep`, 5m by default, or `step` from the
+group `params`, while vmui and Grafana use the step of the graph. The same query then returns
+different results in vmalert and on dashboards. VictoriaMetrics v1.153.0 returned 12, 60 and
+240 for `count_over_time(foo[1h:])` with a query step of 5m, 1m and 15s, and always 60 for
+`count_over_time(foo[1h:1m])`. Set the step explicitly, like `[1h:1m]`.
 
 ## Configuration
 
