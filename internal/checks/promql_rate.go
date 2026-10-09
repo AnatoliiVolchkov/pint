@@ -57,11 +57,13 @@ func NewRateCheck(prom *promapi.FailoverGroup) RateCheck {
 		prom:         prom,
 		minIntervals: 2,
 		instance:     fmt.Sprintf("%s(%s)", RateCheckName, prom.Name()),
+		vm:           nil,
 	}
 }
 
 type RateCheck struct {
 	prom         *promapi.FailoverGroup
+	vm           *rateVMWindow
 	instance     string
 	minIntervals int
 }
@@ -110,6 +112,7 @@ func (c RateCheck) Check(ctx context.Context, entry *discovery.Entry, entries []
 		pending[name] = c.prom.Metadata(ctx, name)
 	}
 
+	c = c.withVMWindow(ctx, entry)
 	problems = append(problems, c.checkSources(entry.Rule, expr, entries, cfg, pending)...)
 	return problems
 }
@@ -199,6 +202,9 @@ func (c RateCheck) checkSources(
 
 			// MetricsQL windows like rate(foo) or rate(foo[5i]) are calculated at query time.
 			runtimeWindow := m.Implicit || m.StepRelative
+			if runtimeWindow {
+				problems = append(problems, c.runtimeWindowProblems(expr, call, m, cfg, minIntervals, details)...)
+			}
 			if !runtimeWindow && m.Range < cfg.Config.Global.ScrapeInterval*time.Duration(minIntervals) {
 				problems = append(problems, Problem{
 					Anchor:   AnchorAfter,

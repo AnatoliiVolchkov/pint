@@ -2161,6 +2161,55 @@
 
 ---
 
+[TestMetricsQLRateCheck/rate_without_lookbehind_window_and_-search.minStalenessInterval - 1]
+[]
+
+---
+
+[TestMetricsQLRateCheck/rate_without_lookbehind_window_and_a_group_step_covering_the_scrape_interval - 1]
+[]
+
+---
+
+[TestMetricsQLRateCheck/rate_without_lookbehind_window_and_a_scrape_interval_longer_than_the_step - 1]
+- description: rate without lookbehind window and a scrape interval longer than the step
+  content: |
+    - record: foo
+      expr: rate(foo)
+  output: |
+    2 |   expr: rate(foo)
+                ^^^^^^^^^
+                `rate()` has no lookbehind window, so VictoriaMetrics uses a 5m window, the query step,
+                default vmalert -datasource.queryStep (5m). `rate()` needs a window of at least 20m with the
+                `10m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com, so it
+                can return no results or wrong ones.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: |-
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
+
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
+
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
+        so the minimal time window you can use is one scrape interval.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
+
+        Without a lookbehind window, like `rate(foo)`, or with a window relative to the step, like `rate(foo[2i])`, the window depends on the query step. vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, or `step` from the group `params`. VictoriaMetrics only uses the last sample before the window if it's at most one step before the window, so with a scrape interval longer than the step the window must cover two scrape intervals. Set the window explicitly to make the rule independent of the step.
+    diagnostics:
+        - message: '`rate()` has no lookbehind window, so VictoriaMetrics uses a 5m window, the query step, default vmalert -datasource.queryStep (5m). `rate()` needs a window of at least 20m with the `10m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com, so it can return no results or wrong ones.'
+          firstcolumn: 1
+          lastcolumn: 9
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
 [TestMetricsQLRateCheck/rate_with_step_relative_window - 1]
 []
 
@@ -2444,6 +2493,45 @@
 
 [TestMetricsQLRateCheck/rate_prometheus_=_2x_default_scrape_interval - 1]
 []
+
+---
+
+[TestMetricsQLRateCheck/rate_with_a_step_relative_window_and_a_scrape_interval_longer_than_the_step - 1]
+- description: rate with a step relative window and a scrape interval longer than the step
+  content: |
+    - record: foo
+      expr: rate(foo[2i])
+  output: |
+    2 |   expr: rate(foo[2i])
+                ^^^^^^^^^^^^^
+                `rate()` uses a `[2i]` window, so VictoriaMetrics uses a 10m window, 2 x the query step,
+                default vmalert -datasource.queryStep (5m). `rate()` needs a window of at least 20m with the
+                `10m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com, so it
+                can return no results or wrong ones.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: |-
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
+
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
+
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
+        so the minimal time window you can use is one scrape interval.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
+
+        Without a lookbehind window, like `rate(foo)`, or with a window relative to the step, like `rate(foo[2i])`, the window depends on the query step. vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, or `step` from the group `params`. VictoriaMetrics only uses the last sample before the window if it's at most one step before the window, so with a scrape interval longer than the step the window must cover two scrape intervals. Set the window explicitly to make the rule independent of the step.
+    diagnostics:
+        - message: '`rate()` uses a `[2i]` window, so VictoriaMetrics uses a 10m window, 2 x the query step, default vmalert -datasource.queryStep (5m). `rate()` needs a window of at least 20m with the `10m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com, so it can return no results or wrong ones.'
+          firstcolumn: 1
+          lastcolumn: 13
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
 
 ---
 

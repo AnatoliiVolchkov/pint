@@ -95,29 +95,9 @@ type vmLookbackSettings struct {
 func (c GroupIntervalCheck) lookbackSettings(ctx context.Context) []vmLookbackSettings {
 	settings := make([]vmLookbackSettings, 0, len(c.servers))
 	for _, prom := range c.servers {
-		step, ok := prom.VMAlertQueryStep()
-		if !ok {
-			continue
+		if s, ok := vmLookbackSettingsFor(ctx, prom, !c.offline); ok {
+			settings = append(settings, s)
 		}
-		s := vmLookbackSettings{
-			server:         prom.Name(),
-			queryStep:      step,
-			queryStepSet:   step != promapi.VMAlertDefaultQueryStep,
-			maxLookback:    0,
-			minStaleness:   0,
-			maxLookbackSrc: "",
-			lookbackToStep: false,
-		}
-		if !c.offline {
-			flags, err := prom.Flags(ctx).Wait()
-			if err != nil {
-				slog.LogAttrs(ctx, slog.LevelDebug, "Cannot read VictoriaMetrics flags, using defaults for group/interval",
-					slog.String("name", prom.Name()), slog.Any("err", err))
-			} else {
-				s.applyFlags(flags.Flags)
-			}
-		}
-		settings = append(settings, s)
 	}
 	if len(settings) == 0 {
 		settings = append(settings, vmLookbackSettings{
@@ -131,6 +111,34 @@ func (c GroupIntervalCheck) lookbackSettings(ctx context.Context) []vmLookbackSe
 		})
 	}
 	return settings
+}
+
+// vmLookbackSettingsFor returns lookback settings of a VictoriaMetrics server, reading its
+// flags if readFlags is true. ok is false for Prometheus servers.
+func vmLookbackSettingsFor(ctx context.Context, prom *promapi.FailoverGroup, readFlags bool) (s vmLookbackSettings, ok bool) {
+	step, ok := prom.VMAlertQueryStep()
+	if !ok {
+		return s, false
+	}
+	s = vmLookbackSettings{
+		server:         prom.Name(),
+		queryStep:      step,
+		queryStepSet:   step != promapi.VMAlertDefaultQueryStep,
+		maxLookback:    0,
+		minStaleness:   0,
+		maxLookbackSrc: "",
+		lookbackToStep: false,
+	}
+	if readFlags {
+		flags, err := prom.Flags(ctx).Wait()
+		if err != nil {
+			slog.LogAttrs(ctx, slog.LevelDebug, "Cannot read VictoriaMetrics flags, using defaults",
+				slog.String("name", prom.Name()), slog.Any("err", err))
+		} else {
+			s.applyFlags(flags.Flags)
+		}
+	}
+	return s, true
 }
 
 func (s *vmLookbackSettings) applyFlags(flags map[string]string) {
@@ -179,7 +187,19 @@ func parseVMQueryDuration(s string) time.Duration {
 // Without an explicit window plain selectors use default_rollup, which can't look back
 // further than the max lookback. Other rollup functions are assumed to adjust their window.
 func (s vmLookbackSettings) window(step, maxLookback time.Duration, plainSelector bool) time.Duration {
-	ld := s.maxLookback
+	step, ld, maxPrev := s.instantLimits(step, maxLookback)
+	w := max(step, maxPrev)
+	if plainSelector && ld > 0 && w > ld {
+		w = ld
+	}
+	return w
+}
+
+// instantLimits returns the step of an instant query with given step and max_lookback
+// arguments, its max lookback (0 if not limited) and maxPrevInterval, how far back
+// VictoriaMetrics looks for a sample before the window, see rollupConfig.doInternal.
+func (s vmLookbackSettings) instantLimits(step, maxLookback time.Duration) (_, ld, maxPrev time.Duration) {
+	ld = s.maxLookback
 	if maxLookback > 0 {
 		ld = maxLookback
 	}
@@ -192,18 +212,14 @@ func (s vmLookbackSettings) window(step, maxLookback time.Duration, plainSelecto
 	if step <= 0 {
 		step = vmDefaultInstantStep
 	}
-	maxPrev := step
+	maxPrev = step
 	if ld > 0 && maxPrev > ld {
 		maxPrev = ld
 	}
 	if s.minStaleness > maxPrev {
 		maxPrev = s.minStaleness
 	}
-	w := max(step, maxPrev)
-	if plainSelector && ld > 0 && w > ld {
-		w = ld
-	}
-	return w
+	return step, ld, maxPrev
 }
 
 // groupIntervalRead is a rule that reads results of the checked rule.

@@ -54,6 +54,27 @@ This can cause a few potential problems:
   If you accidentally exported some metric with wrong type, then fixed it, but pint is still complaining,
   then it's very likely that you didn't release your fix to all targets yet.
 
+### Windows that depend on the query step
+
+MetricsQL allows `rate(foo)` without a lookbehind window, and windows relative to the step,
+like `rate(foo[2i])`. vmalert evaluates rules with instant queries, so for MetricsQL rules
+checked against a server with `backend = "victoriametrics"` pint works out the window:
+
+- the query step is `step` from the group `params`, otherwise `queryStep` set for the server
+  in pint config, otherwise 5m, the vmalert default `-datasource.queryStep`;
+- `rate(foo)` uses the step as the window, raised by `-search.minStalenessInterval` if the
+  server sets it;
+- `rate(foo[2i])` uses two steps.
+
+The window must cover the scrape interval like an explicit one. VictoriaMetrics uses the last
+sample before the window only if it's at most one step before the window. So with a scrape
+interval longer than the step, the window must cover two scrape intervals. Such problems are
+reported as a Warning.
+
+This was checked with VictoriaMetrics v1.153.0 and a counter scraped every 10m. With step 5m,
+`rate(foo)` was always empty and `increase(foo)` returned 0, while with step 15m both were
+correct. `rate(foo[2i])` with step 5m returned nothing for half of every scrape interval.
+
 ### VictoriaMetrics metadata
 
 VictoriaMetrics returns one metadata entry per metric name, and the type can come from any

@@ -1063,6 +1063,13 @@ func TestMetricsQLRuleDependencyCheck(t *testing.T) {
 	}))
 }
 
+func vmFlags(flags map[string]string) *prometheusMock {
+	return &prometheusMock{
+		conds: []requestCondition{requireVMFlagsPath},
+		resp:  vmFlagsResponse{flags: flags},
+	}
+}
+
 func newVMRuleDependencyCheck(_ *promapi.FailoverGroup) checks.RuleChecker {
 	return checks.NewRuleDependencyCheck()
 }
@@ -1410,18 +1417,51 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			mocks:       []*prometheusMock{gaugeMetadata("process_cpu_seconds_total")},
 		},
 		{
+			// The window is the query step, 5m, more than the default 1m scrape interval.
 			description: "rate without lookbehind window",
 			content:     "- record: foo\n  expr: rate(foo)\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
 		},
 		{
 			description: "rate with step relative window",
 			content:     "- record: foo\n  expr: rate(foo[1i])\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+		},
+		{
+			// A 5m window has at most one sample, the one before is 10m back.
+			description: "rate without lookbehind window and a scrape interval longer than the step",
+			content:     "- record: foo\n  expr: rate(foo)\n",
+			checker:     newRateCheck,
+			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute * 10, Retention: 0, QueryStep: 0}),
+			problems:    true,
+			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+		},
+		{
+			description: "rate without lookbehind window and a group step covering the scrape interval",
+			content:     "- name: g\n  params:\n    step: [\"15m\"]\n  rules:\n  - record: foo\n    expr: rate(foo)\n",
+			checker:     newRateCheck,
+			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute * 10, Retention: 0, QueryStep: 0}),
+			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+		},
+		{
+			// 2 x 5m covers one scrape interval, but the sample before the window is too far back.
+			description: "rate with a step relative window and a scrape interval longer than the step",
+			content:     "- record: foo\n  expr: rate(foo[2i])\n",
+			checker:     newRateCheck,
+			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute * 10, Retention: 0, QueryStep: 0}),
+			problems:    true,
+			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+		},
+		{
+			description: "rate without lookbehind window and -search.minStalenessInterval",
+			content:     "- record: foo\n  expr: rate(foo)\n",
+			checker:     newRateCheck,
+			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute * 10, Retention: 0, QueryStep: 0}),
+			mocks:       []*prometheusMock{counterMetadata, vmFlags(map[string]string{"search.minStalenessInterval": "15m0s"})},
 		},
 		{
 			// VictoriaMetrics uses the last sample before the window, one scrape interval is enough.
