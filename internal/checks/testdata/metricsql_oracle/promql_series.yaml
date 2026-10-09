@@ -153,3 +153,50 @@ cases:
             start: 5
             end: 33
             line: 2
+  - name: metric written less often than the query step
+    kind: positive
+    comment: >-
+      vmalert evaluates the rule with instant queries that look back one query step (5m). The
+      metric has a sample every 10m, so every other evaluation sees nothing, while range queries
+      look back about 10m and show no pauses. The number of pauses depends on step alignment.
+    rules: |
+      - record: x
+        expr: 'sum(series_sparse{job="a"})'
+    data:
+      step: 10m
+      series:
+        - metric: series_sparse{job="a"}
+          values: 1x40
+    vm:
+      - query: count(series_sparse{job="a"})
+        result: '{} 1'
+    expect:
+      - rule: x
+        reporter: promql/series
+        severity: warning
+        summary: pauses between samples longer than the query lookback
+        lines: "2"
+        diagnostics:
+          - message: '`series_sparse{job="a"}` had 39 pauses of at least 5m in the last 1w on `vm` VictoriaMetrics server at $URI, the longest at least 5m. vmalert evaluates this rule with instant queries that look back 5m, the query step, default vmalert -datasource.queryStep (5m), so evaluations during these pauses see no `series_sparse{job="a"}`.'
+            message_re: '^`series_sparse\{job="a"\}` had 3[89] pauses of at least 5m in the last 1w on `vm` VictoriaMetrics server at \$URI, the longest at least 5m\. vmalert evaluates this rule with instant queries that look back 5m, the query step, default vmalert -datasource\.queryStep \(5m\), so evaluations during these pauses see no `series_sparse\{job="a"\}`\.$'
+            fragment: series_sparse{job="a"}
+            start: 4
+            end: 26
+            line: 2
+  - name: a single outage of a dense metric
+    kind: negative
+    comment: >-
+      The outage is in the last hour, so pint measures pauses over the lookback range, but a
+      single pause isn't reported, only pauses at least once a day on average.
+    rules: |
+      - record: x
+        expr: 'sum(series_outage{job="a"})'
+    data:
+      step: 1m
+      series:
+        - metric: series_outage{job="a"}
+          values: 1x60 _x12 1x30
+    vm:
+      - query: count(series_outage{job="a"})
+        result: '{} 1'
+    expect: []

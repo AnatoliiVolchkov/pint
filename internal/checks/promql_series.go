@@ -766,6 +766,8 @@ func (c SeriesCheck) Check(ctx context.Context, entry *discovery.Entry, entries 
 		})
 	}
 
+	problems = append(problems, c.vmSparseSelectors(ctx, entry, entries, settings)...)
+
 	return problems
 }
 

@@ -1,0 +1,108 @@
+
+[TestSeriesVMCheck/PromQL_rules_are_not_measured - 1]
+[]
+
+---
+
+[TestSeriesVMCheck/Prometheus_servers_are_not_measured - 1]
+[]
+
+---
+
+[TestSeriesVMCheck/a_single_outage_is_not_reported - 1]
+[]
+
+---
+
+[TestSeriesVMCheck/disabled_by_comment - 1]
+[]
+
+---
+
+[TestSeriesVMCheck/metric_with_regular_pauses_longer_than_the_lookback - 1]
+- description: metric with regular pauses longer than the lookback
+  content: |
+    - record: foo:sum
+      expr: sum(foo{job="a"})
+  output: |
+    2 |   expr: sum(foo{job="a"})
+                    ^^^^^^^^^^^^
+                    `foo{job="a"}` had 1015 pauses of at least 5m in the last 1w on `prom` VictoriaMetrics
+                    server at https://simple.example.com, the longest at least 5m. vmalert evaluates this
+                    rule with instant queries that look back 5m, the query step, default vmalert
+                    -datasource.queryStep (5m), so evaluations during these pauses see no `foo{job="a"}`.
+  problem:
+    reporter: promql/series
+    summary: pauses between samples longer than the query lookback
+    details: |-
+        vmalert evaluates rules with instant queries. For a selector without a lookbehind window VictoriaMetrics returns the last sample within the query step before the evaluation time, `-datasource.queryStep` of vmalert (5m by default) or `step` from the group `params`. During pauses between samples longer than that the selector returns nothing: a firing alert resolves and its `for` starts again when the metric is back, a recording rule writes no sample. Graphs and pint range queries don't show such pauses, VictoriaMetrics range queries look back about the usual interval between samples.
+
+        Pauses at least once a day on average are usually how the metric is written: stream aggregation outputs, batch jobs, or a scrape interval longer than the query step. To use the last sample of such a metric read it with `last_over_time(selector[window])` and a window longer than the longest normal pause. pint measured the pauses with `count(count_over_time(selector[step]))` over the last 1w.
+    diagnostics:
+        - message: '`foo{job="a"}` had 1015 pauses of at least 5m in the last 1w on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 5m. vmalert evaluates this rule with instant queries that look back 5m, the query step, default vmalert -datasource.queryStep (5m), so evaluations during these pauses see no `foo{job="a"}`.'
+          firstcolumn: 5
+          lastcolumn: 16
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestSeriesVMCheck/metric_without_pauses - 1]
+[]
+
+---
+
+[TestSeriesVMCheck/results_of_other_rules_are_skipped - 1]
+[]
+
+---
+
+[TestSeriesVMCheck/selectors_inside_absent()_are_left_to_alerts/absent - 1]
+[]
+
+---
+
+[TestSeriesVMCheck/selectors_with_lookbehind_windows_and_fallbacks_are_skipped - 1]
+[]
+
+---
+
+[TestSeriesVMCheck/step_from_group_params - 1]
+- description: step from group params
+  content: |
+    - name: g
+      params:
+        step: ["10m"]
+      rules:
+      - record: foo:sum
+        expr: sum(foo) offset 1h
+  output: |
+    6 |     expr: sum(foo) offset 1h
+                      ^^^
+                      `foo` had 338 pauses of at least 10m in the last 1w on `prom` VictoriaMetrics server
+                      at https://simple.example.com, the longest at least 10m. vmalert evaluates this rule
+                      with instant queries that look back 10m, the query step from `params` of its group
+                      (10m), so evaluations during these pauses see no `foo`.
+  problem:
+    reporter: promql/series
+    summary: pauses between samples longer than the query lookback
+    details: |-
+        vmalert evaluates rules with instant queries. For a selector without a lookbehind window VictoriaMetrics returns the last sample within the query step before the evaluation time, `-datasource.queryStep` of vmalert (5m by default) or `step` from the group `params`. During pauses between samples longer than that the selector returns nothing: a firing alert resolves and its `for` starts again when the metric is back, a recording rule writes no sample. Graphs and pint range queries don't show such pauses, VictoriaMetrics range queries look back about the usual interval between samples.
+
+        Pauses at least once a day on average are usually how the metric is written: stream aggregation outputs, batch jobs, or a scrape interval longer than the query step. To use the last sample of such a metric read it with `last_over_time(selector[window])` and a window longer than the longest normal pause. pint measured the pauses with `count(count_over_time(selector[step]))` over the last 1w.
+    diagnostics:
+        - message: '`foo` had 338 pauses of at least 10m in the last 1w on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 10m. vmalert evaluates this rule with instant queries that look back 10m, the query step from `params` of its group (10m), so evaluations during these pauses see no `foo`.'
+          firstcolumn: 5
+          lastcolumn: 7
+          kind: 0
+    lines:
+        first: 6
+        last: 6
+    severity: 1
+    anchor: 0
+
+---

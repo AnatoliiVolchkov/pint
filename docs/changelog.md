@@ -87,6 +87,11 @@
   query step, 5m by default, so on a metric written every 10m the alert fires during every
   pause and every new sample resets `for`. Only pauses that happen at least once a day on
   average are reported, not a single outage.
+- [promql/series](checks/promql/series.md) check warns about MetricsQL rules reading metrics
+  that regularly have pauses between samples longer than the vmalert query step, 5m by
+  default, on VictoriaMetrics servers. vmalert sees nothing during such pauses, while graphs
+  and range queries don't show them. pint looks at the last hour first and measures only
+  selectors with a pause in it over `lookbackRange`.
 
 ### Fixed
 

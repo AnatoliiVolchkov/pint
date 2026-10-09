@@ -1660,6 +1660,11 @@ func TestMetricsQLSeriesCheck(t *testing.T) {
 			problems:    true,
 			mocks: []*prometheusMock{
 				{
+					// Pauses between samples are measured on VictoriaMetrics, see promql_series_vm_test.go.
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{}},
+				},
+				{
 					conds: []requestCondition{requireQueryPath},
 					resp:  respondWithEmptyVector(),
 				},
@@ -1675,6 +1680,17 @@ func TestMetricsQLSeriesCheck(t *testing.T) {
 			checker:     newSeriesCheck,
 			prometheus:  newSimpleVM,
 			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{}},
+				},
+				{
+					conds: []requestCondition{
+						requireRangeQueryPath,
+						formCond{key: "query", value: `count(count_over_time(found{job="a" or job="b"}[5m]))`},
+					},
+					resp: respondWithSingleRangeVector1D(),
+				},
 				{
 					conds: []requestCondition{
 						requireQueryPath,

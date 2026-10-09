@@ -148,6 +148,35 @@ If that's not doable you can let pint know that it's not possible to validate
 those queries by disabling this check. See below for instructions on how to do
 that.
 
+## VictoriaMetrics
+
+vmalert evaluates rules with instant queries. For a selector without a lookbehind window
+VictoriaMetrics returns the last sample within the query step before the evaluation time,
+`-datasource.queryStep` of vmalert (5m by default) or `step` from the group `params`.
+A metric written less often than that, for example results of stream aggregation, batch jobs
+or targets scraped less often than the query step, returns nothing during every pause between
+samples: a firing alert resolves and its `for` starts again, a recording rule writes no sample.
+Graphs and range queries don't show such pauses, because VictoriaMetrics range queries look
+back about the usual interval between samples.
+
+For MetricsQL rules checked against VictoriaMetrics servers pint measures pauses between
+samples of every selector without a lookbehind window with a
+`count(count_over_time(selector[step]))` range query and warns when there are pauses at
+least as long as the step, at least once a day on average. A single outage isn't reported.
+To keep the load low pint first runs that query over the last hour, and only selectors with a
+pause in it are measured over `lookbackRange` (7d by default).
+
+Not measured:
+
+- selectors inside `absent()` and `absent_over_time()`, [alerts/absent](../alerts/absent.md)
+  checks those,
+- selectors with a fallback like `or vector(0)`,
+- selectors reading results of other rules, see [group/interval](../group/interval.md),
+- metrics matching `ignoreMetrics` and selectors disabled with `# pint disable promql/series(...)`.
+
+To use the last sample of a metric with regular pauses read it with
+`last_over_time(selector[window])` and a window longer than the longest normal pause.
+
 ## Configuration
 
 This check supports setting extra configuration option to fine tune its behaviour.
