@@ -19,7 +19,7 @@
                 ^^^^^^^^^^^^^^^^^^^^
                 `absent(foo{job="a"})` returns 1 whenever `foo{job="a"}` has no sample in the last 5m, the
                 lookback of vmalert instant queries: the query step, default vmalert -datasource.queryStep
-                (5m). In the last 1w `foo{job="a"}` had 9 pauses of at least 5m on `prom` VictoriaMetrics
+                (5m). In the last 1w `foo{job="a"}` had 13 pauses of at least 5m on `prom` VictoriaMetrics
                 server at https://simple.example.com, the longest at least 30m, while samples kept arriving,
                 so this alert fires during normal pauses, not only when `foo{job="a"}` disappears.
   problem:
@@ -27,7 +27,7 @@
     summary: absent() window shorter than pauses between samples
     details: vmalert evaluates alerting rules with instant queries. `absent(selector)` returns 1 when the selector has no sample within the query step before the evaluation time, `-datasource.queryStep` of vmalert (5m by default) or `step` from the group `params`, and `absent_over_time(selector[window])` when it has none within the window. A metric written less often than that, for example results of stream aggregation or of batch jobs, makes the alert fire during every pause between samples, and every new sample resets `for`. To alert only when the metric stops, use `absent_over_time(selector[window])` with a window longer than the longest normal pause, or set `for` to at least that long. pint measured the pauses with `count_over_time(selector[window])` over the last 1w, the pause after the last sample isn't counted. It reports pauses that happen at least once a day on average, a single outage isn't reported.
     diagnostics:
-        - message: '`absent(foo{job="a"})` returns 1 whenever `foo{job="a"}` has no sample in the last 5m, the lookback of vmalert instant queries: the query step, default vmalert -datasource.queryStep (5m). In the last 1w `foo{job="a"}` had 9 pauses of at least 5m on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 30m, while samples kept arriving, so this alert fires during normal pauses, not only when `foo{job="a"}` disappears.'
+        - message: '`absent(foo{job="a"})` returns 1 whenever `foo{job="a"}` has no sample in the last 5m, the lookback of vmalert instant queries: the query step, default vmalert -datasource.queryStep (5m). In the last 1w `foo{job="a"}` had 13 pauses of at least 5m on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 30m, while samples kept arriving, so this alert fires during normal pauses, not only when `foo{job="a"}` disappears.'
           firstcolumn: 1
           lastcolumn: 20
           kind: 0
@@ -77,7 +77,7 @@
     2 |   expr: absent_over_time(foo{job="a"}[10m])
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 `absent_over_time(foo{job="a"}[10m])` returns 1 whenever `foo{job="a"}` has no sample in the
-                last 10m. In the last 1w `foo{job="a"}` had 9 pauses of at least 10m on `prom`
+                last 10m. In the last 1w `foo{job="a"}` had 13 pauses of at least 10m on `prom`
                 VictoriaMetrics server at https://simple.example.com, the longest at least 1h, while samples
                 kept arriving, so this alert fires during normal pauses, not only when `foo{job="a"}`
                 disappears.
@@ -86,7 +86,7 @@
     summary: absent_over_time() window shorter than pauses between samples
     details: vmalert evaluates alerting rules with instant queries. `absent(selector)` returns 1 when the selector has no sample within the query step before the evaluation time, `-datasource.queryStep` of vmalert (5m by default) or `step` from the group `params`, and `absent_over_time(selector[window])` when it has none within the window. A metric written less often than that, for example results of stream aggregation or of batch jobs, makes the alert fire during every pause between samples, and every new sample resets `for`. To alert only when the metric stops, use `absent_over_time(selector[window])` with a window longer than the longest normal pause, or set `for` to at least that long. pint measured the pauses with `count_over_time(selector[window])` over the last 1w, the pause after the last sample isn't counted. It reports pauses that happen at least once a day on average, a single outage isn't reported.
     diagnostics:
-        - message: '`absent_over_time(foo{job="a"}[10m])` returns 1 whenever `foo{job="a"}` has no sample in the last 10m. In the last 1w `foo{job="a"}` had 9 pauses of at least 10m on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 1h, while samples kept arriving, so this alert fires during normal pauses, not only when `foo{job="a"}` disappears.'
+        - message: '`absent_over_time(foo{job="a"}[10m])` returns 1 whenever `foo{job="a"}` has no sample in the last 10m. In the last 1w `foo{job="a"}` had 13 pauses of at least 10m on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 1h, while samples kept arriving, so this alert fires during normal pauses, not only when `foo{job="a"}` disappears.'
           firstcolumn: 1
           lastcolumn: 35
           kind: 0
@@ -114,7 +114,7 @@
                 ^^^^^^^^^^^^^^^^^^^^
                 `absent(foo{job="a"})` returns 1 whenever `foo{job="a"}` has no sample in the last 5m, the
                 lookback of vmalert instant queries: the query step, default vmalert -datasource.queryStep
-                (5m). In the last 1w `foo{job="a"}` had 9 pauses of at least 5m on `prom` VictoriaMetrics
+                (5m). In the last 1w `foo{job="a"}` had 13 pauses of at least 5m on `prom` VictoriaMetrics
                 server at https://simple.example.com, the longest at least 30m, while samples kept arriving,
                 so this alert fires during normal pauses, not only when `foo{job="a"}` disappears. `for:
                 20m` covers pauses up to 25m only.
@@ -123,7 +123,7 @@
     summary: absent() window shorter than pauses between samples
     details: vmalert evaluates alerting rules with instant queries. `absent(selector)` returns 1 when the selector has no sample within the query step before the evaluation time, `-datasource.queryStep` of vmalert (5m by default) or `step` from the group `params`, and `absent_over_time(selector[window])` when it has none within the window. A metric written less often than that, for example results of stream aggregation or of batch jobs, makes the alert fire during every pause between samples, and every new sample resets `for`. To alert only when the metric stops, use `absent_over_time(selector[window])` with a window longer than the longest normal pause, or set `for` to at least that long. pint measured the pauses with `count_over_time(selector[window])` over the last 1w, the pause after the last sample isn't counted. It reports pauses that happen at least once a day on average, a single outage isn't reported.
     diagnostics:
-        - message: '`absent(foo{job="a"})` returns 1 whenever `foo{job="a"}` has no sample in the last 5m, the lookback of vmalert instant queries: the query step, default vmalert -datasource.queryStep (5m). In the last 1w `foo{job="a"}` had 9 pauses of at least 5m on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 30m, while samples kept arriving, so this alert fires during normal pauses, not only when `foo{job="a"}` disappears. `for: 20m` covers pauses up to 25m only.'
+        - message: '`absent(foo{job="a"})` returns 1 whenever `foo{job="a"}` has no sample in the last 5m, the lookback of vmalert instant queries: the query step, default vmalert -datasource.queryStep (5m). In the last 1w `foo{job="a"}` had 13 pauses of at least 5m on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 30m, while samples kept arriving, so this alert fires during normal pauses, not only when `foo{job="a"}` disappears. `for: 20m` covers pauses up to 25m only.'
           firstcolumn: 1
           lastcolumn: 20
           kind: 0
@@ -152,7 +152,7 @@
                                            offset 1h` has no sample in the last 5m, the lookback of vmalert
                                            instant queries: the query step, default vmalert
                                            -datasource.queryStep (5m). In the last 1w `foo{job="a"} offset
-                                           1h` had 9 pauses of at least 5m on `prom` VictoriaMetrics server
+                                           1h` had 13 pauses of at least 5m on `prom` VictoriaMetrics server
                                            at https://simple.example.com, the longest at least 30m, while
                                            samples kept arriving, so this alert fires during normal pauses,
                                            not only when `foo{job="a"} offset 1h` disappears.
@@ -161,7 +161,7 @@
     summary: absent() window shorter than pauses between samples
     details: vmalert evaluates alerting rules with instant queries. `absent(selector)` returns 1 when the selector has no sample within the query step before the evaluation time, `-datasource.queryStep` of vmalert (5m by default) or `step` from the group `params`, and `absent_over_time(selector[window])` when it has none within the window. A metric written less often than that, for example results of stream aggregation or of batch jobs, makes the alert fire during every pause between samples, and every new sample resets `for`. To alert only when the metric stops, use `absent_over_time(selector[window])` with a window longer than the longest normal pause, or set `for` to at least that long. pint measured the pauses with `count_over_time(selector[window])` over the last 1w, the pause after the last sample isn't counted. It reports pauses that happen at least once a day on average, a single outage isn't reported.
     diagnostics:
-        - message: '`absent(foo{job="a"} offset 1h)` returns 1 whenever `foo{job="a"} offset 1h` has no sample in the last 5m, the lookback of vmalert instant queries: the query step, default vmalert -datasource.queryStep (5m). In the last 1w `foo{job="a"} offset 1h` had 9 pauses of at least 5m on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 30m, while samples kept arriving, so this alert fires during normal pauses, not only when `foo{job="a"} offset 1h` disappears.'
+        - message: '`absent(foo{job="a"} offset 1h)` returns 1 whenever `foo{job="a"} offset 1h` has no sample in the last 5m, the lookback of vmalert instant queries: the query step, default vmalert -datasource.queryStep (5m). In the last 1w `foo{job="a"} offset 1h` had 13 pauses of at least 5m on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 30m, while samples kept arriving, so this alert fires during normal pauses, not only when `foo{job="a"} offset 1h` disappears.'
           firstcolumn: 28
           lastcolumn: 57
           kind: 0

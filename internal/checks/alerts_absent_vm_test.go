@@ -21,22 +21,23 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 		return content
 	}
 	// presence is count(count_over_time(x[step])) over the last week with points step apart,
-	// except for holes of the given length every `every`, starting three days ago and going
-	// back. every = 0 makes a single hole.
+	// except for holes of the given length every `every` between 5 and 2 days ago, far from
+	// the ends of the queried range, so the number of pauses doesn't depend on the time the
+	// test runs. every = 0 makes a single hole two days ago.
 	presence := func(query string, step, hole, every time.Duration) *prometheusMock {
 		s := generateSampleStream(map[string]string{}, now.Add(-8*24*time.Hour), now.Add(time.Hour), step)
-		from := now.Add(-3 * 24 * time.Hour)
+		first, last := now.Add(-5*24*time.Hour), now.Add(-2*24*time.Hour)
 		s.Values = slices.DeleteFunc(s.Values, func(v model.SamplePair) bool {
 			ts := v.Timestamp.Time()
-			if !ts.Before(from) {
-				return ts.Before(from.Add(hole))
+			for h := last; !h.Before(first); h = h.Add(-every) {
+				if !ts.Before(h) && ts.Before(h.Add(hole)) {
+					return true
+				}
+				if every == 0 {
+					break
+				}
 			}
-			if every == 0 {
-				return false
-			}
-			// Holes start at from - k*every.
-			d := from.Sub(ts)
-			return (every-d%every)%every < hole
+			return false
 		})
 		return &prometheusMock{
 			conds: []requestCondition{requireRangeQueryPath, formCond{key: "query", value: query}},
@@ -53,7 +54,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*12)},
+			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*6)},
 			problems:    true,
 		},
 		{
@@ -70,7 +71,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*12)},
+			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*6)},
 		},
 		{
 			description: "for shorter than the pauses",
@@ -78,7 +79,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*12)},
+			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*6)},
 			problems:    true,
 		},
 		{
@@ -87,7 +88,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*12)},
+			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*6)},
 			problems:    true,
 		},
 		{
@@ -104,7 +105,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(`count(count_over_time(foo{job="a"}[10m]))`, time.Minute*10, time.Hour, time.Hour*12)},
+			mocks:       []*prometheusMock{flags, presence(`count(count_over_time(foo{job="a"}[10m]))`, time.Minute*10, time.Hour, time.Hour*6)},
 			problems:    true,
 		},
 		{

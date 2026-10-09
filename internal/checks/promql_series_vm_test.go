@@ -13,22 +13,31 @@ import (
 func TestSeriesVMCheck(t *testing.T) {
 	// Points of the mocked range responses must be aligned to their step, like real ones.
 	now := time.Now().Truncate(time.Hour)
-	// presence is count(count_over_time(x[step])) over the last week, the keep function
-	// decides which points are present.
-	presence := func(query string, step time.Duration, keep func(ts time.Time) bool) *prometheusMock {
+	start := time.Now()
+	// presence is count(count_over_time(x[step])) over the last week with points step apart,
+	// except for holes of the given length every 6h between 5 and 2 days ago, far from the ends
+	// of the queried range, so the number of pauses doesn't depend on the time the test runs.
+	// hole = 0 makes no such holes. recent adds a hole shorter than the others in the last
+	// hour, pint measures only selectors with a pause there.
+	presence := func(query string, step, hole time.Duration, recent bool) *prometheusMock {
 		s := generateSampleStream(map[string]string{}, now.Add(-8*24*time.Hour), now.Add(2*time.Hour), step)
-		s.Values = slices.DeleteFunc(s.Values, func(v model.SamplePair) bool { return !keep(v.Timestamp.Time()) })
+		first, last := now.Add(-5*24*time.Hour), now.Add(-2*24*time.Hour)
+		s.Values = slices.DeleteFunc(s.Values, func(v model.SamplePair) bool {
+			ts := v.Timestamp.Time()
+			if recent && !ts.Before(start.Add(-45*time.Minute)) && ts.Before(start.Add(-25*time.Minute)) {
+				return true
+			}
+			for h := last; hole > 0 && !h.Before(first); h = h.Add(-6 * time.Hour) {
+				if !ts.Before(h) && ts.Before(h.Add(hole)) {
+					return true
+				}
+			}
+			return false
+		})
 		return &prometheusMock{
 			conds: []requestCondition{requireRangeQueryPath, formCond{key: "query", value: query}},
 			resp:  matrixResponse{samples: []*model.SampleStream{s}},
 		}
-	}
-	// Every other 5m point is missing, a metric written every 10m.
-	everyOther := func(ts time.Time) bool { return ts.Unix()/300%2 == 0 }
-	always := func(time.Time) bool { return true }
-	// A single 30m outage in the last hour.
-	outage := func(ts time.Time) bool {
-		return ts.Before(now.Add(-40*time.Minute)) || ts.After(now.Add(-10*time.Minute))
 	}
 	found := func(selector string) *prometheusMock {
 		return &prometheusMock{
@@ -48,7 +57,7 @@ func TestSeriesVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newSeriesCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{found(`foo{job="a"}`), flags, presence(`count(count_over_time(foo{job="a"}[5m]))`, time.Minute*5, everyOther)},
+			mocks:       []*prometheusMock{found(`foo{job="a"}`), flags, presence(`count(count_over_time(foo{job="a"}[5m]))`, time.Minute*5, time.Minute*30, true)},
 			problems:    true,
 		},
 		{
@@ -57,7 +66,7 @@ func TestSeriesVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newSeriesCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{found(`foo{job="a"}`), flags, presence(`count(count_over_time(foo{job="a"}[5m]))`, time.Minute*5, always)},
+			mocks:       []*prometheusMock{found(`foo{job="a"}`), flags, presence(`count(count_over_time(foo{job="a"}[5m]))`, time.Minute*5, 0, false)},
 		},
 		{
 			description: "a single outage is not reported",
@@ -65,7 +74,7 @@ func TestSeriesVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newSeriesCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{found(`foo{job="a"}`), flags, presence(`count(count_over_time(foo{job="a"}[5m]))`, time.Minute*5, outage)},
+			mocks:       []*prometheusMock{found(`foo{job="a"}`), flags, presence(`count(count_over_time(foo{job="a"}[5m]))`, time.Minute*5, 0, true)},
 		},
 		{
 			description: "step from group params",
@@ -75,7 +84,7 @@ func TestSeriesVMCheck(t *testing.T) {
 			prometheus:  newSimpleVM,
 			mocks: []*prometheusMock{
 				found(`foo`), flags,
-				presence(`count(count_over_time(foo[10m]))`, time.Minute*10, func(ts time.Time) bool { return ts.Unix()/600%3 != 0 }),
+				presence(`count(count_over_time(foo[10m]))`, time.Minute*10, time.Hour, true),
 			},
 			problems: true,
 		},

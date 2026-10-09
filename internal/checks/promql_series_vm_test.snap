@@ -27,8 +27,8 @@
   output: |
     2 |   expr: sum(foo{job="a"})
                     ^^^^^^^^^^^^
-                    `foo{job="a"}` had 1015 pauses of at least 5m in the last 1w on `prom` VictoriaMetrics
-                    server at https://simple.example.com, the longest at least 5m. vmalert evaluates this
+                    `foo{job="a"}` had 14 pauses of at least 5m in the last 1w on `prom` VictoriaMetrics
+                    server at https://simple.example.com, the longest at least 30m. vmalert evaluates this
                     rule with instant queries that look back 5m, the query step, default vmalert
                     -datasource.queryStep (5m), so evaluations during these pauses see no `foo{job="a"}`.
   problem:
@@ -39,7 +39,7 @@
 
         Pauses at least once a day on average are usually how the metric is written: stream aggregation outputs, batch jobs, or a scrape interval longer than the query step. To use the last sample of such a metric read it with `last_over_time(selector[window])` and a window longer than the longest normal pause. pint measured the pauses with `count(count_over_time(selector[step]))` over the last 1w.
     diagnostics:
-        - message: '`foo{job="a"}` had 1015 pauses of at least 5m in the last 1w on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 5m. vmalert evaluates this rule with instant queries that look back 5m, the query step, default vmalert -datasource.queryStep (5m), so evaluations during these pauses see no `foo{job="a"}`.'
+        - message: '`foo{job="a"}` had 14 pauses of at least 5m in the last 1w on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 30m. vmalert evaluates this rule with instant queries that look back 5m, the query step, default vmalert -datasource.queryStep (5m), so evaluations during these pauses see no `foo{job="a"}`.'
           firstcolumn: 5
           lastcolumn: 16
           kind: 0
@@ -83,10 +83,10 @@
   output: |
     6 |     expr: sum(foo) offset 1h
                       ^^^
-                      `foo` had 338 pauses of at least 10m in the last 1w on `prom` VictoriaMetrics server
-                      at https://simple.example.com, the longest at least 10m. vmalert evaluates this rule
-                      with instant queries that look back 10m, the query step from `params` of its group
-                      (10m), so evaluations during these pauses see no `foo`.
+                      `foo` had 14 pauses of at least 10m in the last 1w on `prom` VictoriaMetrics server at
+                      https://simple.example.com, the longest at least 1h. vmalert evaluates this rule with
+                      instant queries that look back 10m, the query step from `params` of its group (10m),
+                      so evaluations during these pauses see no `foo`.
   problem:
     reporter: promql/series
     summary: pauses between samples longer than the query lookback
@@ -95,7 +95,7 @@
 
         Pauses at least once a day on average are usually how the metric is written: stream aggregation outputs, batch jobs, or a scrape interval longer than the query step. To use the last sample of such a metric read it with `last_over_time(selector[window])` and a window longer than the longest normal pause. pint measured the pauses with `count(count_over_time(selector[step]))` over the last 1w.
     diagnostics:
-        - message: '`foo` had 338 pauses of at least 10m in the last 1w on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 10m. vmalert evaluates this rule with instant queries that look back 10m, the query step from `params` of its group (10m), so evaluations during these pauses see no `foo`.'
+        - message: '`foo` had 14 pauses of at least 10m in the last 1w on `prom` VictoriaMetrics server at https://simple.example.com, the longest at least 1h. vmalert evaluates this rule with instant queries that look back 10m, the query step from `params` of its group (10m), so evaluations during these pauses see no `foo`.'
           firstcolumn: 5
           lastcolumn: 7
           kind: 0
