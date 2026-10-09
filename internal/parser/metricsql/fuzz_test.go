@@ -2,6 +2,7 @@ package metricsql_test
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -27,6 +28,37 @@ func addFuzzSeeds(f *testing.F) {
 	f.Add("WITH (x = foo) x + x")
 }
 
+// knownRegexpDifference returns true if the query has a regexp label filter that is only
+// valid inside the `^(?:...)$` anchors VictoriaMetrics adds before compiling it, like `)(`.
+// VictoriaMetrics accepts such queries, pint rejects them, see
+// testdata/corpus/KNOWN_DIFFERENCES.md.
+func knownRegexpDifference(q string) (found bool) {
+	e, err := mql.Parse(q)
+	if err != nil {
+		return false
+	}
+	mql.VisitAll(e, func(e mql.Expr) {
+		me, ok := e.(*mql.MetricExpr)
+		if !ok {
+			return
+		}
+		for _, lfs := range me.LabelFilterss {
+			for _, lf := range lfs {
+				if !lf.IsRegexp {
+					continue
+				}
+				if _, err := regexp.Compile(lf.Value); err == nil {
+					continue
+				}
+				if _, err := regexp.Compile("^(?:" + lf.Value + ")$"); err == nil {
+					found = true
+				}
+			}
+		}
+	})
+	return found
+}
+
 // FuzzMetricsQLParse checks that the adapter never panics, accepts exactly what the
 // MetricsQL parser accepts and returns positioned errors and nodes.
 func FuzzMetricsQLParse(f *testing.F) {
@@ -36,6 +68,9 @@ func FuzzMetricsQLParse(f *testing.F) {
 		node, err := metricsql.Language{}.ParseExpr(q)
 		if err != nil && strings.HasPrefix(err.Error(), "unexpected error:") {
 			t.Fatalf("%q: adapter panicked: %s", q, err)
+		}
+		if mqlErr == nil && err != nil && knownRegexpDifference(q) {
+			return
 		}
 		if (mqlErr == nil) != (err == nil) {
 			t.Fatalf("%q: metricsql error: %v, pint error: %v", q, mqlErr, err)

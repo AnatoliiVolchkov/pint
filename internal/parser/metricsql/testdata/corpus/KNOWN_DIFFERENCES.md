@@ -2,14 +2,32 @@
 
 ## Syntax validity (TestParserDifferential)
 
-There are no known differences. For every query in this directory pint's MetricsQL mode
-accepts exactly the queries the unmodified upstream `github.com/VictoriaMetrics/metricsql`
+There are no known differences in the corpus. For every query in this directory pint's
+MetricsQL mode accepts exactly the queries the unmodified upstream `github.com/VictoriaMetrics/metricsql`
 parser accepts (`upstream_verdicts.txt`), and so does the source-aware fork.
 `knownDifferences` in `differential_test.go` is empty; any entry added there must be
 documented here with the reason.
 
 Rejected queries always produce an `*ast.ParseError` with a message and a position inside
 the query.
+
+## Regexps valid only inside VictoriaMetrics' anchors (FuzzMetricsQLParse)
+
+VictoriaMetrics checks a regexp label filter by compiling it inside anchors, as
+`^(?:` + regexp + `)$`. A regexp that closes that group early and opens a new one is valid
+only there, for example `)(`, `)000(` or `a)|(b`, which become `^(?:)()$`, `^(?:)000()$`
+and `^(?:a)|(b)$`. VictoriaMetrics accepts `foo{bar!~")000("}`, pint rejects it with
+`invalid label matcher: error parsing regexp: unexpected )`, because it builds Prometheus
+label matchers, which parse the regexp on its own.
+
+pint keeps rejecting these queries. Such a regexp doesn't do what it looks like: `a)|(b`
+matches values starting with `a` or ending with `b`, not `a)` or `(b`. Unbalanced
+parentheses that don't close each other, like `(` or `)`, are rejected by both.
+
+The fuzzer found this on 2026-10-06 (`)000(`) and again in CI on 2026-10-09 (`{A!~")("}`).
+`knownRegexpDifference` in `fuzz_test.go` skips exactly these queries: metricsql accepts
+them, the regexp doesn't compile on its own and compiles inside the anchors. The CI input is
+kept in `testdata/fuzz/FuzzMetricsQLParse` as a regression test.
 
 ## PromQL vs MetricsQL findings (TestPromQLMetricsQLDifferential)
 
