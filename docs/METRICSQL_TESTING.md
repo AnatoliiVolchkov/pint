@@ -162,9 +162,9 @@ GOWORK=off go test -count=1 ./...
 
 ## CI
 
-- `pint-ci.yml`: `go mod tidy` check, `make lint`, `make format` check, `go vet`, `make test`
-  with `PINT_VM_REQUIRED=1` (all tests with the race detector, Docker VictoriaMetrics
-  included), a coverage summary, 30 second fuzz smoke tests, `make build` plus cross builds
+- `pint-ci.yml`: `go mod tidy` check, `make lint`, `make format` check, `go vet`, the
+  `make test` command with `-count=1` instead of `-count=3` and `PINT_VM_REQUIRED=1` (all
+  tests once with the race detector, Docker VictoriaMetrics included), a coverage summary, 30 second fuzz smoke tests, `make build` plus cross builds
   uploaded as the `pint-binaries` artifact, and validation of `docs/examples`.
 - `integration.yml`: only the real VictoriaMetrics tests, verbose, with the log as an
   artifact.

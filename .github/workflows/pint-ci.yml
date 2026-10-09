@@ -109,12 +109,23 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # make test runs the whole suite with -race and -count=3, including the real
-      # VictoriaMetrics tests, which must not be skipped here.
+      # The whole suite with -race, including the real VictoriaMetrics tests, which must not
+      # be skipped here. Same flags as upstream's `make test` except -count=1 instead of
+      # -count=3, which took about 17 of the 19 minutes of this workflow.
       - name: Test
         env:
           PINT_VM_REQUIRED: "1"
-        run: make test
+        run: |
+          mkdir -p .cover
+          echo 'mode: atomic' > .cover/coverage.out
+          go test \
+            -covermode=atomic \
+            -coverprofile=.cover/coverage.out \
+            -coverpkg=./... \
+            -race \
+            -count=1 \
+            -timeout=15m \
+            ./...
 
       - name: Coverage of MetricsQL and VictoriaMetrics code
         run: |
