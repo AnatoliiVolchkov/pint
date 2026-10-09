@@ -54,7 +54,9 @@ affect PromQL and MetricsQL mode alike:
 - A block scalar whose value starts with a line break (`expr: |` followed by an empty line)
   maps offsets one byte off.
 - Values that are only representable as escaped double-quoted YAML (control characters,
-  `\n` escapes) are not mapped character by character.
+  `\n` escapes) are not mapped character by character. When no character of a value is
+  found in the file, like a double-quoted value starting with a `\u` escape, the value is
+  placed on the line it starts on (upstream pint panicked in the console reporter).
 
 Fixed in this repository: characters of a block scalar indicator such as `|-` (and of a
 comment after it) were matched as part of the value, so a query starting with `-` or `+`

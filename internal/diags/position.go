@@ -148,6 +148,9 @@ func NewPositionRange(lines []string, val *yaml.Node, minColumn int) (offsets Po
 	}
 
 END:
+	if len(offsets) == 0 {
+		return unmappedValuePosition(lines, val)
+	}
 	return offsets
 }
 

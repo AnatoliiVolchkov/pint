@@ -100,6 +100,10 @@
 
 ### Fixed
 
+- Fixed a panic in the console output, `index out of range [0] with length 0`, for rules
+  with an expression written as a double-quoted YAML string starting with a `\u` escape,
+  like `expr: "\u10e2..."`. pint found no character of such a value in the file, problems
+  are now reported on the line the value starts on. Upstream pint v0.89.1 has the same panic.
 - Fixed a panic in the console output, `slice bounds out of range`, for rules stored in
   double-quoted YAML strings, like Kubernetes ConfigMap values, when a problem pointed into a
   long multi-line query. Positions in such strings point at other lines of the file, so pint

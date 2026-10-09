@@ -1,0 +1,24 @@
+# A double-quoted expr starting with a \u escape has no position in the file, the console
+# reporter panicked with `index out of range [0] with length 0` (upstream v0.89.1 too).
+# The problem is now reported on the line of the expr.
+! exec pint --no-color --offline lint rules
+! stdout .
+cmp stderr stderr.txt
+
+-- stderr.txt --
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Checking Prometheus rules" entries=1 workers=10 online=false
+level=INFO msg="Offline mode, skipping Prometheus discovery"
+Fatal: PromQL syntax error (promql/syntax)
+  ---> rules/1.yml:5 -> `x`
+5 |     expr: "\u10e2\u10e2 foo{\u03c0\u03c0=\"a\"} +"
+              ^^^^^^^^^^^^^^^^^^^^^^ unexpected character: 'ტ'
+
+level=INFO msg="Problems found" Fatal=1
+level=ERROR msg="Execution completed with error(s)" err="found 1 problem(s) with severity Bug or higher"
+-- rules/1.yml --
+groups:
+- name: g
+  rules:
+  - record: x
+    expr: "\u10e2\u10e2 foo{\u03c0\u03c0=\"a\"} +"
