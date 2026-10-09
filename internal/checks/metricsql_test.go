@@ -1019,7 +1019,68 @@ func TestMetricsQLRuleDependencyCheck(t *testing.T) {
 				parseMetricsQLWithStatePath("- alert: alert\n  expr: 'WITH (x = {__name__=\"foo\" or __name__=\"baz\"}) x == 0'\n", discovery.Noop, "alerts.yaml")[0],
 			},
 		},
+		{
+			// vmalert: the same group doesn't help, the details point to eval_offset instead.
+			description: "recording rule from another group",
+			content:     dependencyReader("1m", ""),
+			checker:     newVMRuleDependencyCheck,
+			prometheus:  noProm,
+			entries:     mustParseMetricsQL(dependencyWriter("1m", "") + dependencyReader("1m", "")),
+			problems:    true,
+		},
+		{
+			description: "groups chained with eval_offset",
+			content:     dependencyReader("1m", "40s"),
+			checker:     newVMRuleDependencyCheck,
+			prometheus:  noProm,
+			entries:     mustParseMetricsQL(dependencyWriter("1m", "10s") + dependencyReader("1m", "40s")),
+		},
+		{
+			// The reader runs before the writer, 30 seconds after the previous writer run.
+			description: "groups chained with a negative eval_offset",
+			content:     dependencyReader("1m", "10s"),
+			checker:     newVMRuleDependencyCheck,
+			prometheus:  noProm,
+			entries:     mustParseMetricsQL(dependencyWriter("1m", "-20s") + dependencyReader("1m", "10s")),
+		},
+		{
+			// -search.latencyOffset hides the last 30 seconds from queries.
+			description: "eval_offset less than 30s apart",
+			content:     dependencyReader("1m", "20s"),
+			checker:     newVMRuleDependencyCheck,
+			prometheus:  noProm,
+			entries:     mustParseMetricsQL(dependencyWriter("1m", "10s") + dependencyReader("1m", "20s")),
+			problems:    true,
+		},
+		{
+			description: "eval_offset with different intervals",
+			content:     dependencyReader("2m", "40s"),
+			checker:     newVMRuleDependencyCheck,
+			prometheus:  noProm,
+			entries:     mustParseMetricsQL(dependencyWriter("1m", "10s") + dependencyReader("2m", "40s")),
+			problems:    true,
+		},
 	}))
+}
+
+func newVMRuleDependencyCheck(_ *promapi.FailoverGroup) checks.RuleChecker {
+	return checks.NewRuleDependencyCheck()
+}
+
+func dependencyGroup(name, interval, offset, rule string) string {
+	group := "- name: " + name + "\n  interval: " + interval + "\n"
+	if offset != "" {
+		group += "  eval_offset: " + offset + "\n"
+	}
+	return group + "  rules:\n" + rule
+}
+
+func dependencyWriter(interval, offset string) string {
+	return dependencyGroup("base", interval, offset, "  - record: error:rate5m\n    expr: sum(rate(errors_total[5m])) by (job)\n")
+}
+
+func dependencyReader(interval, offset string) string {
+	return dependencyGroup("aggregations", interval, offset, "  - record: error:rate5m:avg\n    expr: avg(error:rate5m)\n")
 }
 
 func TestMetricsQLRuleDuplicateCheck(t *testing.T) {

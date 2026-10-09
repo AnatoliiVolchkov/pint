@@ -115,6 +115,46 @@ groups:
 Now the aggregation always sees the freshly computed value, querying both metrics at `@ 70s`
 will produce results that are consistent between them and there will be no confusion due to lag.
 
+## VictoriaMetrics
+
+With `query_language = "metricsql"` rules are evaluated by vmalert, and the advice above
+doesn't apply. vmalert writes recording rule results through remote write, and every rule
+reads them with its own query, so a rule only sees results written before it runs. Rules in
+one group run at the same timestamp, so moving both rules into one group doesn't remove the
+lag: the second rule sees the result of the previous evaluation.
+
+vmalert chains groups with `eval_offset` instead, see
+[chaining groups](https://docs.victoriametrics.com/victoriametrics/vmalert/#chaining-groups):
+
+```yaml
+groups:
+- name: base
+  interval: 1m
+  eval_offset: 10s
+  rules:
+  - record: error:rate5m
+    expr: rate(errors_total[5m])
+
+- name: aggregations
+  interval: 1m
+  eval_offset: 40s
+  rules:
+  - record: error:rate5m:avg
+    expr: avg(error:rate5m)
+```
+
+The check doesn't report such groups. Both groups must set `eval_offset` and the same
+`interval`, and the reading group must run at least 30s after the writing group.
+VictoriaMetrics hides the last 30s from queries (`-search.latencyOffset`).
+
+This was checked with vmalert v1.153.0, both groups evaluated every 1m:
+
+| Setup | What the reading rule saw |
+|---|---|
+| `eval_offset` 10s and 40s | the result of the same cycle, written 30 seconds earlier |
+| both rules in the same group | the result of the previous evaluation |
+| different groups without `eval_offset` | the result of the previous cycle |
+
 ## Configuration
 
 This check can be configured to ignore specific metrics when checking for

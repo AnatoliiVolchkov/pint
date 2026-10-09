@@ -229,7 +229,7 @@ Regenerate with `UPDATE_ORACLE_MATRIX=1 go test ./internal/checks -run TestMetri
 | `promql/syntax` | query, offline | 5 | 4 | 1 | 0 |  |
 | `promql/vector_matching` | query, online | 1 | 3 | 1 | 5 |  |
 | `query/cost` | query, online | 2 | 1 | 0 | 3 |  |
-| `rule/dependency` | query, offline | 2 | 2 | 1 | 0 |  |
+| `rule/dependency` | query, offline | 3 | 3 | 1 | 0 |  |
 | `rule/duplicate` | query, offline | 1 | 1 | 1 | 0 |  |
 | `rule/for` | language agnostic | 1 | 1 | 0 | 0 |  |
 | `rule/label` | language agnostic | 1 | 1 | 0 | 0 |  |

@@ -214,6 +214,9 @@ func (c RuleDependencyCheck) checkCrossGroupDependency(entry *discovery.Entry, e
 				if entry.Group != nil && other.Group != nil && entry.Group.Name.Value == other.Group.Name.Value {
 					continue
 				}
+				if isVMAlertRule(entry) && isChainedGroup(other, entry) {
+					continue
+				}
 				vsPos := vs.PositionRange()
 				deps = append(deps, &crossGroupDep{
 					metric:      vs.Name,
@@ -248,6 +251,9 @@ func (c RuleDependencyCheck) checkCrossGroupDependency(entry *discovery.Entry, e
 			"Rules in different groups are evaluated independently. " +
 			"This rule may use data from the previous evaluation cycle, introducing up to one evaluation interval of lag. " +
 			"Moving both rules to the same group ensures they are evaluated together with consistent data."
+		if isVMAlertRule(entry) {
+			details = vmalertCrossGroupDetails(dep)
+		}
 
 		problems = append(problems, Problem{
 			Anchor:   AnchorAfter,

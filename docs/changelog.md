@@ -49,6 +49,10 @@
   rule files, and `-search.maxLookback`, `-search.maxStalenessInterval`,
   `-search.minStalenessInterval` and `-search.setLookbackToStep` flags from VictoriaMetrics.
   Alerting rules nobody reads are no longer reported, vmalert alerts don't flap.
+- [rule/dependency](checks/rule/dependency.md) check gives vmalert advice for recording rules
+  using results of another group. Moving both rules into the same group doesn't help with
+  vmalert, the details now explain how to chain groups with `eval_offset`. Groups already
+  chained this way are no longer reported.
 - New `queryStep` option for VictoriaMetrics servers, the vmalert `-datasource.queryStep` used
   by [group/interval](checks/group/interval.md), 5m by default.
 - [query/cost](checks/query/cost.md) check no longer estimates memory usage for
