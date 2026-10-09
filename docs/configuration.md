@@ -377,10 +377,11 @@ prometheus "$name" {
     `-search.minStalenessInterval` and `-search.setLookbackToStep` flags, they change how
     far back instant queries look for samples, see [group/interval](checks/group/interval.md).
   - Skip Prometheus feature flag checks.
-  - Use `seriesFetched` and `executionTimeMsec` query stats reported by VictoriaMetrics,
-    VictoriaMetrics doesn't report the number of queried samples so `maxTotalSamples`
-    and `maxPeakSamples` limits of the [query/cost](checks/query/cost.md) check
-    can't be enforced.
+  - Use `seriesFetched` and `executionTimeMsec` query stats reported by VictoriaMetrics.
+    For the `maxTotalSamples` limit of the [query/cost](checks/query/cost.md) check pint
+    sends the query with `trace=1` and sums `samplesScanned` from the query trace.
+    VictoriaMetrics doesn't report the peak number of samples, so `maxPeakSamples` can't
+    be enforced.
 - `scrapeInterval` - scrape interval used by checks that need it, for example
   [promql/rate](checks/promql/rate.md). Only valid with `backend = "victoriametrics"`,
   Prometheus servers expose it via the configuration API.

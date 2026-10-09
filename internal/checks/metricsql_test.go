@@ -1741,10 +1741,11 @@ func TestMetricsQLCostCheck(t *testing.T) {
 			},
 		},
 		{
-			description: "sample limits are not supported",
+			// VictoriaMetrics doesn't report peak samples, not even in query traces.
+			description: "peak samples limit is not supported",
 			content:     "- record: foo\n  expr: sum(rate(foo))\n",
 			checker: func(prom *promapi.FailoverGroup) checks.RuleChecker {
-				return checks.NewCostCheck(prom, 0, 100, 100, 0, "", checks.Bug)
+				return checks.NewCostCheck(prom, 0, 0, 100, 0, "", checks.Bug)
 			},
 			prometheus: newSimpleVM,
 			problems:   true,
@@ -1755,6 +1756,55 @@ func TestMetricsQLCostCheck(t *testing.T) {
 						samples:       []*model.Sample{generateSampleWithValue(map[string]string{}, 7)},
 						seriesFetched: 7,
 						execTimeMsec:  10,
+					},
+				},
+			},
+		},
+		{
+			// Total samples come from samplesScanned in the query trace: 123 + 400.
+			description: "total samples limit from the query trace",
+			content:     "- record: foo\n  expr: sum(rate(foo))\n",
+			checker: func(prom *promapi.FailoverGroup) checks.RuleChecker {
+				return checks.NewCostCheck(prom, 0, 100, 0, 0, "", checks.Bug)
+			},
+			prometheus: newSimpleVM,
+			problems:   true,
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{
+						requireQueryPath,
+						formCond{key: "query", value: "count(\nsum(rate(foo))\n)"},
+						formCond{key: "trace", value: "1"},
+						formCond{key: "nocache", value: "1"},
+					},
+					resp: vmVectorResponse{
+						samples:        []*model.Sample{generateSampleWithValue(map[string]string{}, 7)},
+						seriesFetched:  7,
+						execTimeMsec:   10,
+						samplesScanned: []int{123, 400},
+					},
+				},
+			},
+		},
+		{
+			description: "total samples within the limit",
+			content:     "- record: foo\n  expr: sum(rate(foo))\n",
+			checker: func(prom *promapi.FailoverGroup) checks.RuleChecker {
+				return checks.NewCostCheck(prom, 0, 1000, 0, 0, "", checks.Bug)
+			},
+			prometheus: newSimpleVM,
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{
+						requireQueryPath,
+						formCond{key: "query", value: "count(\nsum(rate(foo))\n)"},
+						formCond{key: "trace", value: "1"},
+					},
+					resp: vmVectorResponse{
+						samples:        []*model.Sample{generateSampleWithValue(map[string]string{}, 7)},
+						seriesFetched:  7,
+						execTimeMsec:   10,
+						samplesScanned: []int{123, 400},
 					},
 				},
 			},

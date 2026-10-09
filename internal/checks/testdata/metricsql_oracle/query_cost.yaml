@@ -46,18 +46,46 @@ cases:
         - metric: cost_few{i="2"}
           values: 1x20
     expect: []
-  - name: sample limits unsupported by VictoriaMetrics
+  - name: total samples limit from the query trace
     kind: positive
-    comment: VictoriaMetrics doesn't report queried samples, the limit can't be enforced.
+    comment: >-
+      VictoriaMetrics query stats don't include samples, pint traces the cost query and sums
+      samplesScanned from the trace.
     settings:
-      maxTotalSamples: "100"
+      maxTotalSamples: "10"
     rules: |
       - record: x
-        expr: 'cost_samples'
+        expr: 'cost_trace'
     data:
       step: 15s
       series:
-        - metric: cost_samples{i="1"}
+        - metric: cost_trace{i="1"}
+          values: 1x20
+    expect:
+      - rule: x
+        reporter: query/cost
+        severity: bug
+        summary: query is too expensive
+        lines: "2"
+        diagnostics:
+          # v1.153.0 single-node and cluster scanned 21 samples.
+          - message_re: '^`vm` Prometheus server at \$URI queried [0-9]+ samples in total when executing this query, which is more than the configured limit of 10\.$'
+            fragment: cost_trace
+            start: 0
+            end: 10
+            line: 2
+  - name: peak samples limit unsupported by VictoriaMetrics
+    kind: positive
+    comment: VictoriaMetrics doesn't report the peak number of samples, the limit can't be enforced.
+    settings:
+      maxPeakSamples: "100"
+    rules: |
+      - record: x
+        expr: 'cost_peak'
+    data:
+      step: 15s
+      series:
+        - metric: cost_peak{i="1"}
           values: 1x20
     expect:
       - rule: x
@@ -66,8 +94,8 @@ cases:
         summary: unsupported query cost limit
         lines: "2"
         diagnostics:
-          - message: '`vm` Prometheus server at $URI is a VictoriaMetrics server which doesn''t report the number of queried samples, `maxTotalSamples` and `maxPeakSamples` limits can''t be enforced.'
-            fragment: cost_samples
+          - message: '`vm` Prometheus server at $URI is a VictoriaMetrics server which doesn''t report the peak number of samples, `maxPeakSamples` limit can''t be enforced.'
+            fragment: cost_peak
             start: 0
-            end: 12
+            end: 9
             line: 2

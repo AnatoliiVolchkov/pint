@@ -98,7 +98,8 @@ VictoriaMetrics returns different query statistics, only `seriesFetched` and
 | `maxSeries`                          | Supported. |
 | `maxEvaluationDuration`              | Supported, uses `executionTimeMsec`, which has millisecond precision. |
 | Optimization suggestions             | Supported, compares `seriesFetched` instead of samples. |
-| `maxTotalSamples`, `maxPeakSamples`  | Not supported, VictoriaMetrics doesn't report the number of queried samples. pint reports an `unsupported query cost limit` warning when they are set. |
+| `maxTotalSamples`                    | Supported. The query stats don't include samples, so when this limit is set the `count(...)` query is sent with `trace=1` and `nocache=1`, and the number of samples is the sum of `samplesScanned` in the query trace. That's what VictoriaMetrics counts as scanned samples, raw samples and subquery points, and it can be a bit higher than the number of raw samples. |
+| `maxPeakSamples`                     | Not supported, VictoriaMetrics doesn't report the peak number of samples, not even in query traces. pint reports an `unsupported query cost limit` warning when it's set. |
 | Memory usage estimate                | Not reported. It is calculated from metrics of the Prometheus process itself (`go_memstats_alloc_bytes`, `prometheus_tsdb_head_series`), which don't describe VictoriaMetrics. |
 
 ## Configuration

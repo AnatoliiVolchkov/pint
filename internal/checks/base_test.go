@@ -642,9 +642,16 @@ func (fg vmFlagsResponse) respond(w http.ResponseWriter, _ *http.Request) {
 
 // vmVectorResponse returns an instant query response with VictoriaMetrics stats.
 type vmVectorResponse struct {
-	samples       model.Vector
-	seriesFetched int
-	execTimeMsec  float64
+	samples model.Vector
+	// samplesScanned adds a query trace with these samplesScanned values.
+	samplesScanned []int
+	seriesFetched  int
+	execTimeMsec   float64
+}
+
+type vmTraceNode struct {
+	Message  string        `json:"message"`
+	Children []vmTraceNode `json:"children,omitempty"`
 }
 
 func (vr vmVectorResponse) respond(w http.ResponseWriter, _ *http.Request) {
@@ -658,12 +665,25 @@ func (vr vmVectorResponse) respond(w http.ResponseWriter, _ *http.Request) {
 		SeriesFetched     string  `json:"seriesFetched"`
 		ExecutionTimeMsec float64 `json:"executionTimeMsec"`
 	}
+	var trace *vmTraceNode
+	if len(vr.samplesScanned) > 0 {
+		trace = &vmTraceNode{Message: "/api/v1/query: query=...", Children: nil}
+		for i, n := range vr.samplesScanned {
+			msg := fmt.Sprintf("samplesScanned=%d", n)
+			if i > 0 {
+				msg = fmt.Sprintf("series after aggregation with sum(): 1; samplesScanned=%d", n)
+			}
+			trace.Children = append(trace.Children, vmTraceNode{Message: "eval", Children: []vmTraceNode{{Message: msg, Children: nil}}})
+		}
+	}
 	result := struct {
-		Status    string `json:"status"`
-		Data      data   `json:"data"`
-		Stats     stats  `json:"stats"`
-		IsPartial bool   `json:"isPartial"`
+		Trace     *vmTraceNode `json:"trace,omitempty"`
+		Status    string       `json:"status"`
+		Data      data         `json:"data"`
+		Stats     stats        `json:"stats"`
+		IsPartial bool         `json:"isPartial"`
 	}{
+		Trace:     trace,
 		Status:    "success",
 		IsPartial: false,
 		Data:      data{ResultType: "vector", Result: vr.samples},

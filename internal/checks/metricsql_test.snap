@@ -2854,31 +2854,35 @@
 
 ---
 
-[TestMetricsQLCostCheck/sample_limits_are_not_supported - 1]
-- description: sample limits are not supported
+[TestMetricsQLCostCheck/total_samples_limit_from_the_query_trace - 1]
+- description: total samples limit from the query trace
   content: |
     - record: foo
       expr: sum(rate(foo))
   output: |
     2 |   expr: sum(rate(foo))
                 ^^^^^^^^^^^^^^
-                `prom` Prometheus server at https://simple.example.com is a VictoriaMetrics server which
-                doesn't report the number of queried samples, `maxTotalSamples` and `maxPeakSamples` limits
-                can't be enforced.
+                `prom` Prometheus server at https://simple.example.com queried 523 samples in total when
+                executing this query, which is more than the configured limit of 100.
   problem:
     reporter: query/cost
-    summary: unsupported query cost limit
+    summary: query is too expensive
     details: ""
     diagnostics:
-        - message: '`prom` Prometheus server at https://simple.example.com is a VictoriaMetrics server which doesn''t report the number of queried samples, `maxTotalSamples` and `maxPeakSamples` limits can''t be enforced.'
+        - message: '`prom` Prometheus server at https://simple.example.com queried 523 samples in total when executing this query, which is more than the configured limit of 100.'
           firstcolumn: 1
           lastcolumn: 14
           kind: 0
     lines:
         first: 2
         last: 2
-    severity: 1
+    severity: 2
     anchor: 0
+
+---
+
+[TestMetricsQLCostCheck/total_samples_within_the_limit - 1]
+[]
 
 ---
 
@@ -2905,6 +2909,33 @@
         first: 2
         last: 2
     severity: 2
+    anchor: 0
+
+---
+
+[TestMetricsQLCostCheck/peak_samples_limit_is_not_supported - 1]
+- description: peak samples limit is not supported
+  content: |
+    - record: foo
+      expr: sum(rate(foo))
+  output: |
+    2 |   expr: sum(rate(foo))
+                ^^^^^^^^^^^^^^
+                `prom` Prometheus server at https://simple.example.com is a VictoriaMetrics server which
+                doesn't report the peak number of samples, `maxPeakSamples` limit can't be enforced.
+  problem:
+    reporter: query/cost
+    summary: unsupported query cost limit
+    details: ""
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com is a VictoriaMetrics server which doesn''t report the peak number of samples, `maxPeakSamples` limit can''t be enforced.'
+          firstcolumn: 1
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
     anchor: 0
 
 ---

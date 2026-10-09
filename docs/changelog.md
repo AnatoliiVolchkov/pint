@@ -56,6 +56,9 @@
   non-counter as a Warning instead of a Bug for VictoriaMetrics servers, whose metadata keeps
   one type per metric name from any target. If metadata says `gauge` for a metric ending with
   `_total`, it's an Information about wrong metadata.
+- [query/cost](checks/query/cost.md) check supports `maxTotalSamples` on VictoriaMetrics
+  servers: the cost query is traced and the number of samples is the sum of `samplesScanned`
+  in the query trace. `maxPeakSamples` is still not supported there.
 - [promql/syntax](checks/promql/syntax.md) check warns about MetricsQL subqueries without a
   step, like `foo[1h:]`, which use the vmalert query step in rules and the graph step in vmui
   and Grafana.

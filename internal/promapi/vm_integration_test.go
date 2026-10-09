@@ -194,3 +194,36 @@ func testVMIntegration(t *testing.T, fg *promapi.FailoverGroup, metric string, c
 		require.Len(t, qr.Series.Ranges, 2)
 	})
 }
+
+// VictoriaMetrics query stats don't include samples, query traces do: QueryWithTrace sums
+// samplesScanned. Single-node and cluster must report it the same way, vmstorage nodes of a
+// cluster don't add their own samplesScanned.
+func TestVictoriaMetricsQueryTrace(t *testing.T) {
+	env := vmtest.Start(t)
+	for _, tg := range env.Targets() {
+		t.Run(tg.Name, func(t *testing.T) {
+			metric := fmt.Sprintf("pint_vm_trace_%s_%s", tg.Name, env.RunID)
+			tg.Import(t, 15*time.Second,
+				vmtest.Series{Metric: metric + `{job="a"}`, Values: vmtest.Counter(40, 0, 15)},
+				vmtest.Series{Metric: metric + `{job="b"}`, Values: vmtest.Counter(40, 0, 15)},
+			)
+			fg := newVMIntegrationGroup(t, tg.QueryURL)
+			query := "count(rate(" + metric + "[5m]))"
+
+			qr, err := fg.Query(t.Context(), query).Wait()
+			require.NoError(t, err)
+			require.Zero(t, qr.Stats.Samples.TotalQueryableSamples, "plain query stats have no samples")
+
+			tr, err := fg.QueryWithTrace(t.Context(), query).Wait()
+			require.NoError(t, err)
+			require.Len(t, tr.Series, 1)
+			require.InDelta(t, 2, tr.Series[0].Value, 0)
+			require.Equal(t, 2, tr.Stats.SeriesFetched)
+			// Both series have 40 samples, a 5m window has 20 of them. samplesScanned counts
+			// values VictoriaMetrics looked at, which can be a bit more than the raw samples:
+			// v1.153.0 reported 84 here, on single-node and on the cluster.
+			require.GreaterOrEqual(t, tr.Stats.Samples.TotalQueryableSamples, 40)
+			require.LessOrEqual(t, tr.Stats.Samples.TotalQueryableSamples, 160)
+		})
+	}
+}

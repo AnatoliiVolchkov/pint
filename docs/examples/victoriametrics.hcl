@@ -42,9 +42,10 @@ prometheus "vm-cluster" {
 
 rule {
   cost {
-    # maxTotalSamples and maxPeakSamples are not available on VictoriaMetrics,
-    # use maxSeries and maxEvaluationDuration instead.
+    # maxPeakSamples is not available on VictoriaMetrics. maxTotalSamples uses
+    # samplesScanned from the query trace.
     maxSeries             = 10000
+    maxTotalSamples       = 1000000
     maxEvaluationDuration = "30s"
   }
 }

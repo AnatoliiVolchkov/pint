@@ -135,7 +135,7 @@ func (c CostCheck) Check(ctx context.Context, entry *discovery.Entry, entries []
 		return problems
 	}
 
-	if c.prom.Backend() == promapi.BackendVictoriaMetrics && (c.maxTotalSamples > 0 || c.maxPeakSamples > 0) {
+	if c.prom.Backend() == promapi.BackendVictoriaMetrics && c.maxPeakSamples > 0 {
 		problems = append(problems, Problem{
 			Anchor:   AnchorAfter,
 			Lines:    expr.Value.Pos.Lines(),
@@ -145,7 +145,7 @@ func (c CostCheck) Check(ctx context.Context, entry *discovery.Entry, entries []
 			Severity: Warning,
 			Diagnostics: []diags.Diagnostic{
 				{
-					Message:     promText(c.prom.Name(), qr.URI) + " is a VictoriaMetrics server which doesn't report the number of queried samples, `maxTotalSamples` and `maxPeakSamples` limits can't be enforced.",
+					Message:     promText(c.prom.Name(), qr.URI) + " is a VictoriaMetrics server which doesn't report the peak number of samples, `maxPeakSamples` limit can't be enforced.",
 					Pos:         expr.Value.Pos,
 					Expr:        expr.Query().Expr,
 					FirstColumn: 1,
@@ -252,7 +252,7 @@ func (c CostCheck) statToDuration(f float64) time.Duration {
 }
 
 func (c CostCheck) getQueryCost(ctx context.Context, expr string) (*promapi.QueryResult, int, error) {
-	qr, err := c.prom.Query(ctx, wrapExpr(expr, "count")).Wait()
+	qr, err := c.queryForCost(ctx, wrapExpr(expr, "count")).Wait()
 	if err != nil {
 		return nil, 0, err
 	}
