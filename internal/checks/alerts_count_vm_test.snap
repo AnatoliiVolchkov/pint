@@ -1,0 +1,184 @@
+
+[TestAlertsCountVMCheck/-search.maxStalenessInterval_limits_the_lookback - 1]
+- description: -search.maxStalenessInterval limits the lookback
+  content: |
+    - alert: Gone
+      expr: absent(foo)
+  output: |
+    2 |   expr: absent(foo)
+                ^^^^^^^^^^^
+                `prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last
+                1d.
+  problem:
+    reporter: alerts/count
+    summary: alert count estimate
+    details: |-
+        To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28last_over_time%28foo%5B1m%5D%29%29&g0.tab=0&g0.range_input=1d).
+        On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: selectors without a lookbehind window were replaced by `last_over_time(selector[1m])`, the window being the query step, default vmalert -datasource.queryStep (5m), limited by -search.maxStalenessInterval=1m on `prom`. A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. The query pint counted:
+
+        ```
+        absent(last_over_time(foo[1m]))
+        ```
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last 1d.'
+          firstcolumn: 1
+          lastcolumn: 11
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 0
+    anchor: 0
+
+---
+
+[TestAlertsCountVMCheck/PromQL_rules_are_not_changed - 1]
+- description: PromQL rules are not changed
+  content: |
+    - alert: Gone
+      expr: absent(foo)
+  output: |
+    2 |   expr: absent(foo)
+                ^^^^^^^^^^^
+                `prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last
+                1d.
+  problem:
+    reporter: alerts/count
+    summary: alert count estimate
+    details: To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28foo%29&g0.tab=0&g0.range_input=1d).
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last 1d.'
+          firstcolumn: 1
+          lastcolumn: 11
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 0
+    anchor: 0
+
+---
+
+[TestAlertsCountVMCheck/Prometheus_servers_are_not_changed - 1]
+- description: Prometheus servers are not changed
+  content: |
+    - alert: Gone
+      expr: absent(foo)
+  output: |
+    2 |   expr: absent(foo)
+                ^^^^^^^^^^^
+                `prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last
+                1d.
+  problem:
+    reporter: alerts/count
+    summary: alert count estimate
+    details: To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28foo%29&g0.tab=0&g0.range_input=1d).
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last 1d.'
+          firstcolumn: 1
+          lastcolumn: 11
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 0
+    anchor: 0
+
+---
+
+[TestAlertsCountVMCheck/lookbehind_windows_and_subqueries_are_not_changed - 1]
+- description: lookbehind windows and subqueries are not changed
+  content: |
+    - alert: Gone
+      expr: max_over_time(foo[1h:1m]) > 0 or rate(bar) > 0 or increase(baz[2i]) > 0
+  output: |
+    2 |   expr: max_over_time(foo[1h:1m]) > 0 or rate(bar) > 0 or increase(baz[2i]) > 0
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                `prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last
+                1d.
+  problem:
+    reporter: alerts/count
+    summary: alert count estimate
+    details: To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=max_over_time%28foo%5B1h%3A1m%5D%29+%3E+0+or+rate%28bar%29+%3E+0+or+increase%28baz%5B2i%5D%29+%3E+0&g0.tab=0&g0.range_input=1d).
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last 1d.'
+          firstcolumn: 1
+          lastcolumn: 71
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 0
+    anchor: 0
+
+---
+
+[TestAlertsCountVMCheck/selectors_without_a_window_get_the_lookback_of_vmalert_instant_queries - 1]
+- description: selectors without a window get the lookback of vmalert instant queries
+  content: |
+    - alert: Gone
+      expr: absent(foo{job="bar"} offset 1h) and sum(rate(foo[5m])) > 0
+  output: |
+    2 |   expr: absent(foo{job="bar"} offset 1h) and sum(rate(foo[5m])) > 0
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                `prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last
+                1d.
+  problem:
+    reporter: alerts/count
+    summary: alert count estimate
+    details: |-
+        To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28last_over_time%28foo%7Bjob%3D%22bar%22%7D%5B5m%5D+offset+1h%29%29+and+sum%28rate%28foo%5B5m%5D%29%29+%3E+0&g0.tab=0&g0.range_input=1d).
+        On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: selectors without a lookbehind window were replaced by `last_over_time(selector[5m])`, the window being the query step, default vmalert -datasource.queryStep (5m). A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. The query pint counted:
+
+        ```
+        absent(last_over_time(foo{job="bar"}[5m] offset 1h)) and sum(rate(foo[5m])) > 0
+        ```
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last 1d.'
+          firstcolumn: 1
+          lastcolumn: 59
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 0
+    anchor: 0
+
+---
+
+[TestAlertsCountVMCheck/step_from_group_params - 1]
+- description: step from group params
+  content: |
+    - name: g
+      params:
+        step: ["30s"]
+      rules:
+      - alert: Gone
+        expr: absent(foo) or bar > 0
+  output: |
+    6 |     expr: absent(foo) or bar > 0
+                  ^^^^^^^^^^^^^^^^^^^^^^
+                  `prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the
+                  last 1d.
+  problem:
+    reporter: alerts/count
+    summary: alert count estimate
+    details: |-
+        To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28last_over_time%28foo%5B30s%5D%29%29+or+last_over_time%28bar%5B30s%5D%29+%3E+0&g0.tab=0&g0.range_input=1d).
+        On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: selectors without a lookbehind window were replaced by `last_over_time(selector[30s])`, the window being the query step from `params` of its group (30s). A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. The query pint counted:
+
+        ```
+        absent(last_over_time(foo[30s])) or last_over_time(bar[30s]) > 0
+        ```
+    diagnostics:
+        - message: '`prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last 1d.'
+          firstcolumn: 1
+          lastcolumn: 22
+          kind: 0
+    lines:
+        first: 6
+        last: 6
+    severity: 0
+    anchor: 0
+
+---

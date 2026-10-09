@@ -73,7 +73,8 @@ func (c AlertsCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*dis
 
 	params := promapi.NewRelativeRange(c.lookBack, c.step)
 
-	qr, err := c.prom.RangeQuery(ctx, entry.Rule.AlertingRule.Expr.Value.Value, params).Wait()
+	query, vmDetails := c.vmInstantSemantics(ctx, entry)
+	qr, err := c.prom.RangeQuery(ctx, query, params).Wait()
 	if err != nil {
 		problems = append(problems, problemFromError(err, entry.Rule, c.Reporter(), c.prom.Name(), Bug))
 		return problems
@@ -113,8 +114,11 @@ func (c AlertsCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*dis
 	delta := qr.Series.Until.Sub(qr.Series.From).Round(time.Minute)
 	details := fmt.Sprintf(
 		`To get a preview of the alerts that would fire please [click here](%s/graph?g0.expr=%s&g0.tab=0&g0.range_input=%s).`,
-		qr.URI, url.QueryEscape(entry.Rule.AlertingRule.Expr.Value.Value), output.HumanizeDuration(delta),
+		qr.URI, url.QueryEscape(query), output.HumanizeDuration(delta),
 	)
+	if vmDetails != "" {
+		details = fmt.Sprintf("%s\n%s", details, vmDetails)
+	}
 	if c.comment != "" {
 		details = fmt.Sprintf("%s\n%s", details, maybeComment(c.comment))
 	}

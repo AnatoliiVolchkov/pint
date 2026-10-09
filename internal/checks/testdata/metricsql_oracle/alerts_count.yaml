@@ -103,3 +103,38 @@ cases:
         - metric: count_record{job="a"}
           values: 10x31
     expect: []
+  - name: absent on a sparse metric is counted with the instant query lookback
+    kind: positive
+    comment: >
+      vmalert evaluates absent() with instant queries that look back one query step (5m),
+      the metric has a sample every 10m, so vmalert fires on every other evaluation.
+      A range query of absent() itself sees no pauses at all, see the vm query.
+    settings:
+      lookback: 30m
+      resolve: 5m
+      step: 1m
+    rules: |
+      - alert: Gone
+        expr: 'absent(count_sparse)'
+    data:
+      step: 10m
+      series:
+        - metric: count_sparse{job="a"}
+          values: 1x7
+    vm:
+      - query: count_over_time(absent(count_sparse)[30m:1m])
+        result: empty
+      - query: count_over_time(absent(last_over_time(count_sparse[5m]))[30m:1m]) > bool 10
+        result: '{} 1'
+    expect:
+      - rule: Gone
+        reporter: alerts/count
+        severity: information
+        summary: alert count estimate
+        lines: "2"
+        diagnostics:
+          - message_re: 'would trigger [2-4] alert\(s\) in the last 30m\.'
+            fragment: absent(count_sparse)
+            start: 0
+            end: 20
+            line: 2

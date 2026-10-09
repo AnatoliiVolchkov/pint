@@ -208,7 +208,7 @@ Regenerate with `UPDATE_ORACLE_MATRIX=1 go test ./internal/checks -run TestMetri
 | `alerts/absent` | query, online | 3 | 1 | 0 | 4 |  |
 | `alerts/annotation` | language agnostic | 1 | 1 | 0 | 0 |  |
 | `alerts/comparison` | query, offline | 2 | 2 | 1 | 0 |  |
-| `alerts/count` | query, online | 1 | 1 | 2 | 4 |  |
+| `alerts/count` | query, online | 2 | 1 | 2 | 5 |  |
 | `alerts/external_labels` | query, online | 2 | 1 | 0 | 3 |  |
 | `alerts/for` | language agnostic | 1 | 1 | 0 | 0 |  |
 | `alerts/template` | query, offline | 2 | 2 | 1 | 0 |  |

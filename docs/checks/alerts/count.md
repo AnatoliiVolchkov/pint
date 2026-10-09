@@ -40,6 +40,23 @@ alerts {
 - `severity` - set custom severity for reported issues, defaults to `info`.
   This can be only set when `minCount` is set to a non-zero value.
 
+## VictoriaMetrics
+
+vmalert evaluates alerting rules with instant queries. For a selector without a lookbehind
+window VictoriaMetrics answers an instant query with the last sample within the query step,
+`-datasource.queryStep` of vmalert (5m by default) or `step` from the group `params`.
+A range query, which this check uses, estimates the interval between samples and looks
+back about that far instead, so pauses between samples shorter than their usual interval
+are invisible to it. A metric with one sample every 10m is never absent in a range query,
+but `absent()` on it returns 1 on every other vmalert evaluation.
+
+For MetricsQL rules checked against VictoriaMetrics servers pint counts alerts the way
+vmalert sees them: every selector without a lookbehind window is replaced by
+`last_over_time(selector[W])`, `W` being the lookback of vmalert instant queries, the same
+one [group/interval](../group/interval.md) uses, before the range query runs. The report
+shows the query pint counted. Lookbehind windows, including ones derived from the step like
+`rate(foo)` or `foo[2i]`, and subqueries are left as they are.
+
 ## How to enable it
 
 This check is not enabled by default as it requires explicit configuration

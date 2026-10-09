@@ -75,6 +75,12 @@
 - [query/cost](checks/query/cost.md) check no longer estimates memory usage for
   VictoriaMetrics servers. The estimate uses metrics of the Prometheus process itself, which
   VictoriaMetrics doesn't have.
+- [alerts/count](checks/alerts/count.md) check counts alerts of MetricsQL rules on
+  VictoriaMetrics servers the way vmalert evaluates them, with the lookback of instant
+  queries: selectors without a lookbehind window are counted as `last_over_time(selector[W])`.
+  A range query of the rule itself hides pauses between samples shorter than their usual
+  interval, so `absent()` on a metric with one sample every 10m counted zero alerts while
+  vmalert fired on every other evaluation.
 
 ### Fixed
 
