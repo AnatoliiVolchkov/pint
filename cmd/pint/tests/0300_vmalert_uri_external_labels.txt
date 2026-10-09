@@ -1,0 +1,67 @@
+# With vmalertURI pint reads -external.label flags from vmalert, labels set in pint config
+# take precedence. Offline vmalert isn't queried, so external label checks don't run for
+# this server.
+http response vm ^/flags$ 200 -retentionPeriod="1y"
+http start vm 127.0.0.1:7300
+http response vmalert ^/flags$ 200 -external.label="cluster=demo,dc=dc-1"
+http response vmalert ^/api/v1/rules$ 200 {"status":"success","data":{"groups":[]}}
+http start vmalert 127.0.0.1:7301
+
+! exec pint --no-color -e alerts/external_labels -e labels/conflict lint rules
+! stdout .
+cmp stderr online.txt
+
+exec pint --no-color --offline lint rules
+! stdout .
+cmp stderr offline.txt
+
+-- online.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=1 workers=10 online=true
+level=INFO msg="Loaded vmalert settings" name=vm uri=http://127.0.0.1:7301 queryStep=0s externalLabels=["cluster","dc"] ruleFiles=0
+Bug: invalid label (alerts/external_labels)
+  ---> rules/1.yml:7 -> `Down`
+7 |       summary: '{{ $externalLabels.cluster }} {{ $externalLabels.dc }} {{ $externalLabels.region }}'
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      The template is using `region` external label but it isn't set for `vm` VictoriaMetrics server at
+      http://127.0.0.1:7300, so vmalert renders it as an empty string. vmalert at http://127.0.0.1:7301
+      doesn't set it with `-external.label` and it isn't in `externalLabels` of this server.
+
+Warning: conflicting labels (labels/conflict)
+  ---> rules/1.yml:9 -> `Down`
+9 |       dc: dc-1
+          ^^
+          This label is redundant. `dc="dc-1"` is an external label of `vm` VictoriaMetrics server at
+          http://127.0.0.1:7300 and vmalert adds it to all alerts and recording rule results, there's no
+          need to set it manually.
+
+level=INFO msg="Problems found" Bug=1 Warning=1
+level=ERROR msg="Execution completed with error(s)" err="found 1 problem(s) with severity Bug or higher"
+-- offline.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=1 workers=10 online=false
+level=INFO msg="Offline mode, skipping Prometheus discovery"
+-- rules/1.yml --
+groups:
+- name: g
+  rules:
+  - alert: Down
+    expr: up == 0
+    annotations:
+      summary: '{{ $externalLabels.cluster }} {{ $externalLabels.dc }} {{ $externalLabels.region }}'
+    labels:
+      dc: dc-1
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri        = "http://127.0.0.1:7300"
+  backend    = "victoriametrics"
+  vmalertURI = "http://127.0.0.1:7301"
+}

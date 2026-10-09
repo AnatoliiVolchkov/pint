@@ -95,6 +95,9 @@ func (q configQuery) CacheTTL() time.Duration {
 
 func (prom *Prometheus) Config(ctx context.Context, cacheTTL time.Duration) (*ConfigResult, error) {
 	if prom.vm != nil {
+		if _, err := prom.VMAlert(ctx, cacheTTL); err != nil {
+			return nil, err
+		}
 		return &ConfigResult{URI: prom.publicURI, Config: prom.vm.config()}, nil
 	}
 

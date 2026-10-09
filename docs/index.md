@@ -210,6 +210,11 @@ Example:
 pint watch rule_files local
 ```
 
+For a server with `backend = "victoriametrics"` set `vmalertURI` in its `prometheus`
+block, pint then checks files of rule groups loaded by that vmalert, read from its
+`/api/v1/rules` endpoint. vmalert reports them as it opened them, so pint must see
+them under the same paths.
+
 #### Accessing watch mode metrics
 
 Query `/metrics` HTTP endpoint to see all expose metrics, example with default flags:

@@ -91,6 +91,7 @@ type PrometheusConfig struct {
 	ScrapeInterval  string            `hcl:"scrapeInterval,optional" json:"scrapeInterval,omitempty"`
 	Retention       string            `hcl:"retention,optional" json:"retention,omitempty"`
 	QueryStep       string            `hcl:"queryStep,optional" json:"queryStep,omitempty"`
+	VMAlertURI      string            `hcl:"vmalertURI,optional" json:"vmalertURI,omitempty"`
 	Failover        []string          `hcl:"failover,optional" json:"failover,omitempty"`
 	Include         []string          `hcl:"include,optional" json:"include,omitempty"`
 	Exclude         []string          `hcl:"exclude,optional" json:"exclude,omitempty"`
@@ -120,7 +121,10 @@ func (pc PrometheusConfig) validate() error {
 		return fmt.Errorf("prometheus URI %q is invalid: %w", pc.URI, err)
 	}
 
-	if err := validateBackend(pc.getBackend(), pc.ScrapeInterval, pc.Retention, pc.QueryStep, pc.ExternalLabels); err != nil {
+	if err := validateBackend(pc.getBackend(), pc.ScrapeInterval, pc.Retention, pc.QueryStep, pc.VMAlertURI, pc.ExternalLabels); err != nil {
+		return err
+	}
+	if err := validateVMAlertURI(pc.VMAlertURI); err != nil {
 		return err
 	}
 
@@ -165,9 +169,12 @@ func (pc PrometheusConfig) validate() error {
 	return nil
 }
 
-func validateBackend(backend, scrapeInterval, retention, queryStep string, externalLabels map[string]string) error {
+func validateBackend(backend, scrapeInterval, retention, queryStep, vmalertURI string, externalLabels map[string]string) error {
 	switch backend {
 	case promapi.BackendPrometheus:
+		if vmalertURI != "" {
+			return fmt.Errorf("vmalertURI can only be set when using %q backend", promapi.BackendVictoriaMetrics)
+		}
 		if scrapeInterval != "" {
 			return fmt.Errorf("scrapeInterval can only be set when using %q backend", promapi.BackendVictoriaMetrics)
 		}
@@ -235,6 +242,7 @@ func newFailoverGroup(prom PrometheusConfig) *promapi.FailoverGroup {
 				ScrapeInterval: scrapeInterval,
 				Retention:      retention,
 				QueryStep:      queryStep,
+				VMAlertURI:     prom.VMAlertURI,
 			})
 		}
 		return promapi.NewPrometheus(prom.Name, uri, prom.PublicURI, prom.Headers, timeout, prom.Concurrency, prom.RateLimit, prom.SampleRateLimit, tlsConf)

@@ -5,7 +5,7 @@ cmp stderr stderr.txt
 -- stderr.txt --
 level=INFO msg="Loading configuration file" path=.pint.hcl
 level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
-level=ERROR msg="Execution completed with error(s)" err="\"vm\" is a VictoriaMetrics server which doesn't expose a list of rule files, use `pint watch glob` instead"
+level=ERROR msg="Execution completed with error(s)" err="\"vm\" is a VictoriaMetrics server which doesn't expose a list of rule files, set vmalertURI to read them from vmalert or use `pint watch glob` instead"
 -- .pint.hcl --
 parser {
   query_language = "metricsql"

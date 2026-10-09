@@ -32,6 +32,11 @@ func vmServerText(prom *promapi.FailoverGroup, uri string) string {
 
 // missingExternalLabelText describes an external label used in a template that isn't set on the server.
 func missingExternalLabelText(prom *promapi.FailoverGroup, uri, name string) string {
+	if isVictoriaMetrics(prom) && prom.VMAlertURI() != "" {
+		return fmt.Sprintf("The template is using `%s` external label but it isn't set for %s, so vmalert renders it as an empty string. "+
+			"vmalert at %s doesn't set it with `-external.label` and it isn't in `externalLabels` of this server.",
+			name, vmServerText(prom, uri), prom.VMAlertURI())
+	}
 	if isVictoriaMetrics(prom) {
 		return fmt.Sprintf("The template is using `%s` external label but it isn't set for %s, so vmalert renders it as an empty string. "+
 			"If vmalert sets it with `-external.label`, add it to `externalLabels` of this server or pass it with `--external-label`.",
@@ -55,7 +60,7 @@ func vmalertLabelConflictText(prom *promapi.FailoverGroup, uri, name, ruleValue,
 
 // StaticOnVictoriaMetrics returns true for online checks that don't send any queries to
 // VictoriaMetrics servers, they only use external labels from pint config, so they also
-// work with --offline.
+// work with --offline. Online they also use external labels read from vmalertURI.
 func StaticOnVictoriaMetrics(name string) bool {
 	return name == AlertsExternalLabelsCheckName || name == LabelsConflictCheckName
 }

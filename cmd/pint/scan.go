@@ -24,6 +24,7 @@ func checkRules(ctx context.Context, workers int, isOffline bool, gen *config.Pr
 				return summary, err
 			}
 			slog.LogAttrs(ctx, slog.LevelDebug, "Generated all Prometheus servers", slog.Int("count", gen.Count()))
+			gen.LoadVMAlert(ctx)
 		} else {
 			slog.LogAttrs(ctx, slog.LevelInfo, "No rules found, skipping Prometheus discovery")
 		}

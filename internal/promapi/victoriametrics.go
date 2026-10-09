@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
@@ -43,6 +45,9 @@ var vmAPIPrefix = regexp.MustCompile(`(/select/[^/]+)?/prometheus/?$`)
 // VictoriaMetricsOptions are settings that VictoriaMetrics can't expose via API.
 type VictoriaMetricsOptions struct {
 	ExternalLabels map[string]string
+	// VMAlertURI is the URI of vmalert evaluating rules against this server, pint reads its
+	// flags and loaded rule files.
+	VMAlertURI     string
 	ScrapeInterval time.Duration
 	// Retention overrides -retentionPeriod, vmselect doesn't know it.
 	Retention time.Duration
@@ -52,8 +57,12 @@ type VictoriaMetricsOptions struct {
 
 type victoriaMetrics struct {
 	externalLabels map[string]string
+	// vmalert holds settings read from vmalertURI, nil until they are loaded.
+	vmalert atomic.Pointer[VMAlertResult]
 	// rootURI is the URI of the VictoriaMetrics HTTP server, without any API prefix.
 	rootURI        string
+	vmalertURI     string
+	safeVMAlertURI string
 	scrapeInterval time.Duration
 	retention      time.Duration
 	queryStep      time.Duration
@@ -71,7 +80,10 @@ func NewVictoriaMetrics(name, uri, publicURI string, headers map[string]string, 
 func newVictoriaMetrics(uri string, opts VictoriaMetricsOptions) *victoriaMetrics {
 	vm := victoriaMetrics{
 		externalLabels: opts.ExternalLabels,
+		vmalert:        atomic.Pointer[VMAlertResult]{},
 		rootURI:        uri,
+		vmalertURI:     strings.TrimSuffix(opts.VMAlertURI, "/"),
+		safeVMAlertURI: sanitizeURI(strings.TrimSuffix(opts.VMAlertURI, "/")),
 		scrapeInterval: opts.ScrapeInterval,
 		retention:      opts.Retention,
 		queryStep:      opts.QueryStep,
@@ -87,13 +99,29 @@ func newVictoriaMetrics(uri string, opts VictoriaMetricsOptions) *victoriaMetric
 	return &vm
 }
 
+// allExternalLabels returns external labels read from vmalert, if loaded, with labels set in
+// pint config taking precedence.
+func (vm *victoriaMetrics) allExternalLabels() map[string]string {
+	va := vm.vmalert.Load()
+	if va == nil || len(va.ExternalLabels) == 0 {
+		return maps.Clone(vm.externalLabels)
+	}
+	labels := maps.Clone(va.ExternalLabels)
+	maps.Copy(labels, vm.externalLabels)
+	return labels
+}
+
 // config returns Prometheus configuration for VictoriaMetrics,
-// it doesn't expose one so we use values from pint config and Prometheus defaults.
+// it doesn't expose one so we use values from pint config, vmalert and Prometheus defaults.
 func (vm *victoriaMetrics) config() PrometheusConfig {
+	var ruleFiles []string
+	if va := vm.vmalert.Load(); va != nil {
+		ruleFiles = va.RuleFiles
+	}
 	cfg := PrometheusConfig{
-		RuleFiles: nil,
+		RuleFiles: ruleFiles,
 		Global: ConfigSectionGlobal{
-			ExternalLabels:     vm.externalLabels,
+			ExternalLabels:     vm.allExternalLabels(),
 			ScrapeInterval:     vm.scrapeInterval,
 			ScrapeTimeout:      time.Second * 10,
 			EvaluationInterval: time.Minute,
@@ -109,6 +137,15 @@ func (vm *victoriaMetrics) config() PrometheusConfig {
 // It also sets the Prometheus retention flag used by pint checks, unless the retention
 // is unknown: vmselect doesn't know the retention of vmstorage nodes.
 func (vm *victoriaMetrics) parseFlags(r io.Reader) (v1.FlagsResult, error) {
+	flags, err := readVMFlags(r)
+	if err != nil {
+		return nil, err
+	}
+	return vm.withRetention(flags)
+}
+
+// readVMFlags reads `-name="value"` lines of the /flags endpoint of VictoriaMetrics components.
+func readVMFlags(r io.Reader) (v1.FlagsResult, error) {
 	defer dummyReadAll(r)
 
 	flags := v1.FlagsResult{}
@@ -138,7 +175,10 @@ func (vm *victoriaMetrics) parseFlags(r io.Reader) (v1.FlagsResult, error) {
 			Err:       fmt.Errorf("failed to read flags: %w", err),
 		}
 	}
+	return flags, nil
+}
 
+func (vm *victoriaMetrics) withRetention(flags v1.FlagsResult) (v1.FlagsResult, error) {
 	retention := vm.retention
 	if v, ok := flags[vmFlagRetentionPeriod]; ok && retention == 0 {
 		r, err := parseVictoriaMetricsRetention(v)
@@ -242,5 +282,19 @@ func (fg *FailoverGroup) VMAlertQueryStep() (step time.Duration, ok bool) {
 	if step = fg.servers[0].vm.queryStep; step > 0 {
 		return step, true
 	}
+	if va := fg.servers[0].vm.vmalert.Load(); va != nil && va.QueryStep > 0 {
+		return va.QueryStep, true
+	}
 	return VMAlertDefaultQueryStep, true
+}
+
+// VMAlertQueryStepFrom returns the vmalert URI if VMAlertQueryStep was read from its flags.
+func (fg *FailoverGroup) VMAlertQueryStepFrom() string {
+	if len(fg.servers) == 0 || fg.servers[0].vm == nil || fg.servers[0].vm.queryStep > 0 {
+		return ""
+	}
+	if va := fg.servers[0].vm.vmalert.Load(); va != nil && va.QueryStep > 0 {
+		return va.URI
+	}
+	return ""
 }

@@ -72,6 +72,11 @@
   chained this way are no longer reported.
 - New `queryStep` option for VictoriaMetrics servers, the vmalert `-datasource.queryStep` used
   by [group/interval](checks/group/interval.md), 5m by default.
+- New `vmalertURI` option for VictoriaMetrics servers. pint reads `-datasource.queryStep` and
+  `-external.label` flags of that vmalert, so `queryStep` and `externalLabels` don't need to
+  be copied into pint config, and `pint watch rule_files` checks files of rule groups loaded
+  by vmalert. Values set in pint config take precedence, vmalert isn't queried with
+  `--offline`.
 - [query/cost](checks/query/cost.md) check no longer estimates memory usage for
   VictoriaMetrics servers. The estimate uses metrics of the Prometheus process itself, which
   VictoriaMetrics doesn't have.

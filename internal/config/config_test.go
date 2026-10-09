@@ -1993,6 +1993,29 @@ func TestConfigErrors(t *testing.T) {
 			err: `invalid queryStep "abc", expected a positive duration like 5m`,
 		},
 		{
+			config: `prometheus "prom" {
+  uri        = "http://localhost"
+  vmalertURI = "http://vmalert:8880"
+}`,
+			err: `vmalertURI can only be set when using "victoriametrics" backend`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri        = "http://localhost"
+  backend    = "victoriametrics"
+  vmalertURI = "vmalert:8880"
+}`,
+			err: `vmalertURI "vmalert:8880" is invalid, expected an http or https URI like http://vmalert:8880`,
+		},
+		{
+			config: `prometheus "prom" {
+  uri        = "http://localhost"
+  backend    = "victoriametrics"
+  vmalertURI = "http://vm alert"
+}`,
+			err: `vmalertURI "http://vm alert" is invalid: parse "http://vm alert": invalid character " " in host name`,
+		},
+		{
 			config: `parser {
   query_language = "metricsql"
 }

@@ -143,6 +143,7 @@ type PrometheusTemplate struct {
 	ScrapeInterval  string            `hcl:"scrapeInterval,optional" json:"scrapeInterval,omitempty"`
 	Retention       string            `hcl:"retention,optional" json:"retention,omitempty"`
 	QueryStep       string            `hcl:"queryStep,optional" json:"queryStep,omitempty"`
+	VMAlertURI      string            `hcl:"vmalertURI,optional" json:"vmalertURI,omitempty"`
 	Failover        []string          `hcl:"failover,optional" json:"failover,omitempty"`
 	Include         []string          `hcl:"include,optional" json:"include,omitempty"`
 	Exclude         []string          `hcl:"exclude,optional" json:"exclude,omitempty"`
@@ -169,7 +170,7 @@ func (pt PrometheusTemplate) validate() (err error) {
 		return errors.New("prometheus template URI cannot be empty")
 	}
 
-	if err = validateBackend(pt.getBackend(), pt.ScrapeInterval, pt.Retention, pt.QueryStep, pt.ExternalLabels); err != nil {
+	if err = validateBackend(pt.getBackend(), pt.ScrapeInterval, pt.Retention, pt.QueryStep, pt.VMAlertURI, pt.ExternalLabels); err != nil {
 		return err
 	}
 
@@ -203,6 +204,12 @@ func (pt PrometheusTemplate) Render(data map[string]string) (*promapi.FailoverGr
 		}
 	} else {
 		publicURI = uri
+	}
+	var vmalertURI string
+	if pt.VMAlertURI != "" {
+		if vmalertURI, err = renderTemplate(pt.VMAlertURI, data); err != nil {
+			return nil, fmt.Errorf("bad vmalertURI template %q: %w", pt.VMAlertURI, err)
+		}
 	}
 
 	failover := make([]string, 0, len(pt.Failover))
@@ -281,6 +288,7 @@ func (pt PrometheusTemplate) Render(data map[string]string) (*promapi.FailoverGr
 		ScrapeInterval:  pt.ScrapeInterval,
 		Retention:       pt.Retention,
 		QueryStep:       pt.QueryStep,
+		VMAlertURI:      vmalertURI,
 		ExternalLabels:  pt.ExternalLabels,
 	}
 	prom.applyDefaults()

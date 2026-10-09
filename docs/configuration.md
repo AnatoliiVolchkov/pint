@@ -343,6 +343,7 @@ prometheus "$name" {
   scrapeInterval  = "1m"
   retention       = "90d"
   queryStep       = "5m"
+  vmalertURI      = "https://..."
   externalLabels  = { "...": "..." }
   tls {
     serverName = "..."
@@ -372,7 +373,8 @@ prometheus "$name" {
     cluster setups, see below.
   - Not query the Prometheus configuration API, VictoriaMetrics doesn't expose one.
     Scrape interval and external labels used by checks are taken from `scrapeInterval`
-    and `externalLabels` options instead.
+    and `externalLabels` options instead, external labels also from vmalert when
+    `vmalertURI` is set.
   - Read `-search.maxLookback`, `-search.maxStalenessInterval`,
     `-search.minStalenessInterval` and `-search.setLookbackToStep` flags, they change how
     far back instant queries look for samples, see [group/interval](checks/group/interval.md).
@@ -396,15 +398,31 @@ prometheus "$name" {
 - `queryStep` - the `-datasource.queryStep` flag of vmalert evaluating rules against this
   server, used by [group/interval](checks/group/interval.md). vmalert sends it as the `step`
   of every query and VictoriaMetrics looks back only that far for the newest sample.
-  pint can't read vmalert flags, set it if vmalert doesn't use the default. A `step` set in
-  `params` of a rule group is read from the rule file and takes precedence.
+  Set it if vmalert doesn't use the default, or set `vmalertURI` to read it from vmalert.
+  A value set here takes precedence over the one read from vmalert, and a `step` set in
+  `params` of a rule group is read from the rule file and takes precedence over both.
   Only valid with `backend = "victoriametrics"`.
   Default value is `5m`, the vmalert default.
+- `vmalertURI` - URI of vmalert evaluating rules against this server, for example
+  `http://vmalert:8880`. Only valid with `backend = "victoriametrics"`.
+  When set and pint isn't running with `--offline`, before running checks pint reads
+  vmalert `/flags` and `/api/v1/rules` endpoints, using `headers` and `tls` of this
+  block, and uses:
+  - `-datasource.queryStep` as `queryStep`, unless `queryStep` is set,
+  - `-external.label` flags as external labels, labels set in `externalLabels` or with
+    `--external-label` take precedence,
+  - files of loaded rule groups for `pint watch rule_files`.
+
+  If vmalert can't be queried pint logs a warning and uses settings from this block,
+  and checks that need external labels report the error. With `--offline` vmalert isn't
+  queried: [alerts/external_labels](checks/alerts/external_labels.md) and
+  [labels/conflict](checks/labels/conflict.md) don't run for this server, and other
+  checks only use `queryStep` and `externalLabels`.
 - `externalLabels` - external labels used by checks that need them, for example
   [alerts/external_labels](checks/alerts/external_labels.md).
   Only valid with `backend = "victoriametrics"`, Prometheus servers expose them via the
   configuration API. Set it to external labels configured on vmalert
-  (`-external.label` flag).
+  (`-external.label` flag), or set `vmalertURI` to read them from vmalert.
   External labels can also be passed on the command line with the global
   `--external-label` flag or the `PINT_EXTERNAL_LABELS` environment variable, using the
   same `name=value` format as vmalert, with labels separated by commas or set by repeating
@@ -625,6 +643,7 @@ Fields that are allowed to be templated are:
 - `tags`
 - `include`
 - `exclude`
+- `vmalertURI`
 
 ```js
 template {
@@ -644,6 +663,7 @@ template {
   scrapeInterval  = "1m"
   retention       = "90d"
   queryStep       = "5m"
+  vmalertURI      = "https://..."
   externalLabels  = { "...": "..." }
   tls {
     serverName = "..."

@@ -16,11 +16,17 @@ prometheus "vm" {
   # used by vmagent so checks like promql/rate can validate range selectors.
   scrapeInterval = "30s"
 
-  # vmalert -datasource.queryStep, set it if vmalert doesn't use the default 5m.
-  # group/interval uses it to find rules that can't see results of other rules.
+  # vmalert evaluating rules against this server. pint reads its -datasource.queryStep
+  # and -external.label flags, and the rule files it loaded for `pint watch rule_files`.
+  # It isn't queried with --offline.
+  vmalertURI = "http://vmalert:8880"
+
+  # vmalert -datasource.queryStep, set it if vmalert doesn't use the default 5m and
+  # vmalertURI isn't set. group/interval uses it to find rules that can't see results
+  # of other rules.
   queryStep = "5m"
 
-  # External labels configured on vmalert via -external.label flags.
+  # External labels configured on vmalert via -external.label flags, needed with --offline.
   externalLabels = {
     cluster = "demo"
   }

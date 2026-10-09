@@ -1,0 +1,68 @@
+# With vmalertURI pint reads -datasource.queryStep from vmalert, here 20m, which is shorter
+# than the 30m interval of the writer group. Offline vmalert isn't queried and the default
+# 5m query step is used.
+http response vm ^/flags$ 200 -retentionPeriod="1y"
+http start vm 127.0.0.1:7298
+http response vmalert ^/flags$ 200 -datasource.queryStep="20m0s"
+http response vmalert ^/api/v1/rules$ 200 {"status":"success","data":{"groups":[{"name":"writer","file":"rules/1.yml"},{"name":"readers","file":"rules/1.yml"}]}}
+http start vmalert 127.0.0.1:7299
+
+exec pint --no-color -e group/interval lint --json report.json rules
+! stdout .
+cmp stderr online.txt
+grep 'the query step, vmalert -datasource.queryStep read from http://127.0.0.1:7299 \(20m\)' report.json
+
+exec pint --no-color --offline lint rules
+! stdout .
+cmp stderr offline.txt
+
+-- online.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=2 workers=10 online=true
+level=INFO msg="Loaded vmalert settings" name=vm uri=http://127.0.0.1:7299 queryStep=20m0s externalLabels=[] ruleFiles=1
+Warning: interval too long (group/interval)
+  ---> rules/1.yml:3 -> `job:requests:rate30m`
+3 |   interval: 30m
+                ^^^
+                `HighRequests` reads `job:requests:rate30m` with a 20m lookback, shorter than this 30m
+                interval, so it gets empty results between evaluations of this group.
+
+level=INFO msg="Problems found" Warning=1
+-- offline.txt --
+level=INFO msg="Loading configuration file" path=.pint.hcl
+level=INFO msg="Finding all rules to check" paths=["rules"]
+level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
+level=INFO msg="Checking Prometheus rules" entries=2 workers=10 online=false
+level=INFO msg="Offline mode, skipping Prometheus discovery"
+Warning: interval too long (group/interval)
+  ---> rules/1.yml:3 -> `job:requests:rate30m`
+3 |   interval: 30m
+                ^^^
+                `HighRequests` reads `job:requests:rate30m` with a 5m lookback, shorter than this 30m
+                interval, so it gets empty results between evaluations of this group.
+
+level=INFO msg="Problems found" Warning=1
+-- rules/1.yml --
+groups:
+- name: writer
+  interval: 30m
+  rules:
+  - record: job:requests:rate30m
+    expr: sum(rate(http_requests_total[30m])) by (job)
+- name: readers
+  interval: 1m
+  rules:
+  - alert: HighRequests
+    expr: job:requests:rate30m > 100
+
+-- .pint.hcl --
+parser {
+  query_language = "metricsql"
+}
+prometheus "vm" {
+  uri        = "http://127.0.0.1:7298"
+  backend    = "victoriametrics"
+  vmalertURI = "http://127.0.0.1:7299"
+}

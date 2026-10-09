@@ -85,6 +85,8 @@ func (c GroupIntervalCheck) Offline() GroupIntervalCheck {
 type vmLookbackSettings struct {
 	server         string
 	maxLookbackSrc string
+	// queryStepFrom is the vmalert URI the query step was read from, empty if it wasn't.
+	queryStepFrom  string
 	queryStep      time.Duration
 	maxLookback    time.Duration
 	minStaleness   time.Duration
@@ -122,6 +124,7 @@ func vmLookbackSettingsFor(ctx context.Context, prom *promapi.FailoverGroup, rea
 	}
 	s = vmLookbackSettings{
 		server:         prom.Name(),
+		queryStepFrom:  prom.VMAlertQueryStepFrom(),
 		queryStep:      step,
 		queryStepSet:   step != promapi.VMAlertDefaultQueryStep,
 		maxLookback:    0,
@@ -354,6 +357,9 @@ func (s vmLookbackSettings) describe(step, maxLookback, w time.Duration) string 
 	switch {
 	case step > 0:
 		src = fmt.Sprintf("the query step from `params` of its group (%s)", output.HumanizeDuration(step))
+	case s.queryStepFrom != "":
+		src = fmt.Sprintf("the query step, vmalert -datasource.queryStep read from %s (%s)", s.queryStepFrom, output.HumanizeDuration(s.queryStep))
+		step = s.queryStep
 	case s.queryStepSet:
 		src = fmt.Sprintf("the query step, vmalert -datasource.queryStep set in pint config (%s)", output.HumanizeDuration(s.queryStep))
 		step = s.queryStep
