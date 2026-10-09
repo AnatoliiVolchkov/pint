@@ -16,6 +16,23 @@ is evaluated before the metrics tested using `absent()` are scraped. Adding a `f
 
 This check doesn't have any configuration options.
 
+## VictoriaMetrics
+
+vmalert evaluates alerting rules with instant queries. `absent(selector)` returns 1 when the
+selector has no sample within the query step before the evaluation time,
+`-datasource.queryStep` of vmalert (5m by default) or `step` from the group `params`, and
+`absent_over_time(selector[window])` when it has none within the window. A metric written
+less often than that, for example results of stream aggregation or of batch jobs, makes the
+alert fire during every pause between samples, and every new sample resets `for`.
+
+For MetricsQL rules checked against VictoriaMetrics servers pint measures pauses between
+samples of the selector with a `count_over_time(selector[window])` range query over the
+`lookbackRange` of [promql/series](../promql/series.md) (7d by default) and warns when there
+are pauses longer than the window that `for` doesn't cover. The pause after the last sample
+isn't counted, that's the absence the rule is for. To alert only when the metric stops, use
+`absent_over_time(selector[window])` with a window longer than the longest normal pause, or
+set `for` to at least that long.
+
 ## How to enable it
 
 This check is enabled by default for all configured Prometheus servers.

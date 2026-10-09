@@ -1148,18 +1148,45 @@ func TestMetricsQLRuleDuplicateCheck(t *testing.T) {
 func TestMetricsQLAlertsAbsentCheck(t *testing.T) {
 	runTests(t, withMetricsQL([]checkTest{
 		{
-			// VictoriaMetrics config is synthesized, no API calls expected.
+			// VictoriaMetrics config is synthesized, the only API calls measure pauses between
+			// samples, see alerts_absent_vm_test.go.
 			description: "absent() without for",
 			content:     "- alert: foo\n  expr: 'absent(foo{job=\"a\" or job=\"b\"})'\n",
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
 			problems:    true,
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{}},
+				},
+				{
+					conds: []requestCondition{
+						requireRangeQueryPath,
+						formCond{key: "query", value: `count(count_over_time(foo{job="a" or job="b"}[5m]))`},
+					},
+					resp: respondWithSingleRangeVector1D(),
+				},
+			},
 		},
 		{
 			description: "absent() with for and custom scrape interval",
 			content:     "- alert: foo\n  expr: absent(foo)\n  for: 1m\n",
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Second * 15}),
+			mocks: []*prometheusMock{
+				{
+					conds: []requestCondition{requireVMFlagsPath},
+					resp:  vmFlagsResponse{flags: map[string]string{}},
+				},
+				{
+					conds: []requestCondition{
+						requireRangeQueryPath,
+						formCond{key: "query", value: `count(count_over_time(foo[5m]))`},
+					},
+					resp: respondWithSingleRangeVector1D(),
+				},
+			},
 		},
 	}))
 }

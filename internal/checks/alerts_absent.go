@@ -61,6 +61,8 @@ func (c AlertsAbsentCheck) Check(ctx context.Context, entry *discovery.Entry, _ 
 		return problems
 	}
 
+	problems = append(problems, c.vmSparseAbsent(ctx, entry)...)
+
 	src := entry.Rule.AlertingRule.Expr.Source()
 	absentSources := make([]*source.Source, 0, len(src))
 	for _, s := range src {

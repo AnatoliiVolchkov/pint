@@ -81,6 +81,11 @@
   A range query of the rule itself hides pauses between samples shorter than their usual
   interval, so `absent()` on a metric with one sample every 10m counted zero alerts while
   vmalert fired on every other evaluation.
+- [alerts/absent](checks/alerts/absent.md) check warns about MetricsQL rules whose `absent()`
+  or `absent_over_time()` window is shorter than pauses between samples of the metric on the
+  VictoriaMetrics server, measured over the last 7d. `absent()` in vmalert looks back one
+  query step, 5m by default, so on a metric written every 10m the alert fires during every
+  pause and every new sample resets `for`.
 
 ### Fixed
 
