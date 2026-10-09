@@ -110,6 +110,9 @@ Guidance for the files we touch most:
   (`internal/checks/metricsql_test.go`); the coverage matrix test fails until they are.
 - Snapshot files (`*.snap`, `cmd/pint/tests/*.txt`): resolve the code first, then regenerate
   (see below) instead of hand-merging snapshot output.
+- `.github/dependabot.yml`: deleted in this fork (see "Dependabot" below). If upstream
+  changed it, the merge stops with a modify/delete conflict; keep it deleted with
+  `git rm .github/dependabot.yml`.
 
 Then finish the merge and test:
 
@@ -267,6 +270,23 @@ enabled for `GITHUB_TOKEN` to open pull requests:
 ```sh
 gh api -X PUT repos/AnatoliiVolchkov/pint/actions/permissions/workflow \
   -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true
+```
+
+## Dependabot
+
+Upstream's `.github/dependabot.yml` is deleted in this fork, which turns off Dependabot
+version updates; GitHub has no setting for that. Its pull requests bumped upstream's
+`Dockerfile` (unused here), Go modules that upstream bumps itself (they arrive with
+upstream syncs and would conflict in `go.mod`/`go.sum`), and actions in upstream workflows
+that must stay byte-for-byte unchanged. Dependabot runs also get no repository secrets, so
+every job failed fetching the private MetricsQL module.
+
+Dependabot alerts (vulnerability notifications, no pull requests) are enabled in the
+repository settings, Dependabot security updates are not:
+
+```sh
+gh api repos/AnatoliiVolchkov/pint/vulnerability-alerts -i          # 204: alerts enabled
+gh api repos/AnatoliiVolchkov/pint/automated-security-fixes         # {"enabled":false,...}
 ```
 
 ## Disabled upstream workflows
