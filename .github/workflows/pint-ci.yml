@@ -1,13 +1,36 @@
 name: pint CI
 
+# Documentation-only changes don't run CI. Later patterns override earlier ones: the build
+# job validates docs/examples and a test checks the coverage matrix in
+# docs/METRICSQL_TESTING.md, so changes to those still run it.
 on:
   push:
     branches:
       - main
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!.claude/**"
+      - "docs/examples/**"
+      - "docs/METRICSQL_TESTING.md"
   pull_request:
     branches:
       - main
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!.claude/**"
+      - "docs/examples/**"
+      - "docs/METRICSQL_TESTING.md"
   workflow_dispatch:
+
+# A new push to a pull request cancels its previous run. Every push to main gets its own
+# group, so runs on main never wait for or cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
