@@ -85,7 +85,8 @@
   or `absent_over_time()` window is shorter than pauses between samples of the metric on the
   VictoriaMetrics server, measured over the last 7d. `absent()` in vmalert looks back one
   query step, 5m by default, so on a metric written every 10m the alert fires during every
-  pause and every new sample resets `for`.
+  pause and every new sample resets `for`. Only pauses that happen at least once a day on
+  average are reported, not a single outage.
 
 ### Fixed
 

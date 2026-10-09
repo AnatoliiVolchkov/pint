@@ -21,13 +21,22 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 		return content
 	}
 	// presence is count(count_over_time(x[step])) over the last week with points step apart,
-	// except for a hole of the given length three days ago.
-	presence := func(query string, step, hole time.Duration) *prometheusMock {
+	// except for holes of the given length every `every`, starting three days ago and going
+	// back. every = 0 makes a single hole.
+	presence := func(query string, step, hole, every time.Duration) *prometheusMock {
 		s := generateSampleStream(map[string]string{}, now.Add(-8*24*time.Hour), now.Add(time.Hour), step)
 		from := now.Add(-3 * 24 * time.Hour)
 		s.Values = slices.DeleteFunc(s.Values, func(v model.SamplePair) bool {
 			ts := v.Timestamp.Time()
-			return !ts.Before(from) && ts.Before(from.Add(hole))
+			if !ts.Before(from) {
+				return ts.Before(from.Add(hole))
+			}
+			if every == 0 {
+				return false
+			}
+			// Holes start at from - k*every.
+			d := from.Sub(ts)
+			return (every-d%every)%every < hole
 		})
 		return &prometheusMock{
 			conds: []requestCondition{requireRangeQueryPath, formCond{key: "query", value: query}},
@@ -39,13 +48,21 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 
 	runTests(t, []checkTest{
 		{
-			description: "absent on a metric with pauses longer than the lookback",
+			description: "absent on a metric with regular pauses longer than the lookback",
 			content:     alerting(`absent(foo{job="a"})`, ""),
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30)},
+			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*12)},
 			problems:    true,
+		},
+		{
+			description: "a single outage is not reported",
+			content:     alerting(`absent(foo{job="a"})`, "2m"),
+			language:    parser.MetricsQL,
+			checker:     newAlertsAbsentCheck,
+			prometheus:  newSimpleVM,
+			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, 0)},
 		},
 		{
 			description: "for covers the pauses",
@@ -53,7 +70,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30)},
+			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*12)},
 		},
 		{
 			description: "for shorter than the pauses",
@@ -61,7 +78,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30)},
+			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*12)},
 			problems:    true,
 		},
 		{
@@ -70,7 +87,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30)},
+			mocks:       []*prometheusMock{flags, presence(pauses, time.Minute*5, time.Minute*30, time.Hour*12)},
 			problems:    true,
 		},
 		{
@@ -79,7 +96,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(`count(count_over_time(foo{job="a"}[1h]))`, time.Hour, 0)},
+			mocks:       []*prometheusMock{flags, presence(`count(count_over_time(foo{job="a"}[1h]))`, time.Hour, 0, 0)},
 		},
 		{
 			description: "absent_over_time with a short window",
@@ -87,7 +104,7 @@ func TestAlertsAbsentVMCheck(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newAlertsAbsentCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{flags, presence(`count(count_over_time(foo{job="a"}[10m]))`, time.Minute*10, time.Hour)},
+			mocks:       []*prometheusMock{flags, presence(`count(count_over_time(foo{job="a"}[10m]))`, time.Minute*10, time.Hour, time.Hour*12)},
 			problems:    true,
 		},
 		{

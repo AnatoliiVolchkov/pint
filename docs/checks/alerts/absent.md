@@ -28,8 +28,10 @@ alert fire during every pause between samples, and every new sample resets `for`
 For MetricsQL rules checked against VictoriaMetrics servers pint measures pauses between
 samples of the selector with a `count_over_time(selector[window])` range query over the
 `lookbackRange` of [promql/series](../promql/series.md) (7d by default) and warns when there
-are pauses longer than the window that `for` doesn't cover. The pause after the last sample
-isn't counted, that's the absence the rule is for. To alert only when the metric stops, use
+are pauses at least as long as the window that `for` doesn't cover, at least once a day on
+average. The pause after the last sample isn't counted, that's the absence the rule is for,
+and neither is a single outage, `absent()` rightly fires during it. To alert only when the
+metric stops, use
 `absent_over_time(selector[window])` with a window longer than the longest normal pause, or
 set `for` to at least that long.
 

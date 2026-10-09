@@ -95,11 +95,12 @@ cases:
             start: 30
             end: 62
             line: 2
-  - name: absent on a metric with pauses longer than the instant query lookback
+  - name: absent on a metric with regular pauses longer than the instant query lookback
     kind: positive
     comment: >
       vmalert evaluates absent() with instant queries that look back one query step (5m).
-      The metric has a sample every 10m and one pause of 70m, `for` covers the 10m pauses only.
+      The metric has a sample every 10m and a 40m pause after every 5 samples, `for` covers
+      the 10m pauses only.
     settings:
       scrapeInterval: 1m
     rules: |
@@ -110,11 +111,11 @@ cases:
       step: 10m
       series:
         - metric: absent_sparse{job="a"}
-          values: 1x30 _x6 1x30
+          values: 1x5 _x3 1x5 _x3 1x5 _x3 1x5
     vm:
       - query: absent(absent_sparse{job="a"})
         result: empty
-      - query: count_over_time(absent(last_over_time(absent_sparse{job="a"}[5m]))[11h:5m]) > bool 50
+      - query: count_over_time(absent(last_over_time(absent_sparse{job="a"}[5m]))[4h:5m]) > bool 12
         result: '{} 1'
     expect:
       - rule: Gone
@@ -123,11 +124,28 @@ cases:
         summary: absent() window shorter than pauses between samples
         lines: "2"
         diagnostics:
-          - message_re: 'had 1 pause\(s\) longer than 5m on `vm` VictoriaMetrics server at \S+, the longest at least 1h(5m)?, while samples kept arriving, so this alert fires during normal pauses, not only when `absent_sparse\{job="a"\}` disappears\. `for: 10m` covers pauses up to 15m only\.'
+          - message_re: 'had 3 pauses of at least 5m on `vm` VictoriaMetrics server at \S+, the longest at least 35m, while samples kept arriving, so this alert fires during normal pauses, not only when `absent_sparse\{job="a"\}` disappears\. `for: 10m` covers pauses up to 15m only\.'
             fragment: absent(absent_sparse{job="a"})
             start: 0
             end: 30
             line: 2
+  - name: a single outage of a dense metric
+    kind: negative
+    comment: >
+      absent() rightly fires during a one-off outage, only pauses that happen at least once a
+      day on average are reported.
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - alert: Gone
+        expr: 'absent(absent_outage{job="a"})'
+        for: 2m
+    data:
+      step: 1m
+      series:
+        - metric: absent_outage{job="a"}
+          values: 1x60 _x12 1x60
+    expect: []
   - name: for longer than the pauses
     kind: negative
     settings:

@@ -22,8 +22,10 @@ import (
 // in a week. Range queries hide this (see alerts_count_vm.go), but not with an explicit
 // window: count_over_time(x[5m]) as a range query with step 5m had no points for 180 of
 // 361 windows. This check runs that query for the selector of every absent() and
-// absent_over_time() call and reports pauses longer than the window that `for` doesn't
-// cover. The pause after the last sample isn't counted, that's the absence the rule is for.
+// absent_over_time() call and reports pauses at least as long as the window that `for`
+// doesn't cover, if they happen at least once a day on average. The pause after the last
+// sample isn't counted, that's the absence the rule is for, and neither is a single outage,
+// absent() rightly fires during it.
 
 const alertsAbsentVMDetails = "vmalert evaluates alerting rules with instant queries. " +
 	"`absent(selector)` returns 1 when the selector has no sample within the query step before the evaluation time, " +
@@ -33,7 +35,8 @@ const alertsAbsentVMDetails = "vmalert evaluates alerting rules with instant que
 	"makes the alert fire during every pause between samples, and every new sample resets `for`. " +
 	"To alert only when the metric stops, use `absent_over_time(selector[window])` with a window longer than the longest normal pause, " +
 	"or set `for` to at least that long. " +
-	"pint measured the pauses with `count_over_time(selector[window])` over the last %s, the pause after the last sample isn't counted."
+	"pint measured the pauses with `count_over_time(selector[window])` over the last %s, the pause after the last sample isn't counted. " +
+	"It reports pauses that happen at least once a day on average, a single outage isn't reported."
 
 // vmAbsentCall is an absent() call on a plain selector or an absent_over_time() call on a
 // selector with a fixed window.
@@ -87,15 +90,52 @@ func vmAbsentCalls(node ast.Node) (calls []vmAbsentCall) {
 	})
 }
 
-// vmPauses returns how many pauses between samples the ranges of count(count_over_time(x[step]))
-// show that `for` doesn't cover, and the longest one. Ranges hold consecutive points step
-// apart, and RangeQuery extends their end by step-1s (ExpandRangesEnd), so the time between
-// two ranges, rounded to the step, is the missing points, step each. A point at t means a
-// sample in (t-step, t], so the metric had no sample for at least that long: checked with
-// v1.153.0, samples 40m apart gave 7 missing 5m points. vmalert sees absent() as 1 for at
-// least the pause minus one step, where exactly the samples fall within their windows is
-// unknown.
-func vmPauses(ranges promapi.MetricTimeRanges, step, forDur time.Duration) (count int, longest time.Duration) {
+// vmPresenceQuery returns the query that has a point at t if the selector had a sample in
+// (t-window, t]. Offsets and @ modifiers shift the whole series, pauses stay the same, so
+// they are dropped.
+func vmPresenceQuery(selector *ast.VectorSelector, window time.Duration) string {
+	vs := *selector
+	vs.OriginalOffset, vs.OriginalOffsetExpr, vs.OffsetText = 0, nil, ""
+	vs.Timestamp, vs.StartOrEnd, vs.At = nil, "", nil
+	vs.Anchored, vs.Smoothed = false, false
+	ms := ast.MatrixSelector{
+		VectorSelector: &vs,
+		RangeExpr:      nil,
+		RangeText:      "",
+		PosRange:       vs.PosRange,
+		Range:          window,
+		Implicit:       false,
+		StepRelative:   false,
+	}
+	return fmt.Sprintf("count(count_over_time(%s))", ms.String())
+}
+
+// vmPauseStats describes pauses between samples found by a presence query.
+type vmPauseStats struct {
+	count   int           // pauses at least step long that `for` doesn't cover
+	longest time.Duration // the longest of them
+	span    time.Duration // from the first to the last point of the query
+}
+
+// regular returns true if the pauses are part of how the metric is written, at least once a
+// day on average over the time the metric was there, rather than one-off outages. A dense
+// metric with a single 12m outage in a week has one pause, and absent() on it rightly fired
+// during that outage (v1.153.0, 2026-10-09).
+func (s vmPauseStats) regular() bool {
+	return s.count >= 2 && time.Duration(s.count)*24*time.Hour >= s.span
+}
+
+// vmPauses returns pauses between samples the ranges of a presence query with given step
+// show, counting those that `for` doesn't cover. Ranges hold consecutive points step apart,
+// and RangeQuery extends their end by step-1s (ExpandRangesEnd), so the time between two
+// ranges, rounded to the step, is the missing points, step each. A point at t means a sample
+// in (t-step, t], so the metric had no sample for at least that long: checked with v1.153.0,
+// samples 40m apart gave 7 missing 5m points. vmalert sees absent() as 1 for at least the
+// pause minus one step, where exactly the samples fall within their windows is unknown.
+func vmPauses(ranges promapi.MetricTimeRanges, step, forDur time.Duration) (stats vmPauseStats) {
+	if len(ranges) == 0 {
+		return stats
+	}
 	ranges = slices.Clone(ranges)
 	slices.SortFunc(ranges, func(a, b promapi.MetricTimeRange) int { return a.Start.Compare(b.Start) })
 	for i := 1; i < len(ranges); i++ {
@@ -103,10 +143,11 @@ func vmPauses(ranges promapi.MetricTimeRanges, step, forDur time.Duration) (coun
 		if pause <= 0 || pause-step < forDur {
 			continue
 		}
-		count++
-		longest = max(longest, pause)
+		stats.count++
+		stats.longest = max(stats.longest, pause)
 	}
-	return count, longest
+	stats.span = ranges[len(ranges)-1].End.Sub(ranges[0].Start)
+	return stats
 }
 
 // vmAbsentLookback returns how far back pauses are measured, the lookbackRange of
@@ -153,21 +194,7 @@ func (c AlertsAbsentCheck) vmSparseAbsent(ctx context.Context, entry *discovery.
 			window = settings.window(step, maxLookback, true)
 			source = ", the lookback of vmalert instant queries: " + settings.describe(step, maxLookback, window)
 		}
-		// Offsets and @ modifiers shift the whole series, pauses stay the same.
-		vs := *ac.vs
-		vs.OriginalOffset, vs.OriginalOffsetExpr, vs.OffsetText = 0, nil, ""
-		vs.Timestamp, vs.StartOrEnd, vs.At = nil, "", nil
-		vs.Anchored, vs.Smoothed = false, false
-		ms := ast.MatrixSelector{
-			VectorSelector: &vs,
-			RangeExpr:      nil,
-			RangeText:      "",
-			PosRange:       vs.PosRange,
-			Range:          window,
-			Implicit:       false,
-			StepRelative:   false,
-		}
-		query := fmt.Sprintf("count(count_over_time(%s))", ms.String())
+		query := vmPresenceQuery(ac.vs, window)
 		if _, ok := done[query]; ok {
 			continue
 		}
@@ -178,8 +205,8 @@ func (c AlertsAbsentCheck) vmSparseAbsent(ctx context.Context, entry *discovery.
 			problems = append(problems, problemFromError(err, entry.Rule, c.Reporter(), c.prom.Name(), Warning))
 			continue
 		}
-		count, longest := vmPauses(qr.Series.Ranges, window, forDur)
-		if count == 0 {
+		pauses := vmPauses(qr.Series.Ranges, window, forDur)
+		if !pauses.regular() {
 			continue
 		}
 
@@ -187,11 +214,11 @@ func (c AlertsAbsentCheck) vmSparseAbsent(ctx context.Context, entry *discovery.
 		selector := expr.Value.Value[ac.vs.PosRange.Start:ac.vs.PosRange.End]
 		msg := fmt.Sprintf(
 			"`%s` returns 1 whenever `%s` has no sample in the last %s%s. "+
-				"In the last %s `%s` had %d pause(s) longer than %s on %s, the longest at least %s, "+
+				"In the last %s `%s` had %d pauses of at least %s on %s, the longest at least %s, "+
 				"while samples kept arriving, so this alert fires during normal pauses, not only when `%s` disappears.",
 			call, selector, output.HumanizeDuration(window), source,
-			output.HumanizeDuration(lookback), selector, count, output.HumanizeDuration(window), vmServerText(c.prom, qr.URI),
-			output.HumanizeDuration(longest), selector,
+			output.HumanizeDuration(lookback), selector, pauses.count, output.HumanizeDuration(window), vmServerText(c.prom, qr.URI),
+			output.HumanizeDuration(pauses.longest), selector,
 		)
 		if forDur > 0 {
 			msg += fmt.Sprintf(" `for: %s` covers pauses up to %s only.",

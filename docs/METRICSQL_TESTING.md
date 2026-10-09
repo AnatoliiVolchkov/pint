@@ -205,7 +205,7 @@ Regenerate with `UPDATE_ORACLE_MATRIX=1 go test ./internal/checks -run TestMetri
 <!-- oracle-matrix:start -->
 | Check | Classification | Positive | Negative | Boundary | Real VictoriaMetrics cases | Notes |
 |-------|----------------|----------|----------|----------|----------------------------|-------|
-| `alerts/absent` | query, online | 4 | 2 | 0 | 6 |  |
+| `alerts/absent` | query, online | 4 | 3 | 0 | 7 |  |
 | `alerts/annotation` | language agnostic | 1 | 1 | 0 | 0 |  |
 | `alerts/comparison` | query, offline | 2 | 2 | 1 | 0 |  |
 | `alerts/count` | query, online | 2 | 1 | 2 | 5 |  |
