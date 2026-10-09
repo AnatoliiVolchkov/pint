@@ -1382,7 +1382,33 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			"foo": {{Type: "counter"}},
 		}},
 	}
+	gaugeMetadata := func(name string) *prometheusMock {
+		return &prometheusMock{
+			conds: []requestCondition{requireMetadataPath},
+			resp: metadataResponse{metadata: map[string][]v1.Metadata{
+				name: {{Type: "gauge"}},
+			}},
+		}
+	}
 	runTests(t, withMetricsQL([]checkTest{
+		{
+			// VictoriaMetrics metadata is less reliable, so it's a Warning, not a Bug.
+			description: "rate on a gauge",
+			content:     "- record: foo\n  expr: rate(foo[5m])\n",
+			checker:     newRateCheck,
+			prometheus:  newSimpleVM,
+			problems:    true,
+			mocks:       []*prometheusMock{gaugeMetadata("foo")},
+		},
+		{
+			// _total is reserved for counters, the metadata is the likely mistake.
+			description: "rate on a gauge named like a counter",
+			content:     "- record: foo\n  expr: rate(process_cpu_seconds_total[5m])\n",
+			checker:     newRateCheck,
+			prometheus:  newSimpleVM,
+			problems:    true,
+			mocks:       []*prometheusMock{gaugeMetadata("process_cpu_seconds_total")},
+		},
 		{
 			description: "rate without lookbehind window",
 			content:     "- record: foo\n  expr: rate(foo)\n",

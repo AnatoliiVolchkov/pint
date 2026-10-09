@@ -248,7 +248,7 @@ func (c RateCheck) checkSources(
 			}
 			for _, md := range metadata.Metadata {
 				if !slices.Contains(allowedRateTypes, md.Type) {
-					problems = append(problems, Problem{
+					problems = append(problems, c.vmNonCounter(Problem{
 						Anchor:   AnchorAfter,
 						Lines:    expr.Value.Pos.Lines(),
 						Reporter: c.Reporter(),
@@ -269,7 +269,7 @@ func (c RateCheck) checkSources(
 								Kind:        diags.Issue,
 							},
 						},
-					})
+					}, call.Func.Name, vs.Name, md.Type, metadata.URI))
 				}
 			}
 

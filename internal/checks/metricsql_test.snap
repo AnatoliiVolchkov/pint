@@ -2331,6 +2331,82 @@
 
 ---
 
+[TestMetricsQLRateCheck/rate_on_a_gauge - 1]
+- description: rate on a gauge
+  content: |
+    - record: foo
+      expr: rate(foo[5m])
+  output: |
+    2 |   expr: rate(foo[5m])
+                ^^^^^^^^^^^^^
+                `rate()` should only be used with counters but `foo` is a gauge according to metrics
+                metadata from `prom` VictoriaMetrics server at https://simple.example.com.
+  problem:
+    reporter: promql/rate
+    summary: counter based function called on a non-counter
+    details: |-
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
+
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
+
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
+        so the minimal time window you can use is one scrape interval.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
+
+        VictoriaMetrics returns one metadata entry per metric name, and the type can come from any target exposing a metric with that name. A wrong `# TYPE` line on one target is enough to make a counter look like a gauge.
+    diagnostics:
+        - message: '`rate()` should only be used with counters but `foo` is a gauge according to metrics metadata from `prom` VictoriaMetrics server at https://simple.example.com.'
+          firstcolumn: 1
+          lastcolumn: 13
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLRateCheck/rate_on_a_gauge_named_like_a_counter - 1]
+- description: rate on a gauge named like a counter
+  content: |
+    - record: foo
+      expr: rate(process_cpu_seconds_total[5m])
+  output: |
+    2 |   expr: rate(process_cpu_seconds_total[5m])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                `rate()` is used on `process_cpu_seconds_total`, which is a gauge according to metrics
+                metadata from `prom` VictoriaMetrics server at https://simple.example.com, but its name ends
+                with `_total`, which is reserved for counters. The metadata is likely wrong, check the `#
+                TYPE` line of targets exposing `process_cpu_seconds_total`.
+  problem:
+    reporter: promql/rate
+    summary: metric metadata contradicts the metric name
+    details: |-
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
+
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
+
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
+        so the minimal time window you can use is one scrape interval.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
+
+        VictoriaMetrics returns one metadata entry per metric name, and the type can come from any target exposing a metric with that name. A wrong `# TYPE` line on one target is enough to make a counter look like a gauge.
+    diagnostics:
+        - message: '`rate()` is used on `process_cpu_seconds_total`, which is a gauge according to metrics metadata from `prom` VictoriaMetrics server at https://simple.example.com, but its name ends with `_total`, which is reserved for counters. The metadata is likely wrong, check the `# TYPE` line of targets exposing `process_cpu_seconds_total`.'
+          firstcolumn: 1
+          lastcolumn: 35
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 0
+    anchor: 0
+
+---
+
 [TestMetricsQLRateCheck/rate_prometheus_<_2x_default_scrape_interval - 1]
 - description: rate_prometheus < 2x default scrape interval
   content: |

@@ -49,6 +49,10 @@
   rule files, and `-search.maxLookback`, `-search.maxStalenessInterval`,
   `-search.minStalenessInterval` and `-search.setLookbackToStep` flags from VictoriaMetrics.
   Alerting rules nobody reads are no longer reported, vmalert alerts don't flap.
+- [promql/rate](checks/promql/rate.md) check reports a counter based function used on a
+  non-counter as a Warning instead of a Bug for VictoriaMetrics servers, whose metadata keeps
+  one type per metric name from any target. If metadata says `gauge` for a metric ending with
+  `_total`, it's an Information about wrong metadata.
 - [rule/dependency](checks/rule/dependency.md) check gives vmalert advice for recording rules
   using results of another group. Moving both rules into the same group doesn't help with
   vmalert, the details now explain how to chain groups with `eval_offset`. Groups already

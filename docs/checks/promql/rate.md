@@ -54,6 +54,20 @@ This can cause a few potential problems:
   If you accidentally exported some metric with wrong type, then fixed it, but pint is still complaining,
   then it's very likely that you didn't release your fix to all targets yet.
 
+### VictoriaMetrics metadata
+
+VictoriaMetrics returns one metadata entry per metric name, and the type can come from any
+target exposing a metric with that name. A single target with a wrong `# TYPE` line is enough
+to make a counter look like a gauge. For example, a VictoriaMetrics server returned
+`type: gauge` for `process_cpu_seconds_total`. So for servers using
+`backend = "victoriametrics"`:
+
+- a function that needs a counter used on a metric that metadata calls something else is
+  reported as a Warning, not a Bug;
+- if metadata says `gauge` but the metric name ends with `_total`, which is reserved for
+  counters, it's reported as an Information, "metric metadata contradicts the metric name".
+  Check the `# TYPE` line of targets exposing that metric.
+
 ## Configuration
 
 This check doesn't have any configuration options.
