@@ -1,0 +1,176 @@
+
+[TestRateVMShortWindow/-search.maxStalenessInterval_limits_how_far_back_the_sample_before_the_window_is_used - 1]
+- description: -search.maxStalenessInterval limits how far back the sample before the window is used
+  content: |
+    - record: foo:rate
+      expr: rate(foo[15m])
+  output: |
+    2 |   expr: rate(foo[15m])
+                ^^^^^^^^^^^^^^
+                `rate()` needs a window of at least 18m with the `10m` scrape_interval of `prom`
+                VictoriaMetrics server at https://simple.example.com: vmalert evaluates the rule with
+                instant queries with a 5m step, the query step, default vmalert -datasource.queryStep (5m),
+                limited by -search.maxStalenessInterval=2m on `prom`, and VictoriaMetrics uses the last
+                sample before the window only if it's at most 2m before the window. A `[15m]` window can
+                have a single sample, so it can return no results or wrong ones.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: 'vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, or `step` from the group `params`. VictoriaMetrics only uses the last sample before the window if it''s at most one step before the window. With a scrape interval longer than the step a window shorter than two scrape intervals minus the step can have a single sample: `rate()` and `irate()` return nothing and `increase()` returns 0. `deriv()` only uses samples inside the window and always needs two scrape intervals.'
+    diagnostics:
+        - message: '`rate()` needs a window of at least 18m with the `10m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com: vmalert evaluates the rule with instant queries with a 5m step, the query step, default vmalert -datasource.queryStep (5m), limited by -search.maxStalenessInterval=2m on `prom`, and VictoriaMetrics uses the last sample before the window only if it''s at most 2m before the window. A `[15m]` window can have a single sample, so it can return no results or wrong ones.'
+          firstcolumn: 1
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRateVMShortWindow/PromQL_rules_are_not_changed - 1]
+[]
+
+---
+
+[TestRateVMShortWindow/deriv_needs_2x_scrape_interval_whatever_the_step - 1]
+- description: deriv needs 2x scrape interval whatever the step
+  content: |
+    - name: g
+      params:
+        step: ["15m"]
+      rules:
+      - record: foo:deriv
+        expr: deriv(foo[15m])
+  output: |
+    6 |     expr: deriv(foo[15m])
+                  ^^^^^^^^^^^^^^^
+                  `deriv()` needs a window of at least 20m with the `10m` scrape_interval of `prom`
+                  VictoriaMetrics server at https://simple.example.com: `deriv()` only uses samples inside
+                  the window, so it needs two scrape intervals. A `[15m]` window can have a single sample,
+                  so it can return no results or wrong ones.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: 'vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, or `step` from the group `params`. VictoriaMetrics only uses the last sample before the window if it''s at most one step before the window. With a scrape interval longer than the step a window shorter than two scrape intervals minus the step can have a single sample: `rate()` and `irate()` return nothing and `increase()` returns 0. `deriv()` only uses samples inside the window and always needs two scrape intervals.'
+    diagnostics:
+        - message: '`deriv()` needs a window of at least 20m with the `10m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com: `deriv()` only uses samples inside the window, so it needs two scrape intervals. A `[15m]` window can have a single sample, so it can return no results or wrong ones.'
+          firstcolumn: 1
+          lastcolumn: 15
+          kind: 0
+    lines:
+        first: 6
+        last: 6
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRateVMShortWindow/group_step_covering_the_scrape_interval - 1]
+[]
+
+---
+
+[TestRateVMShortWindow/increase_with_a_window_shorter_than_2x_scrape_interval_minus_the_step - 1]
+- description: increase with a window shorter than 2x scrape interval minus the step
+  content: |
+    - record: foo:rate
+      expr: increase(foo[10m])
+  output: |
+    2 |   expr: increase(foo[10m])
+                ^^^^^^^^^^^^^^^^^^
+                `increase()` needs a window of at least 15m with the `10m` scrape_interval of `prom`
+                VictoriaMetrics server at https://simple.example.com: vmalert evaluates the rule with
+                instant queries with a 5m step, the query step, default vmalert -datasource.queryStep (5m),
+                and VictoriaMetrics uses the last sample before the window only if it's at most 5m before
+                the window. A `[10m]` window can have a single sample, so it can return no results or wrong
+                ones.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: 'vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, or `step` from the group `params`. VictoriaMetrics only uses the last sample before the window if it''s at most one step before the window. With a scrape interval longer than the step a window shorter than two scrape intervals minus the step can have a single sample: `rate()` and `irate()` return nothing and `increase()` returns 0. `deriv()` only uses samples inside the window and always needs two scrape intervals.'
+    diagnostics:
+        - message: '`increase()` needs a window of at least 15m with the `10m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com: vmalert evaluates the rule with instant queries with a 5m step, the query step, default vmalert -datasource.queryStep (5m), and VictoriaMetrics uses the last sample before the window only if it''s at most 5m before the window. A `[10m]` window can have a single sample, so it can return no results or wrong ones.'
+          firstcolumn: 1
+          lastcolumn: 18
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRateVMShortWindow/rate_needs_2x_scrape_interval_minus_the_step - 1]
+- description: rate needs 2x scrape interval minus the step
+  content: |
+    - record: foo:rate
+      expr: rate(foo[12m])
+  output: |
+    2 |   expr: rate(foo[12m])
+                ^^^^^^^^^^^^^^
+                `rate()` needs a window of at least 15m with the `10m` scrape_interval of `prom`
+                VictoriaMetrics server at https://simple.example.com: vmalert evaluates the rule with
+                instant queries with a 5m step, the query step, default vmalert -datasource.queryStep (5m),
+                and VictoriaMetrics uses the last sample before the window only if it's at most 5m before
+                the window. A `[12m]` window can have a single sample, so it can return no results or wrong
+                ones.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: 'vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, or `step` from the group `params`. VictoriaMetrics only uses the last sample before the window if it''s at most one step before the window. With a scrape interval longer than the step a window shorter than two scrape intervals minus the step can have a single sample: `rate()` and `irate()` return nothing and `increase()` returns 0. `deriv()` only uses samples inside the window and always needs two scrape intervals.'
+    diagnostics:
+        - message: '`rate()` needs a window of at least 15m with the `10m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com: vmalert evaluates the rule with instant queries with a 5m step, the query step, default vmalert -datasource.queryStep (5m), and VictoriaMetrics uses the last sample before the window only if it''s at most 5m before the window. A `[12m]` window can have a single sample, so it can return no results or wrong ones.'
+          firstcolumn: 1
+          lastcolumn: 14
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRateVMShortWindow/rate_prometheus_is_only_reported_once,_as_a_Bug - 1]
+- description: rate_prometheus is only reported once, as a Bug
+  content: |
+    - record: foo:rate
+      expr: rate_prometheus(foo[15m])
+  output: |
+    2 |   expr: rate_prometheus(foo[15m])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+                Duration for `rate_prometheus()` must be at least 2 x scrape_interval, `prom` Prometheus
+                server at https://simple.example.com is using `10m` scrape_interval.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: |-
+        Using [rate](https://docs.victoriametrics.com/victoriametrics/metricsql/#rate), [irate](https://docs.victoriametrics.com/victoriametrics/metricsql/#irate) and [increase](https://docs.victoriametrics.com/victoriametrics/metricsql/#increase) functions comes with a few requirements:
+
+        - The metric you calculate (i)rate or increase from must be a counter or a native histogram.
+        - The time window of the (i)rate or increase function must have at least 1 sample.
+
+        VictoriaMetrics also uses the last sample before the time window when calculating `rate()`, `irate()`, `increase()` and `deriv()`,
+        so the minimal time window you can use is one scrape interval.
+        `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and need at least two scrape intervals.
+    diagnostics:
+        - message: Duration for `rate_prometheus()` must be at least 2 x scrape_interval, `prom` Prometheus server at https://simple.example.com is using `10m` scrape_interval.
+          firstcolumn: 1
+          lastcolumn: 25
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 2
+    anchor: 0
+
+---
+
+[TestRateVMShortWindow/rate_with_a_window_covering_2x_scrape_interval_minus_the_step - 1]
+[]
+
+---

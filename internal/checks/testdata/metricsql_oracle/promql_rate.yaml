@@ -144,3 +144,72 @@ cases:
       - query: count(rate_gauge)
         result: '{} 1'
     expect: []
+  - name: window shorter than two scrape intervals minus the step
+    kind: positive
+    comment: >-
+      With a 10m scrape interval and the default 5m query step a 12m window can have a single
+      sample and the sample before it is more than 5m before the window, rate() then returns
+      nothing (Docker v1.153.0: empty or zero on 36 of 120 instant queries, never for 15m).
+    settings:
+      scrapeInterval: 10m
+    rules: |
+      - record: x
+        expr: 'rate(rate_step_short_total[12m])'
+    data:
+      step: 10m
+      series:
+        - metric: rate_step_short_total{job="a"}
+          values: 0+100x30
+    expect:
+      - rule: x
+        reporter: promql/rate
+        severity: warning
+        summary: duration too small
+        lines: "2"
+        diagnostics:
+          - message: '`rate()` needs a window of at least 15m with the `10m` scrape_interval of `vm` VictoriaMetrics server at $URI: vmalert evaluates the rule with instant queries with a 5m step, the query step, default vmalert -datasource.queryStep (5m), and VictoriaMetrics uses the last sample before the window only if it''s at most 5m before the window. A `[12m]` window can have a single sample, so it can return no results or wrong ones.'
+            fragment: rate(rate_step_short_total[12m])
+            start: 0
+            end: 32
+            line: 2
+  - name: window of two scrape intervals minus the step
+    kind: boundary
+    settings:
+      scrapeInterval: 10m
+    rules: |
+      - record: x
+        expr: 'rate(rate_step_ok_total[15m])'
+    data:
+      step: 10m
+      series:
+        - metric: rate_step_ok_total{job="a"}
+          values: 0+100x30
+    vm:
+      - query: rate(rate_step_ok_total[15m]) > bool 0
+        result: '{job="a"} 1'
+    expect: []
+  - name: deriv window shorter than two scrape intervals
+    kind: positive
+    comment: deriv() only uses samples inside the window, whatever the query step.
+    settings:
+      scrapeInterval: 10m
+    rules: |
+      - record: x
+        expr: 'deriv(rate_deriv_short[15m])'
+    data:
+      step: 10m
+      series:
+        - metric: rate_deriv_short{job="a"}
+          values: 0+100x30
+    expect:
+      - rule: x
+        reporter: promql/rate
+        severity: warning
+        summary: duration too small
+        lines: "2"
+        diagnostics:
+          - message: '`deriv()` needs a window of at least 20m with the `10m` scrape_interval of `vm` VictoriaMetrics server at $URI: `deriv()` only uses samples inside the window, so it needs two scrape intervals. A `[15m]` window can have a single sample, so it can return no results or wrong ones.'
+            fragment: deriv(rate_deriv_short[15m])
+            start: 0
+            end: 28
+            line: 2

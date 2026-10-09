@@ -13,6 +13,15 @@ level=INFO msg="Loading configuration file" path=.pint.hcl
 level=INFO msg="Finding all rules to check" paths=["rules"]
 level=INFO msg="Configured new Prometheus server" name=vm uris=1 uptime=up tags=[] include=[] exclude=[]
 level=INFO msg="Checking Prometheus rules" entries=4 workers=10 online=true
+Warning: duration too small (promql/rate)
+  ---> rules/1.yml:5 -> `one_scrape_interval`
+5 |     expr: rate(http_requests_total[1m]) + irate(http_requests_total[1m]) + deriv(temperature[1m])
+                                                                               ^^^^^^^^^^^^^^^^^^^^^^
+        `deriv()` needs a window of at least 2m with the `1m` scrape_interval of `vm` VictoriaMetrics
+        server at http://127.0.0.1:7287: `deriv()` only uses samples inside the window, so it needs two
+        scrape intervals. A `[1m]` window can have a single sample, so it can return no results or wrong
+        ones.
+
 Bug: duration too small (promql/rate)
   ---> rules/1.yml:7 -> `below_one_scrape_interval`
 7 |     expr: rate(http_requests_total[30s])
@@ -27,7 +36,7 @@ Bug: duration too small (promql/rate)
               Duration for `rate_prometheus()` must be at least 2 x scrape_interval, `vm` Prometheus
               server at http://127.0.0.1:7287 is using `1m` scrape_interval.
 
-level=INFO msg="Problems found" Bug=2
+level=INFO msg="Problems found" Bug=2 Warning=1
 level=ERROR msg="Execution completed with error(s)" err="found 2 problem(s) with severity Bug or higher"
 -- rules/1.yml --
 groups:

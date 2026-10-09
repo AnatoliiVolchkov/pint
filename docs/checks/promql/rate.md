@@ -18,9 +18,11 @@ to verify that:
   the time range used in queries must be at least 2x `scrape_interval` value.
   When using [MetricsQL](https://docs.victoriametrics.com/victoriametrics/metricsql/)
   `rate()`, `irate()`, `increase()` and `deriv()` only need a time range of at least
-  1x `scrape_interval`, because VictoriaMetrics also uses the last sample before the time
-  range when calculating them. `rate_prometheus()` and `increase_prometheus()` follow
-  Prometheus semantics and are still required to use at least 2x `scrape_interval`.
+  1x `scrape_interval` for this Bug, because VictoriaMetrics also uses the last sample before
+  the time range when calculating them, if it's close enough to the time range, see
+  [Windows and the query step](#windows-and-the-query-step) for when that's not enough.
+  `rate_prometheus()` and `increase_prometheus()` follow Prometheus semantics and are still
+  required to use at least 2x `scrape_interval`.
 - Metrics passed to `rate()`, `irate()` and `increase()` are counters.
   All three functions only work with counters and, although any metric type can be
   passed to them and will return calculated value, using a non-counter will cause
@@ -54,26 +56,40 @@ This can cause a few potential problems:
   If you accidentally exported some metric with wrong type, then fixed it, but pint is still complaining,
   then it's very likely that you didn't release your fix to all targets yet.
 
-### Windows that depend on the query step
+### Windows and the query step
 
-MetricsQL allows `rate(foo)` without a lookbehind window, and windows relative to the step,
-like `rate(foo[2i])`. vmalert evaluates rules with instant queries, so for MetricsQL rules
-checked against a server with `backend = "victoriametrics"` pint works out the window:
+vmalert evaluates rules with instant queries. VictoriaMetrics uses the last sample before
+the window only if it's at most one query step before the window (its maxPrevInterval), so
+for MetricsQL rules checked against a server with `backend = "victoriametrics"` the window
+of `rate()`, `irate()` and `increase()` must be at least `2 x scrape_interval - step`, and at
+least `scrape_interval`. `deriv()` only uses samples inside the window and needs
+`2 x scrape_interval` whatever the step. Shorter windows are reported as a Warning: they can
+have a single sample, `rate()` and `irate()` then return nothing and `increase()` returns 0.
+Windows shorter than `scrape_interval` are still reported as a Bug, see above.
 
-- the query step is `step` from the group `params`, otherwise `queryStep` set for the server
-  in pint config, otherwise 5m, the vmalert default `-datasource.queryStep`;
+The query step is `step` from the group `params`, otherwise `queryStep` set for the server
+in pint config or read from vmalert with `vmalertURI`, otherwise 5m, the vmalert default
+`-datasource.queryStep`. `-search.maxStalenessInterval`, `-search.maxLookback` and
+`-search.minStalenessInterval` flags of the server can lower or raise how far back the
+sample before the window is used.
+
+MetricsQL also allows `rate(foo)` without a lookbehind window, and windows relative to the
+step, like `rate(foo[2i])`. pint works out such windows the same way:
+
 - `rate(foo)` uses the step as the window, raised by `-search.minStalenessInterval` if the
   server sets it;
 - `rate(foo[2i])` uses two steps.
 
-The window must cover the scrape interval like an explicit one. VictoriaMetrics uses the last
-sample before the window only if it's at most one step before the window. So with a scrape
-interval longer than the step, the window must cover two scrape intervals. Such problems are
-reported as a Warning.
+This was checked with VictoriaMetrics v1.153.0 and a counter scraped every 10m:
 
-This was checked with VictoriaMetrics v1.153.0 and a counter scraped every 10m. With step 5m,
-`rate(foo)` was always empty and `increase(foo)` returned 0, while with step 15m both were
-correct. `rate(foo[2i])` with step 5m returned nothing for half of every scrape interval.
+- with step 5m `rate(foo[12m])` returned nothing or 0 on 36 of 120 instant queries,
+  `rate(foo[15m])` never; with step 2m `rate(foo[15m])` failed 36 times, `rate(foo[18m])`
+  never;
+- `deriv(foo[15m])` returned 0 on half of the queries with step 5m and with step 15m,
+  `deriv(foo[20m])` never;
+- with step 5m `rate(foo)` was always empty and `increase(foo)` returned 0, while with step
+  15m both were correct. `rate(foo[2i])` with step 5m returned nothing for half of every
+  scrape interval.
 
 ### VictoriaMetrics metadata
 

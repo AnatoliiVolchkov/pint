@@ -54,6 +54,53 @@ func (c RateCheck) vmNonCounter(problem Problem, fn, metric string, mtype v1.Met
 	return problem
 }
 
+// How long a window rate(), irate(), increase() and deriv() need on VictoriaMetrics, checked
+// with v1.153.0 on 2026-10-10 with a counter written every 10m and instant queries every
+// 30s for an hour: VictoriaMetrics uses the last sample before the window only if it's at
+// most maxPrevInterval (the step of an instant query) before the window, so rate() needs
+// two samples within the window plus that: window >= max(S, 2S - step) for a scrape
+// interval S. With step 5m rate(x[12m]) was empty or zero 36 times of 120, rate(x[15m])
+// never; with step 2m rate(x[15m]) failed 36 times, rate(x[18m]) never. increase() returned
+// 0 instead of nothing. deriv() only uses samples inside the window: deriv(x[15m]) was 0 on
+// half of the queries with step 5m and with step 15m, deriv(x[20m]) never, so it needs 2S.
+
+// vmWindowNeed returns the shortest window that always has enough samples for fn on
+// VictoriaMetrics, for a scrape interval and the maxPrevInterval of the query.
+func vmWindowNeed(fn string, scrape, maxPrev time.Duration, minIntervals int) time.Duration {
+	switch {
+	case minIntervals != 1:
+		return scrape * time.Duration(minIntervals)
+	case fn == "deriv":
+		return 2 * scrape
+	default:
+		return max(scrape, 2*scrape-maxPrev)
+	}
+}
+
+// hasShortWindow returns true if the query has a rate(), irate(), increase() or deriv() call
+// with an explicit window of at least one and less than two scrape intervals, whether it
+// has enough samples on VictoriaMetrics depends on the query step.
+func hasShortWindow(node ast.Node, scrape time.Duration) (found bool) {
+	ast.Inspect(node, func(n ast.Node) bool {
+		call, ok := n.(*ast.Call)
+		if !ok {
+			return !found
+		}
+		switch call.Func.Name {
+		case "rate", "irate", "increase", "deriv":
+		default:
+			return !found
+		}
+		for _, arg := range call.Args {
+			if ms, ok := arg.(*ast.MatrixSelector); ok && !ms.Implicit && !ms.StepRelative && ms.Range >= scrape && ms.Range < 2*scrape {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
 // vmalert evaluates rules with instant queries. Without a lookbehind window, like rate(foo),
 // VictoriaMetrics uses the query step as the window, and a window like rate(foo[2i]) is two
 // query steps (rollupConfig.doInternal, v1.153.0). VictoriaMetrics also uses the last sample
@@ -68,7 +115,13 @@ const RateCheckRuntimeWindowDetails = "Without a lookbehind window, like `rate(f
 	"vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, " +
 	"or `step` from the group `params`. VictoriaMetrics only uses the last sample before the window " +
 	"if it's at most one step before the window, so with a scrape interval longer than the step " +
-	"the window must cover two scrape intervals. Set the window explicitly to make the rule independent of the step."
+	"the window must be at least two scrape intervals minus the step. Set the window explicitly to make the rule independent of the step."
+
+const RateCheckShortWindowDetails = "vmalert evaluates rules with instant queries and sends `-datasource.queryStep` as the step, 5m by default, " +
+	"or `step` from the group `params`. VictoriaMetrics only uses the last sample before the window " +
+	"if it's at most one step before the window. With a scrape interval longer than the step a window shorter than " +
+	"two scrape intervals minus the step can have a single sample: `rate()` and `irate()` return nothing and `increase()` returns 0. " +
+	"`deriv()` only uses samples inside the window and always needs two scrape intervals."
 
 // rateVMWindow holds what is needed to calculate windows VictoriaMetrics derives from the
 // query step, for one rule.
@@ -91,11 +144,11 @@ func hasRuntimeWindow(node ast.Node) (found bool) {
 
 // withVMWindow returns a copy of the check that can calculate windows VictoriaMetrics
 // derives from the query step, for MetricsQL rules checked against VictoriaMetrics.
-func (c RateCheck) withVMWindow(ctx context.Context, entry *discovery.Entry) RateCheck {
+func (c RateCheck) withVMWindow(ctx context.Context, entry *discovery.Entry, scrape time.Duration) RateCheck {
 	if !isVictoriaMetrics(c.prom) || !isVMAlertRule(entry) || entry.Group == nil {
 		return c
 	}
-	if !hasRuntimeWindow(entry.Rule.Expr().Query().Expr) {
+	if node := entry.Rule.Expr().Query().Expr; !hasRuntimeWindow(node) && !hasShortWindow(node, scrape) {
 		return c
 	}
 	settings, ok := vmLookbackSettingsFor(ctx, c.prom, true)
@@ -142,11 +195,7 @@ func (c RateCheck) runtimeWindowProblems(
 	}
 
 	scrape := cfg.Config.Global.ScrapeInterval
-	need := scrape * time.Duration(minIntervals)
-	if minIntervals == 1 && scrape > maxPrev {
-		// The sample before the window is too far back to be used.
-		need = 2 * scrape
-	}
+	need := vmWindowNeed(call.Func.Name, scrape, maxPrev, minIntervals)
 	if scrape <= 0 || window >= need {
 		return nil
 	}
@@ -165,6 +214,60 @@ func (c RateCheck) runtimeWindowProblems(
 						"so it can return no results or wrong ones.",
 					how, call.Func.Name, output.HumanizeDuration(need),
 					output.HumanizeDuration(scrape), vmServerText(c.prom, cfg.URI),
+				),
+				Pos:         expr.Value.Pos,
+				Expr:        expr.Query().Expr,
+				FirstColumn: int(call.PosRange.Start) + 1,
+				LastColumn:  int(call.PosRange.End),
+				Kind:        diags.Issue,
+			},
+		},
+	}}
+}
+
+// shortWindowProblems reports explicit windows of at least one scrape interval, shorter ones
+// are reported as a Bug by the check itself, that can still have a single sample on
+// VictoriaMetrics because of the query step.
+func (c RateCheck) shortWindowProblems(
+	expr *parser.PromQLExpr,
+	call *ast.Call,
+	m *ast.MatrixSelector,
+	cfg *promapi.ConfigResult,
+	minIntervals int,
+) []Problem {
+	scrape := cfg.Config.Global.ScrapeInterval
+	// Windows shorter than minIntervals x scrape_interval are reported as a Bug by the check.
+	if c.vm == nil || minIntervals != 1 || scrape <= 0 || m.Implicit || m.StepRelative || m.Range < scrape {
+		return nil
+	}
+	step, _, maxPrev := c.vm.settings.instantLimits(cmp.Or(c.vm.step, c.vm.settings.queryStep), c.vm.maxLookback)
+	need := vmWindowNeed(call.Func.Name, scrape, maxPrev, minIntervals)
+	if m.Range >= need {
+		return nil
+	}
+
+	var why string
+	if call.Func.Name == "deriv" {
+		why = "`deriv()` only uses samples inside the window, so it needs two scrape intervals"
+	} else {
+		why = fmt.Sprintf("vmalert evaluates the rule with instant queries with a %s step, %s, "+
+			"and VictoriaMetrics uses the last sample before the window only if it's at most %s before the window",
+			output.HumanizeDuration(step), c.vm.settings.describe(c.vm.step, c.vm.maxLookback, maxPrev), output.HumanizeDuration(maxPrev))
+	}
+	return []Problem{{
+		Anchor:   AnchorAfter,
+		Lines:    expr.Value.Pos.Lines(),
+		Reporter: c.Reporter(),
+		Summary:  "duration too small",
+		Details:  RateCheckShortWindowDetails,
+		Severity: Warning,
+		Diagnostics: []diags.Diagnostic{
+			{
+				Message: fmt.Sprintf(
+					"`%s()` needs a window of at least %s with the `%s` scrape_interval of %s: %s. "+
+						"A `[%s]` window can have a single sample, so it can return no results or wrong ones.",
+					call.Func.Name, output.HumanizeDuration(need), output.HumanizeDuration(scrape),
+					vmServerText(c.prom, cfg.URI), why, output.HumanizeDuration(m.Range),
 				),
 				Pos:         expr.Value.Pos,
 				Expr:        expr.Query().Expr,

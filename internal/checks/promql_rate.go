@@ -112,7 +112,7 @@ func (c RateCheck) Check(ctx context.Context, entry *discovery.Entry, entries []
 		pending[name] = c.prom.Metadata(ctx, name)
 	}
 
-	c = c.withVMWindow(ctx, entry)
+	c = c.withVMWindow(ctx, entry, cfg.Config.Global.ScrapeInterval)
 	problems = append(problems, c.checkSources(entry.Rule, expr, entries, cfg, pending)...)
 	return problems
 }
@@ -204,6 +204,8 @@ func (c RateCheck) checkSources(
 			runtimeWindow := m.Implicit || m.StepRelative
 			if runtimeWindow {
 				problems = append(problems, c.runtimeWindowProblems(expr, call, m, cfg, minIntervals, details)...)
+			} else {
+				problems = append(problems, c.shortWindowProblems(expr, call, m, cfg, minIntervals)...)
 			}
 			if !runtimeWindow && m.Range < cfg.Config.Global.ScrapeInterval*time.Duration(minIntervals) {
 				problems = append(problems, Problem{

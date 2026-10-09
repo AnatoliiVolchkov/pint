@@ -49,6 +49,13 @@
   rule files, and `-search.maxLookback`, `-search.maxStalenessInterval`,
   `-search.minStalenessInterval` and `-search.setLookbackToStep` flags from VictoriaMetrics.
   Alerting rules nobody reads are no longer reported, vmalert alerts don't flap.
+- [promql/rate](checks/promql/rate.md) check warns about explicit windows of MetricsQL rules
+  on VictoriaMetrics servers that are at least one scrape interval but can still have a
+  single sample: VictoriaMetrics uses the last sample before the window only if it's at most
+  one query step before it, so `rate()`, `irate()` and `increase()` need
+  `2 x scrape_interval - step`, and `deriv()`, which only uses samples inside the window,
+  needs `2 x scrape_interval`. Windows that depend on the query step use the same rule, it
+  used to require `2 x scrape_interval` when the scrape interval was longer than the step.
 - [promql/rate](checks/promql/rate.md) check works out windows that depend on the query step
   for MetricsQL rules, like `rate(foo)` and `rate(foo[2i])`, from `step` in the group `params`
   or the vmalert query step, and warns when they don't cover the scrape interval.
