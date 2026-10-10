@@ -70,6 +70,7 @@ var oracleRequirements = map[string]struct {
 	checks.RuleNameCheckName:       {req: reqLanguageAgnostic},
 	checks.RejectCheckName:         {req: reqLanguageAgnostic},
 	checks.ReportCheckName:         {req: reqLanguageAgnostic},
+	checks.RuleVMAlertCheckName:    {req: reqQueryOffline},
 }
 
 type oracleCounts struct {
@@ -113,7 +114,7 @@ func TestMetricsQLOracleCoverage(t *testing.T) {
 	files := loadOracle(t)
 	counts := countOracleCases(files)
 
-	for _, name := range checks.CheckNames {
+	for _, name := range slices.Concat(checks.CheckNames, checks.VMAlertCheckNames) {
 		r, ok := oracleRequirements[name]
 		if !assertTrue(t, ok, "check %s is not classified in oracleRequirements", name) {
 			continue
@@ -137,7 +138,7 @@ func TestMetricsQLOracleCoverage(t *testing.T) {
 		}
 	}
 	for name := range oracleRequirements {
-		assertTrue(t, slices.Contains(checks.CheckNames, name), "oracleRequirements has unknown check %s", name)
+		assertTrue(t, slices.Contains(checks.CheckNames, name) || slices.Contains(checks.VMAlertCheckNames, name), "oracleRequirements has unknown check %s", name)
 	}
 
 	checkOracleMatrixDoc(t, renderOracleMatrix(counts))
@@ -155,7 +156,7 @@ func renderOracleMatrix(counts map[string]*oracleCounts) string {
 	var b strings.Builder
 	b.WriteString("| Check | Classification | Positive | Negative | Boundary | Real VictoriaMetrics cases | Notes |\n")
 	b.WriteString("|-------|----------------|----------|----------|----------|----------------------------|-------|\n")
-	names := slices.Clone(checks.CheckNames)
+	names := slices.Concat(checks.CheckNames, checks.VMAlertCheckNames)
 	slices.Sort(names)
 	for _, name := range names {
 		r := oracleRequirements[name]

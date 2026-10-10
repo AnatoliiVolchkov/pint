@@ -105,6 +105,10 @@
   and range queries don't show them. pint looks at the last hour first and measures only
   selectors with a pause in it over `lookbackRange`.
 
+- New [rule/vmalert](checks/rule/vmalert.md) check for vmalert group and rule settings
+  that are likely mistakes, MetricsQL rules only. It warns about `debug: true` left on a
+  group or a rule, which makes vmalert log every query and alert state change.
+
 ### Fixed
 
 - Fixed a panic in the console output, `index out of range [0] with length 0`, for rules

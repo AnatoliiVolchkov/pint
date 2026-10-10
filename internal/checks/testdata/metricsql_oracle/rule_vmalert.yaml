@@ -1,0 +1,48 @@
+check: rule/vmalert
+cases:
+  - name: debug left on for a group
+    kind: positive
+    rules: |
+      groups:
+      - name: g
+        debug: true
+        rules:
+        - alert: Down
+          expr: 'up{job="a" or job="b"} == 0'
+    expect:
+      - rule: Down
+        reporter: rule/vmalert
+        severity: warning
+        summary: debug mode enabled
+        lines: "3"
+        diagnostics:
+          - message: '`debug: true` makes vmalert log every query of every rule in this group and every change of their alerts'' state.'
+            fragment: "true"
+            start: 0
+            end: 4
+            line: 3
+  - name: debug left on for a recording rule
+    kind: positive
+    rules: |
+      - record: job:up:sum
+        expr: 'sum(up{job="a" or job="b"}) by (job)'
+        debug: true
+    expect:
+      - rule: job:up:sum
+        reporter: rule/vmalert
+        severity: warning
+        summary: debug mode enabled
+        lines: "3"
+        diagnostics:
+          - message: '`debug: true` makes vmalert log every query of this rule.'
+            fragment: "true"
+            start: 0
+            end: 4
+            line: 3
+  - name: debug turned off
+    kind: negative
+    rules: |
+      - alert: Down
+        expr: 'up{job="a" or job="b"} == 0'
+        debug: false
+    expect: []

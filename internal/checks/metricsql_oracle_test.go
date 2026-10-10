@@ -165,7 +165,7 @@ func loadOracle(t *testing.T) []oracleFile {
 		dec.KnownFields(true)
 		require.NoError(t, dec.Decode(&f), path)
 		f.path = path
-		require.Contains(t, checks.CheckNames, f.Check, "%s: unknown check", path)
+		require.Contains(t, slices.Concat(checks.CheckNames, checks.VMAlertCheckNames), f.Check, "%s: unknown check", path)
 		_, ok := oracleCheckers[f.Check]
 		require.True(t, ok, "%s: no checker factory for %s", path, f.Check)
 		for _, c := range f.Cases {
@@ -387,6 +387,9 @@ var oracleCheckers = map[string]func(*promapi.FailoverGroup, oracleSettings) che
 	},
 	checks.ReportCheckName: func(_ *promapi.FailoverGroup, s oracleSettings) checks.RuleChecker {
 		return checks.NewReportCheck(s.str("comment", "reported"), s.severity(checks.Bug))
+	},
+	checks.RuleVMAlertCheckName: func(_ *promapi.FailoverGroup, _ oracleSettings) checks.RuleChecker {
+		return checks.NewRuleVMAlertCheck()
 	},
 }
 

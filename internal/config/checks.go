@@ -28,7 +28,7 @@ func (c Checks) validate() error {
 }
 
 func validateCheckName(name string) error {
-	if slices.Contains(checks.CheckNames, name) {
+	if slices.Contains(checks.CheckNames, name) || slices.Contains(checks.VMAlertCheckNames, name) {
 		return nil
 	}
 	return fmt.Errorf("unknown check name %s", name)

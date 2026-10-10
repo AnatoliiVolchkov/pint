@@ -65,7 +65,7 @@ func (cfg *Config) SetDisabledChecks(l []string) {
 		disabled[s] = struct{}{}
 		// find any check name that matches string as regexp
 		re := strictRegex(s)
-		for _, name := range checks.CheckNames {
+		for _, name := range knownCheckNames() {
 			if re.MatchString(name) {
 				disabled[name] = struct{}{}
 			}
@@ -254,6 +254,8 @@ func Load(path string, failOnMissing bool) (cfg Config, fromFile bool, err error
 		staticRule{name: checks.NaNCheckName, checker: checks.NewNaNCheck()},
 		staticRule{name: checks.GroupIntervalCheckName, checker: checks.NewGroupIntervalCheck()},
 	)
+	cfg.staticRules = append(cfg.staticRules, cfg.vmalertStaticRules()...)
+	cfg.withVMAlertChecks()
 
 	return cfg, fromFile, nil
 }

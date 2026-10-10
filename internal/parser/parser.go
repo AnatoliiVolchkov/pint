@@ -126,7 +126,7 @@ func (p *Parser) parseNode(node, parent *yaml.Node, group *Group, offsetLine, of
 		for _, n := range unpackNodes(node) {
 			if g, rulesMap, ok := tryParseGroup(n, offsetLine, offsetColumn, contentLines); ok {
 				if p.isVMAlert() {
-					g.VMAlert = vmalertGroupSettings(n)
+					g.VMAlert = vmalertGroupSettings(n, offsetLine, offsetColumn, contentLines)
 				}
 				groups = append(groups, p.parseNode(rulesMap.val, rulesMap.key, &g, offsetLine, offsetColumn, contentLines)...)
 			}
@@ -238,6 +238,7 @@ func (p Parser) parseRule(node *yaml.Node, offsetLine, offsetColumn int, content
 
 	var key *yaml.Node
 	unknownKeys := []*yaml.Node{}
+	var vmalertRule *VMAlertRule
 
 	var lines diags.LineRange
 
@@ -322,9 +323,11 @@ func (p Parser) parseRule(node *yaml.Node, offsetLine, offsetColumn int, content
 				annotationsPart = newYamlMap(key, part, offsetLine, offsetColumn, contentLines)
 				lines.Last = max(lines.Last, annotationsPart.Lines().Last)
 			default:
-				// vmalert-only rule fields don't affect what pint checks.
+				// vmalert-only rule fields don't affect what pint checks, except debug.
 				if !p.isVMAlertRuleKey(key.Value) {
 					unknownKeys = append(unknownKeys, key)
+				} else if debug := vmalertDebug(part, offsetLine, offsetColumn, contentLines); key.Value == vmalertDebugKey && debug != nil {
+					vmalertRule = &VMAlertRule{Debug: debug}
 				}
 			}
 		}
@@ -488,6 +491,7 @@ func (p Parser) parseRule(node *yaml.Node, offsetLine, offsetColumn int, content
 				Labels: labelsPart,
 			},
 			Comments: ruleComments,
+			VMAlert:  vmalertRule,
 		}
 		return rule, false
 	}
@@ -504,6 +508,7 @@ func (p Parser) parseRule(node *yaml.Node, offsetLine, offsetColumn int, content
 				Annotations:   annotationsPart,
 			},
 			Comments: ruleComments,
+			VMAlert:  vmalertRule,
 		}
 		return rule, false
 	}

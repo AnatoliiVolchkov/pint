@@ -1,0 +1,104 @@
+
+[TestRuleVMAlertCheck/PromQL_rules_are_not_checked - 1]
+[]
+
+---
+
+[TestRuleVMAlertCheck/debug_false - 1]
+[]
+
+---
+
+[TestRuleVMAlertCheck/debug_on_a_group - 1]
+- description: debug on a group
+  content: |
+    - name: g
+      debug: true
+      rules:
+      - alert: Down
+        expr: up == 0
+  output: |
+    2 |   debug: true
+                 ^^^^
+                 `debug: true` makes vmalert log every query of every rule in this group and every change of
+                 their alerts' state.
+  problem:
+    reporter: rule/vmalert
+    summary: debug mode enabled
+    details: 'With `debug: true` vmalert logs every datasource request of the rule and every alert state change at INFO level, set on a group it applies to all rules of the group. It''s meant for debugging a rule, remove it once you''re done. See [vmalert debug mode](https://docs.victoriametrics.com/victoriametrics/vmalert/#debug-mode).'
+    diagnostics:
+        - message: '`debug: true` makes vmalert log every query of every rule in this group and every change of their alerts'' state.'
+          firstcolumn: 1
+          lastcolumn: 4
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRuleVMAlertCheck/debug_on_a_recording_rule - 1]
+- description: debug on a recording rule
+  content: |
+    - record: up:sum
+      expr: sum(up)
+      debug: true
+  output: |
+    3 |   debug: true
+                 ^^^^ `debug: true` makes vmalert log every query of this rule.
+  problem:
+    reporter: rule/vmalert
+    summary: debug mode enabled
+    details: 'With `debug: true` vmalert logs every datasource request of the rule and every alert state change at INFO level, set on a group it applies to all rules of the group. It''s meant for debugging a rule, remove it once you''re done. See [vmalert debug mode](https://docs.victoriametrics.com/victoriametrics/vmalert/#debug-mode).'
+    diagnostics:
+        - message: '`debug: true` makes vmalert log every query of this rule.'
+          firstcolumn: 1
+          lastcolumn: 4
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRuleVMAlertCheck/debug_on_an_alerting_rule - 1]
+- description: debug on an alerting rule
+  content: |
+    - alert: Down
+      expr: up == 0
+      debug: true
+  output: |
+    3 |   debug: true
+                 ^^^^
+                 `debug: true` makes vmalert log every query of this rule and every change of its alerts'
+                 state.
+  problem:
+    reporter: rule/vmalert
+    summary: debug mode enabled
+    details: 'With `debug: true` vmalert logs every datasource request of the rule and every alert state change at INFO level, set on a group it applies to all rules of the group. It''s meant for debugging a rule, remove it once you''re done. See [vmalert debug mode](https://docs.victoriametrics.com/victoriametrics/vmalert/#debug-mode).'
+    diagnostics:
+        - message: '`debug: true` makes vmalert log every query of this rule and every change of its alerts'' state.'
+          firstcolumn: 1
+          lastcolumn: 4
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRuleVMAlertCheck/debug_with_a_string_value - 1]
+[]
+
+---
+
+[TestRuleVMAlertCheck/no_vmalert_fields - 1]
+[]
+
+---

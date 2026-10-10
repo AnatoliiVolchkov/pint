@@ -216,6 +216,22 @@ type VMAlertGroup struct {
 	EvalOffset *time.Duration
 	// EvalAlignment is nil when eval_alignment isn't set, it's enabled by default.
 	EvalAlignment *bool
+	// Debug is the `debug` value when it's set to true.
+	Debug *YamlNode
+}
+
+// VMAlertRule holds vmalert-only rule fields used by checks.
+type VMAlertRule struct {
+	// Debug is the `debug` value when it's set to true.
+	Debug *YamlNode
+}
+
+// vmalertDebug returns the value node of a `debug: true` field, nil for other values.
+func vmalertDebug(val *yaml.Node, offsetLine, offsetColumn int, contentLines []string) *YamlNode {
+	if b, err := strconv.ParseBool(val.Value); err != nil || !b || val.ShortTag() != boolTag {
+		return nil
+	}
+	return newYamlNode(val, offsetLine, offsetColumn, contentLines, val.Column)
 }
 
 // Param returns the first value of a group query argument, vmalert sends all of them
@@ -229,7 +245,7 @@ func (vg *VMAlertGroup) Param(name string) (string, bool) {
 
 // vmalertGroupSettings returns vmalert group fields used by checks, or nil if there are
 // none. Invalid values are skipped, strict mode reports them.
-func vmalertGroupSettings(node *yaml.Node) *VMAlertGroup {
+func vmalertGroupSettings(node *yaml.Node, offsetLine, offsetColumn int, contentLines []string) *VMAlertGroup {
 	var vg VMAlertGroup
 	var found bool
 	for _, entry := range mappingNodes(node) {
@@ -259,6 +275,10 @@ func vmalertGroupSettings(node *yaml.Node) *VMAlertGroup {
 		case vmalertEvalAlignmentKey:
 			if b, err := strconv.ParseBool(val.Value); err == nil && val.ShortTag() == boolTag {
 				vg.EvalAlignment = &b
+				found = true
+			}
+		case vmalertDebugKey:
+			if vg.Debug = vmalertDebug(val, offsetLine, offsetColumn, contentLines); vg.Debug != nil {
 				found = true
 			}
 		}

@@ -270,7 +270,7 @@ func (p Parser) parseGroup(node *yaml.Node, offsetLine, offsetColumn int, conten
 			group.Error = perr
 			return group
 		}
-		group.VMAlert = vmalertGroupSettings(node)
+		group.VMAlert = vmalertGroupSettings(node, offsetLine, offsetColumn, contentLines)
 	}
 
 	if _, ok := setKeys["rules"]; ok {

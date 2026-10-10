@@ -7,12 +7,19 @@ level=INFO msg="Loading configuration file" path=.pint.hcl
 level=INFO msg="Finding all rules to check" paths=["rules"]
 level=WARN msg="Failed to parse group entry" err="query_offset is not supported by vmalert, use eval_offset instead" path=rules/vmalert.yml line=18
 level=INFO msg="Checking Prometheus rules" entries=2 workers=10 online=true
+Warning: debug mode enabled (rule/vmalert)
+  ---> rules/vmalert.yml:15 -> `Down`
+15 |         debug: true
+                    ^^^^
+                    `debug: true` makes vmalert log every query of this rule and every change of its
+                    alerts' state.
+
 Fatal: query_offset is not supported by vmalert, use eval_offset instead (yaml/parse)
   ---> rules/vmalert.yml:18
  18 |     query_offset: 1m
       ^^^ query_offset is not supported by vmalert, use eval_offset instead
 
-level=INFO msg="Problems found" Fatal=1
+level=INFO msg="Problems found" Fatal=1 Warning=1
 level=ERROR msg="Execution completed with error(s)" err="found 1 problem(s) with severity Bug or higher"
 -- rules/vmalert.yml --
 groups:

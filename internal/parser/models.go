@@ -364,9 +364,11 @@ type Group struct {
 type Rule struct {
 	AlertingRule  *AlertingRule
 	RecordingRule *RecordingRule
-	Comments      []comments.Comment
-	Error         ParseError
-	Lines         diags.LineRange
+	// VMAlert holds vmalert-only rule fields, only set with MetricsQL.
+	VMAlert  *VMAlertRule
+	Comments []comments.Comment
+	Error    ParseError
+	Lines    diags.LineRange
 }
 
 func (r Rule) IsIdentical(b Rule) bool {
