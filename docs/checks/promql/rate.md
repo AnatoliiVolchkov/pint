@@ -73,6 +73,15 @@ in pint config or read from vmalert with `vmalertURI`, otherwise 5m, the vmalert
 `-search.minStalenessInterval` flags of the server can lower or raise how far back the
 sample before the window is used.
 
+The scrape interval is `scrapeInterval` of the server in pint config, 1m by default. Metrics
+can be written less often than that, for example by stream aggregation, recording rules of
+another system or targets with their own scrape interval. So pint also measures the interval
+between samples of every selector used in these functions with
+`max(scrape_interval(selector[15m]))`, and with `[2h]` when there are fewer than two samples
+in the last 15m. When the slowest series has a longer interval than the configured one, the
+window is checked against the measured interval, as a Warning that names it. Windows are
+never reported as a Bug because of a measured interval.
+
 MetricsQL also allows `rate(foo)` without a lookbehind window, and windows relative to the
 step, like `rate(foo[2i])`. pint works out such windows the same way:
 

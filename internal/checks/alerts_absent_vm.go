@@ -94,20 +94,26 @@ func vmAbsentCalls(node ast.Node) (calls []vmAbsentCall) {
 // (t-window, t]. Offsets and @ modifiers shift the whole series, pauses stay the same, so
 // they are dropped.
 func vmPresenceQuery(selector *ast.VectorSelector, window time.Duration) string {
-	vs := *selector
-	vs.OriginalOffset, vs.OriginalOffsetExpr, vs.OffsetText = 0, nil, ""
-	vs.Timestamp, vs.StartOrEnd, vs.At = nil, "", nil
-	vs.Anchored, vs.Smoothed = false, false
 	ms := ast.MatrixSelector{
-		VectorSelector: &vs,
+		VectorSelector: withoutModifiers(selector),
 		RangeExpr:      nil,
 		RangeText:      "",
-		PosRange:       vs.PosRange,
+		PosRange:       selector.PosRange,
 		Range:          window,
 		Implicit:       false,
 		StepRelative:   false,
 	}
 	return fmt.Sprintf("count(count_over_time(%s))", ms.String())
+}
+
+// withoutModifiers returns a copy of the selector without offset and @ modifiers, which
+// shift the whole series and don't change intervals between its samples.
+func withoutModifiers(selector *ast.VectorSelector) *ast.VectorSelector {
+	vs := *selector
+	vs.OriginalOffset, vs.OriginalOffsetExpr, vs.OffsetText = 0, nil, ""
+	vs.Timestamp, vs.StartOrEnd, vs.At = nil, "", nil
+	vs.Anchored, vs.Smoothed = false, false
+	return &vs
 }
 
 // vmPauseStats describes pauses between samples found by a presence query.

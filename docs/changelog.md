@@ -118,6 +118,12 @@
   valid vmalert rule". Tests that run checks directly still see the upstream texts, pint
   rewrites them when it collects problems.
 
+- [promql/rate](checks/promql/rate.md) check measures the interval between samples of
+  selectors used in `rate()`, `irate()`, `increase()` and `deriv()` on VictoriaMetrics servers
+  with `scrape_interval()`, over the last 15m and, for metrics with fewer than two samples
+  there, over the last 2h. When it's longer than `scrapeInterval` in pint config, windows are
+  checked against the measured interval and reported as a Warning.
+
 ### Fixed
 
 - [labels/conflict](checks/labels/conflict.md) check no longer warns that a selector with a

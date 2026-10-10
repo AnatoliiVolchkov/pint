@@ -29,7 +29,7 @@ func TestRateVMShortWindow(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newRateCheck,
 			prometheus:  scrape10m,
-			mocks:       []*prometheusMock{counters, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counters, vmFlags(nil)},
 			problems:    true,
 		},
 		{
@@ -38,7 +38,7 @@ func TestRateVMShortWindow(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newRateCheck,
 			prometheus:  scrape10m,
-			mocks:       []*prometheusMock{counters, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counters, vmFlags(nil)},
 		},
 		{
 			description: "increase with a window shorter than 2x scrape interval minus the step",
@@ -46,7 +46,7 @@ func TestRateVMShortWindow(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newRateCheck,
 			prometheus:  scrape10m,
-			mocks:       []*prometheusMock{counters, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counters, vmFlags(nil)},
 			problems:    true,
 		},
 		{
@@ -55,7 +55,7 @@ func TestRateVMShortWindow(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newRateCheck,
 			prometheus:  scrape10m,
-			mocks:       []*prometheusMock{counters, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counters, vmFlags(nil)},
 		},
 		{
 			description: "-search.maxStalenessInterval limits how far back the sample before the window is used",
@@ -63,7 +63,7 @@ func TestRateVMShortWindow(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newRateCheck,
 			prometheus:  scrape10m,
-			mocks:       []*prometheusMock{counters, vmFlags(map[string]string{"search.maxStalenessInterval": "2m0s"})},
+			mocks:       []*prometheusMock{vmIntervals(nil), counters, vmFlags(map[string]string{"search.maxStalenessInterval": "2m0s"})},
 			problems:    true,
 		},
 		{
@@ -72,7 +72,7 @@ func TestRateVMShortWindow(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newRateCheck,
 			prometheus:  scrape10m,
-			mocks:       []*prometheusMock{vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), vmFlags(nil)},
 			problems:    true,
 		},
 		{
@@ -81,7 +81,7 @@ func TestRateVMShortWindow(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newRateCheck,
 			prometheus:  scrape10m,
-			mocks:       []*prometheusMock{counters},
+			mocks:       []*prometheusMock{vmIntervals(nil), counters},
 			problems:    true,
 		},
 		{

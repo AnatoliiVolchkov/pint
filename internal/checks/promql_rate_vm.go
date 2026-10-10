@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/cloudflare/pint/internal/output"
 	"github.com/cloudflare/pint/internal/parser"
 	"github.com/cloudflare/pint/internal/parser/ast"
+	"github.com/cloudflare/pint/internal/parser/source"
 	"github.com/cloudflare/pint/internal/promapi"
 )
 
@@ -126,9 +129,99 @@ const RateCheckShortWindowDetails = "vmalert evaluates rules with instant querie
 // rateVMWindow holds what is needed to calculate windows VictoriaMetrics derives from the
 // query step, for one rule.
 type rateVMWindow struct {
+	// intervals are measured intervals between samples longer than the configured scrape
+	// interval, by selector without modifiers.
+	intervals   map[string]vmInterval
 	settings    vmLookbackSettings
 	step        time.Duration // `step` from params of the rule's group, 0 if not set
 	maxLookback time.Duration // `max_lookback` from params of the rule's group, 0 if not set
+}
+
+// pint takes the scrape interval of VictoriaMetrics servers from scrapeInterval in its config,
+// 1m by default, but metrics written by stream aggregation, recording rules of other systems
+// or targets with their own scrape interval can have longer intervals between samples.
+// scrape_interval(m[d]) returns the average interval between samples of every series
+// (VictoriaMetrics v1.153.0 on 2026-10-10: 600 for a series written every 10m, 15 for every
+// 15s, max() over series written every 60s and 300s gave 300) and needs two samples in the
+// window, so pint asks for the last 15m first and only for metrics without a result there,
+// written less often than every 7m30s or missing, for the last 2h.
+const (
+	vmIntervalShortWindow = 15 * time.Minute
+	vmIntervalLongWindow  = 2 * time.Hour
+)
+
+// vmInterval is the longest average interval between samples of series of a selector.
+type vmInterval struct {
+	interval time.Duration
+	window   time.Duration // how far back it was measured
+}
+
+// measureInterval returns the longest average interval between samples of series matching
+// the selector, zero if it can't be measured.
+func (c RateCheck) measureInterval(ctx context.Context, selector string) vmInterval {
+	for _, window := range []time.Duration{vmIntervalShortWindow, vmIntervalLongWindow} {
+		query := fmt.Sprintf("max(scrape_interval(%s[%s]))", selector, output.HumanizeDuration(window))
+		qr, err := c.prom.Query(ctx, query).Wait()
+		if err != nil {
+			slog.LogAttrs(ctx, slog.LevelDebug, "Cannot measure intervals between samples", slog.String("query", query), slog.Any("err", err))
+			return vmInterval{interval: 0, window: 0}
+		}
+		if len(qr.Series) > 0 && qr.Series[0].Value > 0 && !math.IsInf(qr.Series[0].Value, 0) {
+			return vmInterval{interval: time.Duration(qr.Series[0].Value * float64(time.Second)).Round(time.Second), window: window}
+		}
+	}
+	return vmInterval{interval: 0, window: 0}
+}
+
+// measureIntervals returns intervals between samples of selectors of rate(), irate(),
+// increase() and deriv() calls that are longer than the configured scrape interval.
+func (c RateCheck) measureIntervals(ctx context.Context, expr *parser.PromQLExpr, scrape time.Duration) map[string]vmInterval {
+	intervals := map[string]vmInterval{}
+	done := map[string]struct{}{}
+	for _, src := range expr.Source() {
+		src.WalkSources(func(s *source.Source, _ *source.Join, _ *source.Unless) {
+			if _, ok := findRateCall(s, true); !ok {
+				return
+			}
+			if _, ok := source.MostOuterOperation[*ast.MatrixSelector](s); !ok {
+				return
+			}
+			vs, ok := source.MostOuterOperation[*ast.VectorSelector](s)
+			if !ok {
+				return
+			}
+			key := withoutModifiers(vs).String()
+			if _, ok := done[key]; ok {
+				return
+			}
+			done[key] = struct{}{}
+			if measured := c.measureInterval(ctx, key); measured.interval > scrape {
+				intervals[key] = measured
+			}
+		})
+	}
+	return intervals
+}
+
+// scrapeFor returns the interval between samples to check the window of a call against, the
+// measured one when it's longer than the configured scrape interval, and how to describe it.
+func (c RateCheck) scrapeFor(m *ast.MatrixSelector, cfg *promapi.ConfigResult) (time.Duration, string) {
+	scrape := cfg.Config.Global.ScrapeInterval
+	text := fmt.Sprintf("with the `%s` scrape_interval of %s", output.HumanizeDuration(scrape), vmServerText(c.prom, cfg.URI))
+	vs, ok := m.VectorSelector.(*ast.VectorSelector)
+	if !ok || c.vm == nil {
+		return scrape, text
+	}
+	key := withoutModifiers(vs).String()
+	if measured, ok := c.vm.intervals[key]; ok {
+		return measured.interval, fmt.Sprintf(
+			"with samples of `%s` every %s on %s (its slowest series in the last %s, measured with `scrape_interval()`; "+
+				"`scrapeInterval` in pint config is %s)",
+			key, output.HumanizeDuration(measured.interval), vmServerText(c.prom, cfg.URI),
+			output.HumanizeDuration(measured.window), output.HumanizeDuration(scrape),
+		)
+	}
+	return scrape, text
 }
 
 // hasRuntimeWindow returns true if the query has a lookbehind window derived from the step.
@@ -148,7 +241,8 @@ func (c RateCheck) withVMWindow(ctx context.Context, entry *discovery.Entry, scr
 	if !isVictoriaMetrics(c.prom) || !isVMAlertRule(entry) || entry.Group == nil {
 		return c
 	}
-	if node := entry.Rule.Expr().Query().Expr; !hasRuntimeWindow(node) && !hasShortWindow(node, scrape) {
+	intervals := c.measureIntervals(ctx, entry.Rule.Expr(), scrape)
+	if node := entry.Rule.Expr().Query().Expr; !hasRuntimeWindow(node) && !hasShortWindow(node, scrape) && len(intervals) == 0 {
 		return c
 	}
 	settings, ok := vmLookbackSettingsFor(ctx, c.prom, true)
@@ -156,6 +250,7 @@ func (c RateCheck) withVMWindow(ctx context.Context, entry *discovery.Entry, scr
 		return c
 	}
 	c.vm = &rateVMWindow{
+		intervals:   intervals,
 		settings:    settings,
 		step:        parseVMQueryParam(entry, vmalertParamStep),
 		maxLookback: parseVMQueryParam(entry, vmalertParamMaxLookback),
@@ -194,7 +289,7 @@ func (c RateCheck) runtimeWindowProblems(
 			c.vm.settings.describe(c.vm.step, c.vm.maxLookback, step))
 	}
 
-	scrape := cfg.Config.Global.ScrapeInterval
+	scrape, scrapeText := c.scrapeFor(m, cfg)
 	need := vmWindowNeed(call.Func.Name, scrape, maxPrev, minIntervals)
 	if scrape <= 0 || window >= need {
 		return nil
@@ -210,10 +305,9 @@ func (c RateCheck) runtimeWindowProblems(
 		Diagnostics: []diags.Diagnostic{
 			{
 				Message: fmt.Sprintf(
-					"%s. `%s()` needs a window of at least %s with the `%s` scrape_interval of %s, "+
+					"%s. `%s()` needs a window of at least %s %s, "+
 						"so it can return no results or wrong ones.",
-					how, call.Func.Name, output.HumanizeDuration(need),
-					output.HumanizeDuration(scrape), vmServerText(c.prom, cfg.URI),
+					how, call.Func.Name, output.HumanizeDuration(need), scrapeText,
 				),
 				Pos:         expr.Value.Pos,
 				Expr:        expr.Query().Expr,
@@ -235,11 +329,15 @@ func (c RateCheck) shortWindowProblems(
 	cfg *promapi.ConfigResult,
 	minIntervals int,
 ) []Problem {
-	scrape := cfg.Config.Global.ScrapeInterval
-	// Windows shorter than minIntervals x scrape_interval are reported as a Bug by the check.
-	if c.vm == nil || minIntervals != 1 || scrape <= 0 || m.Implicit || m.StepRelative || m.Range < scrape {
+	if c.vm == nil || m.Implicit || m.StepRelative {
 		return nil
 	}
+	// Windows shorter than minIntervals x the configured scrape interval are reported as a Bug
+	// by the check.
+	if configured := cfg.Config.Global.ScrapeInterval; configured <= 0 || m.Range < configured*time.Duration(minIntervals) {
+		return nil
+	}
+	scrape, scrapeText := c.scrapeFor(m, cfg)
 	step, _, maxPrev := c.vm.settings.instantLimits(cmp.Or(c.vm.step, c.vm.settings.queryStep), c.vm.maxLookback)
 	need := vmWindowNeed(call.Func.Name, scrape, maxPrev, minIntervals)
 	if m.Range >= need {
@@ -247,9 +345,13 @@ func (c RateCheck) shortWindowProblems(
 	}
 
 	var why string
-	if call.Func.Name == "deriv" {
+	switch {
+	case minIntervals != 1:
+		why = fmt.Sprintf("`%s()` follows Prometheus semantics and only uses samples inside the window, so it needs %d scrape intervals",
+			call.Func.Name, minIntervals)
+	case call.Func.Name == "deriv":
 		why = "`deriv()` only uses samples inside the window, so it needs two scrape intervals"
-	} else {
+	default:
 		why = fmt.Sprintf("vmalert evaluates the rule with instant queries with a %s step, %s, "+
 			"and VictoriaMetrics uses the last sample before the window only if it's at most %s before the window",
 			output.HumanizeDuration(step), c.vm.settings.describe(c.vm.step, c.vm.maxLookback, maxPrev), output.HumanizeDuration(maxPrev))
@@ -264,10 +366,9 @@ func (c RateCheck) shortWindowProblems(
 		Diagnostics: []diags.Diagnostic{
 			{
 				Message: fmt.Sprintf(
-					"`%s()` needs a window of at least %s with the `%s` scrape_interval of %s: %s. "+
+					"`%s()` needs a window of at least %s %s: %s. "+
 						"A `[%s]` window can have a single sample, so it can return no results or wrong ones.",
-					call.Func.Name, output.HumanizeDuration(need), output.HumanizeDuration(scrape),
-					vmServerText(c.prom, cfg.URI), why, output.HumanizeDuration(m.Range),
+					call.Func.Name, output.HumanizeDuration(need), scrapeText, why, output.HumanizeDuration(m.Range),
 				),
 				Pos:         expr.Value.Pos,
 				Expr:        expr.Query().Expr,

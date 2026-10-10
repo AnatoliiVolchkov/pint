@@ -1503,7 +1503,7 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
 			problems:    true,
-			mocks:       []*prometheusMock{gaugeMetadata("foo")},
+			mocks:       []*prometheusMock{vmIntervals(nil), gaugeMetadata("foo")},
 		},
 		{
 			// _total is reserved for counters, the metadata is the likely mistake.
@@ -1512,7 +1512,7 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
 			problems:    true,
-			mocks:       []*prometheusMock{gaugeMetadata("process_cpu_seconds_total")},
+			mocks:       []*prometheusMock{vmIntervals(nil), gaugeMetadata("process_cpu_seconds_total")},
 		},
 		{
 			// The window is the query step, 5m, more than the default 1m scrape interval.
@@ -1520,14 +1520,14 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			content:     "- record: foo\n  expr: rate(foo)\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata, vmFlags(nil)},
 		},
 		{
 			description: "rate with step relative window",
 			content:     "- record: foo\n  expr: rate(foo[1i])\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata, vmFlags(nil)},
 		},
 		{
 			// A 5m window has at most one sample, the one before is 10m back.
@@ -1536,14 +1536,14 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			checker:     newRateCheck,
 			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute * 10, Retention: 0, QueryStep: 0}),
 			problems:    true,
-			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata, vmFlags(nil)},
 		},
 		{
 			description: "rate without lookbehind window and a group step covering the scrape interval",
 			content:     "- name: g\n  params:\n    step: [\"15m\"]\n  rules:\n  - record: foo\n    expr: rate(foo)\n",
 			checker:     newRateCheck,
 			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute * 10, Retention: 0, QueryStep: 0}),
-			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata, vmFlags(nil)},
 		},
 		{
 			// 2 x 5m covers one scrape interval, but the sample before the window is too far back.
@@ -1552,14 +1552,14 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			checker:     newRateCheck,
 			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute * 10, Retention: 0, QueryStep: 0}),
 			problems:    true,
-			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata, vmFlags(nil)},
 		},
 		{
 			description: "rate without lookbehind window and -search.minStalenessInterval",
 			content:     "- record: foo\n  expr: rate(foo)\n",
 			checker:     newRateCheck,
 			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute * 10, Retention: 0, QueryStep: 0}),
-			mocks:       []*prometheusMock{counterMetadata, vmFlags(map[string]string{"search.minStalenessInterval": "15m0s"})},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata, vmFlags(map[string]string{"search.minStalenessInterval": "15m0s"})},
 		},
 		{
 			// VictoriaMetrics uses the last sample before the window, one scrape interval is enough.
@@ -1569,7 +1569,7 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			content:     "- record: foo\n  expr: rate(foo[1m])\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata, vmFlags(nil)},
 		},
 		{
 			description: "rate < 1x default scrape interval",
@@ -1577,7 +1577,7 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
 			problems:    true,
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata},
 		},
 		{
 			// deriv() only uses samples inside the window, it needs 2x scrape interval.
@@ -1585,7 +1585,7 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			content:     "- record: foo\n  expr: irate(foo[1m]) + deriv(bar[1m])\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata, vmFlags(nil)},
 			problems:    true,
 		},
 		{
@@ -1593,6 +1593,7 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			content:     "- record: foo\n  expr: deriv(bar[2m])\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
+			mocks:       []*prometheusMock{vmIntervals(nil)},
 		},
 		{
 			description: "deriv < 1x default scrape interval",
@@ -1600,7 +1601,7 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
 			problems:    true,
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata},
 		},
 		{
 			// rate_prometheus() has Prometheus semantics and needs two samples inside the window.
@@ -1609,14 +1610,14 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
 			problems:    true,
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata},
 		},
 		{
 			description: "rate_prometheus = 2x default scrape interval",
 			content:     "- record: foo\n  expr: rate_prometheus(foo[2m])\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata},
 		},
 		{
 			// VictoriaMetrics' increase() uses the last sample before the window, like rate().
@@ -1624,7 +1625,7 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			content:     "- record: foo\n  expr: increase(foo[1m])\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{counterMetadata, vmFlags(nil)},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata, vmFlags(nil)},
 		},
 		{
 			description: "increase < 1x default scrape interval",
@@ -1632,7 +1633,7 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
 			problems:    true,
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata},
 		},
 		{
 			// increase_prometheus() has Prometheus semantics and needs two samples inside the window.
@@ -1641,21 +1642,21 @@ func TestMetricsQLRateCheck(t *testing.T) {
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
 			problems:    true,
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata},
 		},
 		{
 			description: "increase_prometheus = 2x default scrape interval",
 			content:     "- record: foo\n  expr: increase_prometheus(foo[2m])\n",
 			checker:     newRateCheck,
 			prometheus:  newSimpleVM,
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata},
 		},
 		{
 			description: "rate with configured scrape interval",
 			content:     "- record: foo\n  expr: rate(foo[1m])\n",
 			checker:     newRateCheck,
 			prometheus:  newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Second * 15}),
-			mocks:       []*prometheusMock{counterMetadata},
+			mocks:       []*prometheusMock{vmIntervals(nil), counterMetadata},
 		},
 	}))
 }

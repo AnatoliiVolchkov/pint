@@ -213,3 +213,34 @@ cases:
             start: 0
             end: 28
             line: 2
+  - name: interval between samples longer than the configured scrape interval
+    kind: positive
+    comment: >-
+      scrapeInterval is 1m, but the metric is written every 10m. pint measures the interval
+      with scrape_interval() and checks the window against it: with the default 5m query
+      step rate() needs 2 x 10m - 5m.
+    settings:
+      scrapeInterval: 1m
+    rules: |
+      - record: x
+        expr: 'rate(rate_measured_total[5m])'
+    data:
+      step: 10m
+      series:
+        - metric: rate_measured_total{job="a"}
+          values: 0+100x30
+    vm:
+      - query: max(scrape_interval(rate_measured_total[15m]))
+        result: '{} 600'
+    expect:
+      - rule: x
+        reporter: promql/rate
+        severity: warning
+        summary: duration too small
+        lines: "2"
+        diagnostics:
+          - message: '`rate()` needs a window of at least 15m with samples of `rate_measured_total` every 10m on `vm` VictoriaMetrics server at $URI (its slowest series in the last 15m, measured with `scrape_interval()`; `scrapeInterval` in pint config is 1m): vmalert evaluates the rule with instant queries with a 5m step, the query step, default vmalert -datasource.queryStep (5m), and VictoriaMetrics uses the last sample before the window only if it''s at most 5m before the window. A `[5m]` window can have a single sample, so it can return no results or wrong ones.'
+            fragment: rate(rate_measured_total[5m])
+            start: 0
+            end: 29
+            line: 2

@@ -222,7 +222,7 @@ Regenerate with `UPDATE_ORACLE_MATRIX=1 go test ./internal/checks -run TestMetri
 | `promql/nan` | query, offline | 2 | 3 | 1 | 2 |  |
 | `promql/offset` | query, online | 3 | 1 | 1 | 5 |  |
 | `promql/range_query` | query, online | 2 | 1 | 3 | 6 |  |
-| `promql/rate` | query, online | 4 | 3 | 3 | 10 |  |
+| `promql/rate` | query, online | 5 | 3 | 3 | 11 |  |
 | `promql/regexp` | query, offline | 3 | 2 | 1 | 0 |  |
 | `promql/selector` | query, offline | 3 | 2 | 1 | 0 |  |
 | `promql/series` | query, online | 4 | 4 | 1 | 9 |  |
