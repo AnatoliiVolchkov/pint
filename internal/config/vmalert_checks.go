@@ -5,6 +5,7 @@ import (
 
 	"github.com/cloudflare/pint/internal/checks"
 	"github.com/cloudflare/pint/internal/parser/metricsql"
+	"github.com/cloudflare/pint/internal/promapi"
 )
 
 // knownCheckNames returns names of all checks, including the vmalert only ones.
@@ -31,4 +32,19 @@ func (cfg Config) vmalertStaticRules() []staticRule {
 	return []staticRule{
 		{name: checks.RuleVMAlertCheckName, checker: checks.NewRuleVMAlertCheck()},
 	}
+}
+
+// IsMetricsQL returns true if rules are parsed as MetricsQL, they are evaluated by vmalert.
+func (cfg Config) IsMetricsQL() bool {
+	return cfg.Parser != nil && cfg.Parser.getQueryLanguage() == metricsql.Name
+}
+
+// VictoriaMetricsServerNames returns names of servers using the VictoriaMetrics backend.
+func (pg *PrometheusGenerator) VictoriaMetricsServerNames() (names []string) {
+	for _, server := range pg.servers {
+		if server.Backend() == promapi.BackendVictoriaMetrics {
+			names = append(names, server.Name())
+		}
+	}
+	return names
 }

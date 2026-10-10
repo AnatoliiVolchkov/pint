@@ -111,6 +111,13 @@
   `latency_offset` in group `params` longer than `eval_delay`, which makes rule results lag
   behind.
 
+- Problems about servers with `backend = "victoriametrics"` say "VictoriaMetrics server"
+  instead of "Prometheus server". With `query_language = "metricsql"` they also talk about
+  vmalert, vmagent and VictoriaMetrics instead of Prometheus: "when vmagent or
+  VictoriaMetrics restarts", "Regexp matchers are automatically fully anchored" and "not a
+  valid vmalert rule". Tests that run checks directly still see the upstream texts, pint
+  rewrites them when it collects problems.
+
 ### Fixed
 
 - [labels/conflict](checks/labels/conflict.md) check no longer warns that a selector with a

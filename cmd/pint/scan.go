@@ -112,7 +112,9 @@ func checkRules(ctx context.Context, workers int, isOffline bool, gen *config.Pr
 	}
 	wg.Wait()
 
+	vmServers, metricsQL := gen.VictoriaMetricsServerNames(), cfg.IsMetricsQL()
 	for _, result := range reports {
+		result.Problem = checks.VictoriaMetricsTexts(result.Problem, vmServers, metricsQL)
 		summary.Report(result)
 	}
 	summary.Duration = time.Since(start)

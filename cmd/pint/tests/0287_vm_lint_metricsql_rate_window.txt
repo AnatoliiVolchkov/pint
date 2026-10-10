@@ -26,15 +26,15 @@ Bug: duration too small (promql/rate)
   ---> rules/1.yml:7 -> `below_one_scrape_interval`
 7 |     expr: rate(http_requests_total[30s])
               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-              Duration for `rate()` must be at least 1 x scrape_interval, `vm` Prometheus server at
+              Duration for `rate()` must be at least 1 x scrape_interval, `vm` VictoriaMetrics server at
               http://127.0.0.1:7287 is using `1m` scrape_interval.
 
 Bug: duration too small (promql/rate)
   ---> rules/1.yml:9 -> `prometheus_semantics`
 9 |     expr: rate_prometheus(http_requests_total[1m])
               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-              Duration for `rate_prometheus()` must be at least 2 x scrape_interval, `vm` Prometheus
-              server at http://127.0.0.1:7287 is using `1m` scrape_interval.
+              Duration for `rate_prometheus()` must be at least 2 x scrape_interval, `vm`
+              VictoriaMetrics server at http://127.0.0.1:7287 is using `1m` scrape_interval.
 
 level=INFO msg="Problems found" Bug=2 Warning=1
 level=ERROR msg="Execution completed with error(s)" err="found 2 problem(s) with severity Bug or higher"

@@ -5,7 +5,7 @@
 stderr 'level=INFO msg="Configured new Prometheus server" name=vmcluster uris=1'
 stderr 'level=INFO msg="Problems found" Bug=1'
 stderr 'Bug: query on nonexistent series \(promql/series\)\n  ---> rules/1.yml:7 -> `missing`'
-stderr '`vmcluster` Prometheus server at http://[^ ]+/select/0/prometheus\s+didn''t have any series'
+stderr '`vmcluster` VictoriaMetrics server at\s+http://[^ ]+/select/0/prometheus\s+didn''t\s+have\s+any\s+series'
 ! stderr '-> `ok`'
 ! stderr 'Query returned an error'
 ! stderr 'No results for Prometheus uptime metric'

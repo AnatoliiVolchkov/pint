@@ -23,8 +23,8 @@ Warning: query on nonexistent series (promql/series)
   ---> rules/1.yml:5 -> `offset` [+1 duplicates]
 5 |     expr: sum(rate(http_requests_total offset 40d))
                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                       `vm` Prometheus server at http://127.0.0.1:7280/select/0/prometheus didn't have
-                       any series for the `http_requests_total` metric in the last 1w. Metric name
+                       `vm` VictoriaMetrics server at http://127.0.0.1:7280/select/0/prometheus didn't
+                       have any series for the `http_requests_total` metric in the last 1w. Metric name
                        `http_requests_total` matches `promql/series` check ignore regexp
                        `^http_requests_total$`.
 

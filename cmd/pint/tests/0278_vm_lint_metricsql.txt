@@ -24,9 +24,9 @@ Bug: query on nonexistent series (promql/series)
   ---> rules/1.yml:5 -> `job:http_requests:rate` [+1 duplicates]
 5 |     expr: 'WITH (r = rate(http_requests_total)) sum(r) by (job)'
                                                         ^
-          `vm` Prometheus server at http://127.0.0.1:7278
-          didn't have any series for the `http_requests_total`
-          metric in the last 1w.
+     `vm` VictoriaMetrics server at http://127.0.0.1:7278
+     didn't have any series for the `http_requests_total`
+     metric in the last 1w.
 
 Bug: template uses non-existent label (alerts/template)
   ---> rules/1.yml:6-9 -> `Down`
@@ -44,16 +44,16 @@ Bug: query on nonexistent series (promql/series)
   ---> rules/1.yml:7 -> `Down` [+1 duplicates]
 7 |     expr: 'sum(up{job="a" or job="b"}) by (job) == 0'
                    ^^^^^^^^^^^^^^^^^^^^^^
-                   `vm` Prometheus server at http://127.0.0.1:7278 didn't have any series for the `up`
-                   metric in the last 1w.
+                   `vm` VictoriaMetrics server at http://127.0.0.1:7278 didn't have any series for the
+                   `up` metric in the last 1w.
 
 Warning: query beyond configured retention (promql/range_query)
   ---> rules/1.yml:11 -> `long`
 11 |     expr: rate(http_requests_total[14d])
                     ^^^^^^^^^^^^^^^^^^^^^^^^
                     `http_requests_total[14d]` selector is trying to query Prometheus for 2w worth of
-                    metrics, but `vm` Prometheus server at http://127.0.0.1:7278 is configured to only
-                    keep 1w of metrics history.
+                    metrics, but `vm` VictoriaMetrics server at http://127.0.0.1:7278 is configured to
+                    only keep 1w of metrics history.
 
 Fatal: MetricsQL syntax error (promql/syntax)
   ---> rules/1.yml:13 -> `broken`

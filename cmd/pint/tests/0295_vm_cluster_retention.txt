@@ -20,7 +20,7 @@ Warning: query offset beyond configured retention (promql/offset)
 5 |     expr: sum(rate(http_requests_total offset 40d))
                                            ^^^^^^^^^^
                                            `http_requests_total offset 40d` selector is using a 40d
-                                           offset, but `vm` Prometheus server at
+                                           offset, but `vm` VictoriaMetrics server at
                                            http://127.0.0.1:7295/select/0/prometheus is configured to
                                            only keep 30d of metrics history.
 
