@@ -75,7 +75,9 @@ runs with `--offline`.
 With `query_language = "metricsql"` and a server using `backend = "victoriametrics"` this check
 also warns when a rule query can return series of more than one metric. Examples are
 `{__name__=~"foo|bar"}`, `{__name__="foo" or __name__="bar"}`, or a selector without a metric
-name, when the metric name is still there in the results. Series that only differ by the
+name, when the metric name is still there in the results, also through
+`sum(...) by (__name__)`. A regexp made only of literal names separated by `|`, like
+`foo|bar`, matches those metrics, so `{__name__=~"foo"}` is one metric. Series that only differ by the
 metric name get the same labels once the name is dropped, and the whole rule fails on every
 evaluation:
 
@@ -101,6 +103,10 @@ labels:
 | alert `{__name__=~"x\|y"} > 0` | fails on every evaluation |
 | recording rule `{__name__=~"x\|y"}` | fails, nothing is written |
 | recording rule `rate({__name__=~"x\|y"}[1m])` | VictoriaMetrics rejects the query |
+| alert `sum({__name__=~"x\|y"}) by (__name__) > 0`, also `by (__name__, job)` | fails on every evaluation |
+| alert `abs(sum({__name__=~"x\|y"}) by (__name__)) > 0` | VictoriaMetrics rejects the query |
+| alert `sum(sum({__name__=~"x\|y"}) by (__name__)) > 0` or `sum(...) by (job) > 0` | works |
+| alert `sum({__name__=~"x"}) by (__name__) > 0` | works, one metric |
 | alert with `label_replace(...)` as above | works |
 | alert `x > 0 or y > 0` | works, `or` drops right hand series with the same labels |
 | rule labels that override query labels | work, vmalert keeps the query value as `exported_<name>` |

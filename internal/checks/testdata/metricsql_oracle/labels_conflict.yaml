@@ -94,3 +94,39 @@ cases:
       - alert: Kept
         expr: 'label_replace({__name__=~"lc_x|lc_y"} > 0, "metric", "$1", "__name__", "(.+)")'
     expect: []
+  - name: aggregation by the metric name over more than one metric
+    kind: positive
+    comment: >-
+      sum by (__name__) keeps the metric name, vmalert drops it from alerts and fails the rule
+      (checked with vmalert v1.153.0).
+    rules: |
+      - alert: CollideSum
+        expr: 'sum({__name__=~"lc_x|lc_y"}) by (__name__) > 0'
+    expect:
+      - rule: CollideSum
+        reporter: labels/conflict
+        severity: warning
+        summary: rule results can have the same labels
+        lines: "2"
+        diagnostics:
+          - message: '`{__name__=~"lc_x|lc_y"}` can return series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped and the whole rule fails.'
+            fragment: '{__name__=~"lc_x|lc_y"}'
+            start: 4
+            end: 27
+            line: 2
+  - name: outer aggregation drops the metric name
+    kind: negative
+    comment: Checked with vmalert v1.153.0.
+    rules: |
+      - alert: OuterSum
+        expr: 'sum(sum({__name__=~"lc_x|lc_y"}) by (__name__)) > 0'
+    expect: []
+  - name: regexp of one literal metric name
+    kind: negative
+    comment: >-
+      A regexp made of one literal name matches one metric, vmalert v1.153.0 evaluated
+      sum({__name__=~"x"}) by (__name__) > 0 without errors.
+    rules: |
+      - alert: OneMetric
+        expr: 'sum({__name__=~"lc_x"}) by (__name__) > 0'
+    expect: []

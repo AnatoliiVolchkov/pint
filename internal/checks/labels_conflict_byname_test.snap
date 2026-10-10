@@ -1,0 +1,132 @@
+
+[TestLabelsConflictVMNameAggregation/PromQL_rules_are_not_checked - 1]
+[]
+
+---
+
+[TestLabelsConflictVMNameAggregation/a_regexp_of_one_literal_name - 1]
+[]
+
+---
+
+[TestLabelsConflictVMNameAggregation/function_around_sum_by___name__ - 1]
+- description: function around sum by __name__
+  content: |
+    - alert: Collide
+      expr: 'abs(sum({__name__=~"x|y"}) by (__name__)) > 0'
+  output: |
+    2 |   expr: 'abs(sum({__name__=~"x|y"}) by (__name__)) > 0'
+                         ^^^^^^^^^^^^^^^^^
+                         `{__name__=~"x|y"}` can return series of more than one metric, series that only
+                         differ by the metric name get the same labels once the name is dropped and the
+                         whole rule fails.
+  problem:
+    reporter: labels/conflict
+    summary: rule results can have the same labels
+    details: |-
+        If the query returns series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped, and the rule fails on every evaluation:
+
+        - vmalert drops the metric name from alert labels and replaces it with the record name for recording rules, then fails with `result contains metrics with the same labelset during evaluation`, see [series with the same labelset](https://docs.victoriametrics.com/victoriametrics/vmalert/#series-with-the-same-labelset);
+        - functions like `rate()` drop the metric name in VictoriaMetrics, which then rejects the query with `duplicate output timeseries`.
+
+        To fix it keep the metric name in another label with `label_replace()`, for example `label_replace(<query>, "metric", "$1", "__name__", "(.+)")`, or select a single metric.
+    diagnostics:
+        - message: '`{__name__=~"x|y"}` can return series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped and the whole rule fails.'
+          firstcolumn: 9
+          lastcolumn: 25
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestLabelsConflictVMNameAggregation/metric_name_kept_in_another_label - 1]
+[]
+
+---
+
+[TestLabelsConflictVMNameAggregation/outer_aggregation_drops_the_metric_name - 1]
+[]
+
+---
+
+[TestLabelsConflictVMNameAggregation/sum_by___name___in_a_recording_rule - 1]
+- description: sum by __name__ in a recording rule
+  content: |
+    - record: xy:sum
+      expr: 'sum by (__name__, job) ({__name__="x" or __name__="y"})'
+  output: |
+    2 |   expr: 'sum by (__name__, job) ({__name__="x" or __name__="y"})'
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                         `{__name__="x" or __name__="y"}` can return series of more than one
+                                         metric, series that only differ by the metric name get the same
+                                         labels once the name is dropped and the whole rule fails.
+  problem:
+    reporter: labels/conflict
+    summary: rule results can have the same labels
+    details: |-
+        If the query returns series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped, and the rule fails on every evaluation:
+
+        - vmalert drops the metric name from alert labels and replaces it with the record name for recording rules, then fails with `result contains metrics with the same labelset during evaluation`, see [series with the same labelset](https://docs.victoriametrics.com/victoriametrics/vmalert/#series-with-the-same-labelset);
+        - functions like `rate()` drop the metric name in VictoriaMetrics, which then rejects the query with `duplicate output timeseries`.
+
+        To fix it keep the metric name in another label with `label_replace()`, for example `label_replace(<query>, "metric", "$1", "__name__", "(.+)")`, or select a single metric.
+    diagnostics:
+        - message: '`{__name__="x" or __name__="y"}` can return series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped and the whole rule fails.'
+          firstcolumn: 25
+          lastcolumn: 54
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestLabelsConflictVMNameAggregation/sum_by___name___in_an_alert - 1]
+- description: sum by __name__ in an alert
+  content: |
+    - alert: Collide
+      expr: 'sum({__name__=~"x|y"}) by (__name__) > 0'
+  output: |
+    2 |   expr: 'sum({__name__=~"x|y"}) by (__name__) > 0'
+                     ^^^^^^^^^^^^^^^^^
+                     `{__name__=~"x|y"}` can return series of more than one metric, series that only differ
+                     by the metric name get the same labels once the name is dropped and the whole rule
+                     fails.
+  problem:
+    reporter: labels/conflict
+    summary: rule results can have the same labels
+    details: |-
+        If the query returns series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped, and the rule fails on every evaluation:
+
+        - vmalert drops the metric name from alert labels and replaces it with the record name for recording rules, then fails with `result contains metrics with the same labelset during evaluation`, see [series with the same labelset](https://docs.victoriametrics.com/victoriametrics/vmalert/#series-with-the-same-labelset);
+        - functions like `rate()` drop the metric name in VictoriaMetrics, which then rejects the query with `duplicate output timeseries`.
+
+        To fix it keep the metric name in another label with `label_replace()`, for example `label_replace(<query>, "metric", "$1", "__name__", "(.+)")`, or select a single metric.
+    diagnostics:
+        - message: '`{__name__=~"x|y"}` can return series of more than one metric, series that only differ by the metric name get the same labels once the name is dropped and the whole rule fails.'
+          firstcolumn: 5
+          lastcolumn: 21
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestLabelsConflictVMNameAggregation/sum_by_another_label - 1]
+[]
+
+---
+
+[TestLabelsConflictVMNameAggregation/sum_without_labels_drops_the_metric_name - 1]
+[]
+
+---

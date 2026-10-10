@@ -113,6 +113,9 @@
 
 ### Fixed
 
+- [labels/conflict](checks/labels/conflict.md) check no longer warns that a selector with a
+  regexp of one literal metric name, like `{__name__=~"foo"}`, can return series of more
+  than one metric. A regexp of literal names separated by `|` is treated as those names.
 - Fixed a panic in the console output, `index out of range [0] with length 0`, for rules
   with an expression written as a double-quoted YAML string starting with a `\u` escape,
   like `expr: "\u10e2..."`. pint found no character of such a value in the file, problems

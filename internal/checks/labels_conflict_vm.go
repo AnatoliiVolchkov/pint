@@ -2,6 +2,7 @@ package checks
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -41,23 +42,46 @@ const LabelsConflictDuplicateDetails = "If the query returns series of more than
 	"or select a single metric."
 
 // selectorMetricNames returns names of metrics a selector can match, ok is false if it can
-// match any metric name.
+// match any metric name. A regexp of literal names, like `foo|bar`, matches those names.
 func selectorMetricNames(vs *ast.VectorSelector) (names []string, ok bool) {
 	for _, group := range vs.MatcherGroups() {
-		var name string
+		var groupNames []string
 		for _, m := range group {
-			if m.Name == model.MetricNameLabel && m.Type == labels.MatchEqual {
-				name = m.Value
+			if m.Name != model.MetricNameLabel {
+				continue
+			}
+			switch m.Type {
+			case labels.MatchEqual:
+				groupNames = []string{m.Value}
+			case labels.MatchRegexp:
+				if literals, ok := literalAlternatives(m.Value); ok && groupNames == nil {
+					groupNames = literals
+				}
+			case labels.MatchNotEqual, labels.MatchNotRegexp:
 			}
 		}
-		if name == "" {
+		if len(groupNames) == 0 {
 			return nil, false
 		}
-		if !slices.Contains(names, name) {
-			names = append(names, name)
+		for _, name := range groupNames {
+			if !slices.Contains(names, name) {
+				names = append(names, name)
+			}
 		}
 	}
 	return names, true
+}
+
+// literalAlternatives returns the alternatives of a regexp made only of literal strings
+// separated by `|`, ok is false for any other regexp.
+func literalAlternatives(re string) (alternatives []string, ok bool) {
+	for part := range strings.SplitSeq(re, "|") {
+		if part == "" || regexp.QuoteMeta(part) != part {
+			return nil, false
+		}
+		alternatives = append(alternatives, part)
+	}
+	return alternatives, true
 }
 
 // copiesLabels returns true if the source uses a function that can copy the metric name
