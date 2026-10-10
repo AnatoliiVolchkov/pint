@@ -107,7 +107,9 @@
 
 - New [rule/vmalert](checks/rule/vmalert.md) check for vmalert group and rule settings
   that are likely mistakes, MetricsQL rules only. It warns about `debug: true` left on a
-  group or a rule, which makes vmalert log every query and alert state change.
+  group or a rule, which makes vmalert log every query and alert state change, and about
+  `latency_offset` in group `params` longer than `eval_delay`, which makes rule results lag
+  behind.
 
 ### Fixed
 

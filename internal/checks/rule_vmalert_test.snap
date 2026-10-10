@@ -98,6 +98,88 @@
 
 ---
 
+[TestRuleVMAlertCheck/latency_offset_equal_to_eval_delay - 1]
+[]
+
+---
+
+[TestRuleVMAlertCheck/latency_offset_longer_than_eval_delay - 1]
+- description: latency_offset longer than eval_delay
+  content: |
+    - name: g
+      eval_delay: 1m
+      params:
+        latency_offset: ["180"]
+      rules:
+      - alert: Down
+        expr: up == 0
+  output: |
+    4 |     latency_offset: ["180"]
+                              ^^^
+                              VictoriaMetrics answers queries of this group with data at least 3m old, but
+                              vmalert evaluates them 1m before now, `eval_delay` of this group, and stamps
+                              the results with that time, so alerts and recording rule results lag 2m
+                              behind. Set `eval_delay: 180`.
+  problem:
+    reporter: rule/vmalert
+    summary: latency_offset longer than eval_delay
+    details: '`latency_offset` in group `params` overrides `-search.latencyOffset`: VictoriaMetrics doesn''t return samples newer than that and moves the time of a query back to `now - latency_offset` when it''s newer. vmalert evaluates rules `eval_delay` before now, `-rule.evalDelay` (30s by default) when the group doesn''t set it, and stamps the results with that time. vmalert docs recommend setting `eval_delay` equal to `latency_offset`, see [eval_delay](https://docs.victoriametrics.com/victoriametrics/vmalert/#groups) and [query latency](https://docs.victoriametrics.com/victoriametrics/keyconcepts/#query-latency). If vmalert runs with a `-rule.evalDelay` longer than the default, set `eval_delay` in the group anyway.'
+    diagnostics:
+        - message: 'VictoriaMetrics answers queries of this group with data at least 3m old, but vmalert evaluates them 1m before now, `eval_delay` of this group, and stamps the results with that time, so alerts and recording rule results lag 2m behind. Set `eval_delay: 180`.'
+          firstcolumn: 1
+          lastcolumn: 3
+          kind: 0
+    lines:
+        first: 4
+        last: 4
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRuleVMAlertCheck/latency_offset_shorter_than_the_default_eval_delay - 1]
+[]
+
+---
+
+[TestRuleVMAlertCheck/latency_offset_with_eval_offset - 1]
+[]
+
+---
+
+[TestRuleVMAlertCheck/latency_offset_without_eval_delay - 1]
+- description: latency_offset without eval_delay
+  content: |
+    - name: g
+      params:
+        latency_offset: ["3m"]
+      rules:
+      - alert: Down
+        expr: up == 0
+  output: |
+    3 |     latency_offset: ["3m"]
+                              ^^
+                              VictoriaMetrics answers queries of this group with data at least 3m old, but
+                              vmalert evaluates them 30s before now, `-rule.evalDelay`, 30s by default, as
+                              the group doesn't set `eval_delay`, and stamps the results with that time, so
+                              alerts and recording rule results lag 2m30s behind. Set `eval_delay: 3m`.
+  problem:
+    reporter: rule/vmalert
+    summary: latency_offset longer than eval_delay
+    details: '`latency_offset` in group `params` overrides `-search.latencyOffset`: VictoriaMetrics doesn''t return samples newer than that and moves the time of a query back to `now - latency_offset` when it''s newer. vmalert evaluates rules `eval_delay` before now, `-rule.evalDelay` (30s by default) when the group doesn''t set it, and stamps the results with that time. vmalert docs recommend setting `eval_delay` equal to `latency_offset`, see [eval_delay](https://docs.victoriametrics.com/victoriametrics/vmalert/#groups) and [query latency](https://docs.victoriametrics.com/victoriametrics/keyconcepts/#query-latency). If vmalert runs with a `-rule.evalDelay` longer than the default, set `eval_delay` in the group anyway.'
+    diagnostics:
+        - message: 'VictoriaMetrics answers queries of this group with data at least 3m old, but vmalert evaluates them 30s before now, `-rule.evalDelay`, 30s by default, as the group doesn''t set `eval_delay`, and stamps the results with that time, so alerts and recording rule results lag 2m30s behind. Set `eval_delay: 3m`.'
+          firstcolumn: 1
+          lastcolumn: 2
+          kind: 0
+    lines:
+        first: 3
+        last: 3
+    severity: 1
+    anchor: 0
+
+---
+
 [TestRuleVMAlertCheck/no_vmalert_fields - 1]
 []
 

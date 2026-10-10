@@ -28,6 +28,9 @@ const (
 	vmalertDebugKey           = "debug"
 	vmalertUpdateEntriesKey   = "update_entries_limit"
 
+	// VictoriaMetrics query argument overriding -search.latencyOffset, set in group params.
+	vmalertLatencyOffsetParam = "latency_offset"
+
 	// vmalert group datasource type for Prometheus compatible datasources, the only one using MetricsQL.
 	vmalertPrometheusType = "prometheus"
 
@@ -218,6 +221,10 @@ type VMAlertGroup struct {
 	EvalAlignment *bool
 	// Debug is the `debug` value when it's set to true.
 	Debug *YamlNode
+	// LatencyOffset is the first `latency_offset` value in `params`.
+	LatencyOffset *YamlNode
+	// EvalDelay is set when eval_delay is set.
+	EvalDelay *time.Duration
 }
 
 // VMAlertRule holds vmalert-only rule fields used by checks.
@@ -264,6 +271,9 @@ func vmalertGroupSettings(node *yaml.Node, offsetLine, offsetColumn int, content
 				}
 				for _, v := range resolveNode(param.val).Content {
 					vg.Params[nodeValue(param.key)] = append(vg.Params[nodeValue(param.key)], resolveNode(v).Value)
+					if nodeValue(param.key) == vmalertLatencyOffsetParam && vg.LatencyOffset == nil {
+						vg.LatencyOffset = newYamlNode(resolveNode(v), offsetLine, offsetColumn, contentLines, resolveNode(v).Column)
+					}
 				}
 				found = true
 			}
@@ -279,6 +289,11 @@ func vmalertGroupSettings(node *yaml.Node, offsetLine, offsetColumn int, content
 			}
 		case vmalertDebugKey:
 			if vg.Debug = vmalertDebug(val, offsetLine, offsetColumn, contentLines); vg.Debug != nil {
+				found = true
+			}
+		case vmalertEvalDelayKey:
+			if d, err := parseSignedDuration(val.Value, false); err == nil {
+				vg.EvalDelay = &d
 				found = true
 			}
 		}

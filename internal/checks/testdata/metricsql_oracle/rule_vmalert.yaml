@@ -46,3 +46,37 @@ cases:
         expr: 'up{job="a" or job="b"} == 0'
         debug: false
     expect: []
+  - name: latency_offset longer than the default eval_delay
+    kind: positive
+    rules: |
+      groups:
+      - name: g
+        params:
+          latency_offset: ["3m"]
+        rules:
+        - alert: Down
+          expr: 'up{job="a" or job="b"} == 0'
+    expect:
+      - rule: Down
+        reporter: rule/vmalert
+        severity: warning
+        summary: latency_offset longer than eval_delay
+        lines: "4"
+        diagnostics:
+          - message: 'VictoriaMetrics answers queries of this group with data at least 3m old, but vmalert evaluates them 30s before now, `-rule.evalDelay`, 30s by default, as the group doesn''t set `eval_delay`, and stamps the results with that time, so alerts and recording rule results lag 2m30s behind. Set `eval_delay: 3m`.'
+            fragment: 3m
+            start: 0
+            end: 2
+            line: 4
+  - name: latency_offset equal to eval_delay
+    kind: negative
+    rules: |
+      groups:
+      - name: g
+        eval_delay: 3m
+        params:
+          latency_offset: ["3m"]
+        rules:
+        - alert: Down
+          expr: 'up{job="a" or job="b"} == 0'
+    expect: []

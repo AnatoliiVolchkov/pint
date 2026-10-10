@@ -16,6 +16,14 @@ It reports:
   and every change of its alerts' state at INFO level, see
   [debug mode](https://docs.victoriametrics.com/victoriametrics/vmalert/#debug-mode).
   It's meant for debugging a rule, not for permanent use.
+- `latency_offset` in group `params` longer than the group's `eval_delay`, or than 30s, the
+  default `-rule.evalDelay` of vmalert, when the group doesn't set `eval_delay`.
+  VictoriaMetrics doesn't return samples newer than `latency_offset` and moves the time of a
+  query back to `now - latency_offset`, while vmalert evaluates the rules `eval_delay` before
+  now and stamps the results with that time, so alerts and recording rule results lag
+  behind by the difference. vmalert docs recommend setting `eval_delay` equal to
+  `latency_offset`. Groups with `eval_offset` aren't checked, vmalert ignores `eval_delay`
+  there. If vmalert runs with a longer `-rule.evalDelay`, set `eval_delay` in the group.
 
 All problems are reported as warnings.
 
