@@ -52,10 +52,13 @@ but `absent()` on it returns 1 on every other vmalert evaluation.
 
 For MetricsQL rules checked against VictoriaMetrics servers pint counts alerts the way
 vmalert sees them: every selector without a lookbehind window is replaced by
-`last_over_time(selector[W])`, `W` being the lookback of vmalert instant queries, the same
-one [group/interval](../group/interval.md) uses, before the range query runs. The report
-shows the query pint counted. Lookbehind windows, including ones derived from the step like
-`rate(foo)` or `foo[2i]`, and subqueries are left as they are.
+`default_rollup(selector[W])`, `W` being the lookback of vmalert instant queries, the same
+one [group/interval](../group/interval.md) uses, before the range query runs.
+`default_rollup()` is what VictoriaMetrics uses for a selector without a window, so a series
+ended by a staleness marker, for example after a pod was recreated, isn't counted for the
+rest of the window, just like in vmalert. The report shows the query pint counted.
+Lookbehind windows, including ones derived from the step like `rate(foo)` or `foo[2i]`, and
+subqueries are left as they are.
 
 ## How to enable it
 

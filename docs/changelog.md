@@ -89,7 +89,7 @@
   VictoriaMetrics doesn't have.
 - [alerts/count](checks/alerts/count.md) check counts alerts of MetricsQL rules on
   VictoriaMetrics servers the way vmalert evaluates them, with the lookback of instant
-  queries: selectors without a lookbehind window are counted as `last_over_time(selector[W])`.
+  queries: selectors without a lookbehind window are counted as `default_rollup(selector[W])`.
   A range query of the rule itself hides pauses between samples shorter than their usual
   interval, so `absent()` on a metric with one sample every 10m counted zero alerts while
   vmalert fired on every other evaluation.
@@ -126,6 +126,12 @@
 
 ### Fixed
 
+- [alerts/count](checks/alerts/count.md) check no longer fails with `duplicate time series`
+  or counts alerts vmalert never fires when a series was replaced by another one, for
+  example after a pod was recreated. Selectors without a lookbehind window are now counted
+  as `default_rollup(selector[W])`, which VictoriaMetrics uses for such selectors and which
+  honours staleness markers, instead of `last_over_time(selector[W])`, which kept the
+  replaced series for the whole window.
 - [labels/conflict](checks/labels/conflict.md) check no longer warns that a selector with a
   regexp of one literal metric name, like `{__name__=~"foo"}`, can return series of more
   than one metric. A regexp of literal names separated by `|` is treated as those names.

@@ -45,7 +45,7 @@ func TestAlertsCountVMCheck(t *testing.T) {
 			prometheus:  newSimpleVM,
 			mocks: []*prometheusMock{
 				flags(map[string]string{}),
-				firing(`absent(last_over_time(foo{job="bar"}[5m] offset 1h)) and sum(rate(foo[5m])) > 0`),
+				firing(`absent(default_rollup(foo{job="bar"}[5m] offset 1h)) and sum(rate(foo[5m])) > 0`),
 				uptime,
 			},
 			problems: true,
@@ -58,7 +58,7 @@ func TestAlertsCountVMCheck(t *testing.T) {
 			prometheus:  newSimpleVM,
 			mocks: []*prometheusMock{
 				flags(map[string]string{}),
-				firing(`absent(last_over_time(foo[30s])) or last_over_time(bar[30s]) > 0`),
+				firing(`absent(default_rollup(foo[30s])) or default_rollup(bar[30s]) > 0`),
 				uptime,
 			},
 			problems: true,
@@ -71,7 +71,7 @@ func TestAlertsCountVMCheck(t *testing.T) {
 			prometheus:  newSimpleVM,
 			mocks: []*prometheusMock{
 				flags(map[string]string{"search.maxStalenessInterval": "1m0s"}),
-				firing(`absent(last_over_time(foo[1m]))`),
+				firing(`absent(default_rollup(foo[1m]))`),
 				uptime,
 			},
 			problems: true,

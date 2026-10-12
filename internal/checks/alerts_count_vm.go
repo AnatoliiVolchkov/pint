@@ -21,13 +21,18 @@ import (
 // queries, as a range query it returned no points at all, and `vmalert -replay`, which also
 // uses range queries, recorded no firing. absent(last_over_time(x[5m])) as a range query was
 // 1 on 181 of 361 points, matching vmalert. So on VictoriaMetrics the rule is counted with
-// every selector without a window replaced by last_over_time(selector[W]), W being the
-// lookback of vmalert instant queries. last_over_time() keeps the metric name in MetricsQL.
+// every selector without a window replaced by default_rollup(selector[W]), W being the
+// lookback of vmalert instant queries. default_rollup() is the rollup VictoriaMetrics applies
+// to a selector without a window: it keeps the metric name and, unlike last_over_time(),
+// honours staleness markers. Checked with v1.153.0 on 2026-10-12: after a scraped series was
+// replaced by one with another label value, x and default_rollup(x[5m]) returned the new
+// series only, while last_over_time(x[5m]) returned both for 5 minutes, so `x / on() y`
+// failed with "duplicate time series" and count(x) counted alerts vmalert never fired.
 // Selectors inside lookbehind windows and subqueries are left alone, windows derived from the
 // step, like rate(x) or [2i], are reported by promql/rate instead.
 
 const alertsCheckVMDetails = "On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: " +
-	"selectors without a lookbehind window were replaced by `last_over_time(selector[%s])`, the window being %s. " +
+	"selectors without a lookbehind window were replaced by `default_rollup(selector[%s])`, the window being %s. " +
 	"A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. " +
 	"The query pint counted:\n\n```\n%s\n```"
 
@@ -59,7 +64,7 @@ func instantSelectors(node ast.Node) (plain []*ast.VectorSelector) {
 }
 
 // withInstantWindows returns expr with the given selectors replaced by
-// last_over_time(selector[w]), ok is false if their positions don't fit expr.
+// default_rollup(selector[w]), ok is false if their positions don't fit expr.
 func withInstantWindows(expr string, selectors []*ast.VectorSelector, w time.Duration) (_ string, ok bool) {
 	for _, vs := range selectors {
 		if int(vs.PosRange.End) > len(expr) {
@@ -80,14 +85,14 @@ func withInstantWindows(expr string, selectors []*ast.VectorSelector, w time.Dur
 			Implicit:       false,
 			StepRelative:   false,
 		}
-		expr = expr[:vs.PosRange.Start] + "last_over_time(" + ms.String() + ")" + expr[vs.PosRange.End:]
+		expr = expr[:vs.PosRange.Start] + "default_rollup(" + ms.String() + ")" + expr[vs.PosRange.End:]
 	}
 	return expr, true
 }
 
 // vmInstantSemantics returns the query this check counts alerts with. For MetricsQL rules
 // checked against VictoriaMetrics it's the rule query with selectors without a lookbehind
-// window replaced by last_over_time(selector[W]), W being the lookback of vmalert instant
+// window replaced by default_rollup(selector[W]), W being the lookback of vmalert instant
 // queries, and details explaining that.
 func (c AlertsCheck) vmInstantSemantics(ctx context.Context, entry *discovery.Entry) (query, details string) {
 	query = entry.Rule.AlertingRule.Expr.Value.Value

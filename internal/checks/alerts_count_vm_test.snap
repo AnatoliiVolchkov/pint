@@ -13,11 +13,11 @@
     reporter: alerts/count
     summary: alert count estimate
     details: |-
-        To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28last_over_time%28foo%5B1m%5D%29%29&g0.tab=0&g0.range_input=1d).
-        On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: selectors without a lookbehind window were replaced by `last_over_time(selector[1m])`, the window being the query step, default vmalert -datasource.queryStep (5m), limited by -search.maxStalenessInterval=1m on `prom`. A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. The query pint counted:
+        To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28default_rollup%28foo%5B1m%5D%29%29&g0.tab=0&g0.range_input=1d).
+        On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: selectors without a lookbehind window were replaced by `default_rollup(selector[1m])`, the window being the query step, default vmalert -datasource.queryStep (5m), limited by -search.maxStalenessInterval=1m on `prom`. A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. The query pint counted:
 
         ```
-        absent(last_over_time(foo[1m]))
+        absent(default_rollup(foo[1m]))
         ```
     diagnostics:
         - message: '`prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last 1d.'
@@ -127,11 +127,11 @@
     reporter: alerts/count
     summary: alert count estimate
     details: |-
-        To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28last_over_time%28foo%7Bjob%3D%22bar%22%7D%5B5m%5D+offset+1h%29%29+and+sum%28rate%28foo%5B5m%5D%29%29+%3E+0&g0.tab=0&g0.range_input=1d).
-        On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: selectors without a lookbehind window were replaced by `last_over_time(selector[5m])`, the window being the query step, default vmalert -datasource.queryStep (5m). A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. The query pint counted:
+        To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28default_rollup%28foo%7Bjob%3D%22bar%22%7D%5B5m%5D+offset+1h%29%29+and+sum%28rate%28foo%5B5m%5D%29%29+%3E+0&g0.tab=0&g0.range_input=1d).
+        On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: selectors without a lookbehind window were replaced by `default_rollup(selector[5m])`, the window being the query step, default vmalert -datasource.queryStep (5m). A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. The query pint counted:
 
         ```
-        absent(last_over_time(foo{job="bar"}[5m] offset 1h)) and sum(rate(foo[5m])) > 0
+        absent(default_rollup(foo{job="bar"}[5m] offset 1h)) and sum(rate(foo[5m])) > 0
         ```
     diagnostics:
         - message: '`prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last 1d.'
@@ -164,11 +164,11 @@
     reporter: alerts/count
     summary: alert count estimate
     details: |-
-        To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28last_over_time%28foo%5B30s%5D%29%29+or+last_over_time%28bar%5B30s%5D%29+%3E+0&g0.tab=0&g0.range_input=1d).
-        On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: selectors without a lookbehind window were replaced by `last_over_time(selector[30s])`, the window being the query step from `params` of its group (30s). A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. The query pint counted:
+        To get a preview of the alerts that would fire please [click here](https://simple.example.com/graph?g0.expr=absent%28default_rollup%28foo%5B30s%5D%29%29+or+default_rollup%28bar%5B30s%5D%29+%3E+0&g0.tab=0&g0.range_input=1d).
+        On VictoriaMetrics pint counts alerts the way vmalert evaluates the rule, with instant queries: selectors without a lookbehind window were replaced by `default_rollup(selector[30s])`, the window being the query step from `params` of its group (30s). A range query of the rule itself looks back further and misses pauses between samples shorter than their usual interval. The query pint counted:
 
         ```
-        absent(last_over_time(foo[30s])) or last_over_time(bar[30s]) > 0
+        absent(default_rollup(foo[30s])) or default_rollup(bar[30s]) > 0
         ```
     diagnostics:
         - message: '`prom` Prometheus server at https://simple.example.com would trigger 1 alert(s) in the last 1d.'

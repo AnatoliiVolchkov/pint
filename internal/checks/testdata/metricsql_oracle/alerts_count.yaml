@@ -124,7 +124,7 @@ cases:
     vm:
       - query: count_over_time(absent(count_sparse)[30m:1m])
         result: empty
-      - query: count_over_time(absent(last_over_time(count_sparse[5m]))[30m:1m]) > bool 10
+      - query: count_over_time(absent(default_rollup(count_sparse[5m]))[30m:1m]) > bool 10
         result: '{} 1'
     expect:
       - rule: Gone
