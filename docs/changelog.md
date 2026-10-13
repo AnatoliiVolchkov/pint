@@ -159,6 +159,12 @@
   VictoriaMetrics uses the last sample before the time range. `rate_prometheus()` and
   `increase_prometheus()` are checked too and still require 2x `scrape_interval`.
 
+## v0.89.2
+
+### Fixed
+
+- Improved Prometheus query cache efficiency.
+
 ## v0.89.1
 
 ### Fixed
