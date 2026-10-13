@@ -226,10 +226,11 @@ to that single repository:
 
 The credential only appears in the job's git configuration, it is never printed.
 
-## Automated sync
+## Sync workflow
 
-`.github/workflows/upstream-sync.yml` runs `.github/scripts/upstream-sync.sh` every Monday
-and on demand:
+`.github/workflows/upstream-sync.yml` runs `.github/scripts/upstream-sync.sh` on demand
+only. It has no schedule: upstream releases are synced when someone decides to, by hand (see
+"Manual sync procedure") or with the workflow:
 
 ```sh
 gh workflow run upstream-sync.yml -R AnatoliiVolchkov/pint                    # newest stable release
