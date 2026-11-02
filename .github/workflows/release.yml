@@ -48,12 +48,6 @@ jobs:
           go-version-file: go.ver
           cache: false
 
-      - name: Configure private Go modules
-        uses: ./.github/actions/private-go-modules
-        with:
-          token: ${{ secrets.METRICSQL_READ_TOKEN }}
-          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
-
       - name: Compute version
         id: version
         env:

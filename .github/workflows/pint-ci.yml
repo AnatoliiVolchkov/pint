@@ -55,12 +55,6 @@ jobs:
           go-version-file: go.ver
           cache-dependency-path: tools/golangci-lint/go.sum
 
-      - name: Configure private Go modules
-        uses: ./.github/actions/private-go-modules
-        with:
-          token: ${{ secrets.METRICSQL_READ_TOKEN }}
-          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
-
       - name: Check go.mod
         run: |
           go mod tidy
@@ -88,12 +82,6 @@ jobs:
         with:
           go-version-file: go.ver
           cache: false
-
-      - name: Configure private Go modules
-        uses: ./.github/actions/private-go-modules
-        with:
-          token: ${{ secrets.METRICSQL_READ_TOKEN }}
-          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
 
       # Registries fail now and then (quay.io returned 502 on 2026-10-09), retry before
       # failing the job.
@@ -174,12 +162,6 @@ jobs:
           go-version-file: go.ver
           cache: false
 
-      - name: Configure private Go modules
-        uses: ./.github/actions/private-go-modules
-        with:
-          token: ${{ secrets.METRICSQL_READ_TOKEN }}
-          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
-
       - name: Fuzz smoke test
         run: go test -run '^$' -fuzz='^${{ matrix.target.name }}$' -fuzztime=30s ${{ matrix.target.pkg }}
 
@@ -207,12 +189,6 @@ jobs:
           go-version-file: go.ver
           cache: false
 
-      - name: Configure private Go modules
-        uses: ./.github/actions/private-go-modules
-        with:
-          token: ${{ secrets.METRICSQL_READ_TOKEN }}
-          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
-
       - name: Build binary
         run: |
           make build
@@ -224,7 +200,7 @@ jobs:
           done
           cp pint dist/pint-linux-amd64
 
-      # Same as upstream's examples.yml, which can't fetch the private module.
+      # Same as upstream's examples.yml, which is disabled here.
       - name: Generate dummy TLS certificates
         run: |
           sudo mkdir -p /etc/pint/certs

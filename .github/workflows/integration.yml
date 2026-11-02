@@ -47,12 +47,6 @@ jobs:
           go-version-file: go.ver
           cache: false
 
-      - name: Configure private Go modules
-        uses: ./.github/actions/private-go-modules
-        with:
-          token: ${{ secrets.METRICSQL_READ_TOKEN }}
-          ssh-key: ${{ secrets.METRICSQL_DEPLOY_KEY }}
-
       # Registries fail now and then (quay.io returned 502 on 2026-10-09), retry before
       # failing the job.
       - name: Pull VictoriaMetrics images
