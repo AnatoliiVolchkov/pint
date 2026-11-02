@@ -1,16 +1,16 @@
 # Upstream synchronization
 
-This repository (`github.com/AnatoliiVolchkov/pint`, private) is pint with VictoriaMetrics
+This repository (`github.com/AnatoliiVolchkov/pint`, public) is pint with VictoriaMetrics
 and MetricsQL support. It tracks the public upstream `github.com/cloudflare/pint`
-and depends on the private source-aware MetricsQL fork `github.com/AnatoliiVolchkov/metricsql`,
+and depends on the source-aware MetricsQL fork `github.com/AnatoliiVolchkov/metricsql`,
 which tracks `github.com/VictoriaMetrics/metricsql`.
 
 ## Repository layout
 
 | Repository                    | Visibility | Product branch | Upstream                                      | Upstream branch |
 |-------------------------------|------------|----------------|-----------------------------------------------|-----------------|
-| `github.com/AnatoliiVolchkov/pint`      | private    | `main`         | `https://github.com/cloudflare/pint.git`       | `main`          |
-| `github.com/AnatoliiVolchkov/metricsql` | private    | `main`         | `https://github.com/VictoriaMetrics/metricsql.git` | `master`    |
+| `github.com/AnatoliiVolchkov/pint`      | public     | `main`         | `https://github.com/cloudflare/pint.git`       | `main`          |
+| `github.com/AnatoliiVolchkov/metricsql` | public     | `main`         | `https://github.com/VictoriaMetrics/metricsql.git` | `master`    |
 
 Remotes in a local checkout:
 
@@ -39,7 +39,6 @@ additions into new files under these paths instead of editing upstream files:
 
 | Path | Contents |
 |---|---|
-| `.github/actions/` | `private-go-modules` composite action |
 | `.github/scripts/` | `upstream-sync.sh` |
 | `.github/metricsql-test/` | MetricsQL rules and pint config tested against real VictoriaMetrics, see its README |
 | `.github/workflows/pint-ci.yml`, `integration.yml`, `release.yml`, `upstream-sync.yml` | fork CI, sync and release workflows |
@@ -151,19 +150,17 @@ history stays intact and future merges only see new upstream commits.
 
 ## MetricsQL dependency
 
-pint imports `github.com/VictoriaMetrics/metricsql` unchanged and pins our private fork
+pint imports `github.com/VictoriaMetrics/metricsql` unchanged and pins our fork
 to an exact tag with a `replace` directive in `go.mod`:
 
 ```
 replace github.com/VictoriaMetrics/metricsql => github.com/AnatoliiVolchkov/metricsql v0.87.5-pint.3
 ```
 
-`go.sum` records its checksum, so builds are reproducible. The private module is never
-fetched through `proxy.golang.org` or verified against `sum.golang.org`:
+`go.sum` records its checksum, so builds are reproducible. The module is public, the go
+command fetches it without credentials:
 
 ```sh
-go env -w GOPRIVATE='github.com/AnatoliiVolchkov/*'
-# git must be able to read https://github.com/AnatoliiVolchkov/metricsql, e.g. via `gh auth setup-git`
 GOWORK=off go build ./cmd/pint
 ```
 
@@ -200,31 +197,20 @@ GOWORK=off go build ./...      # builds against the pinned tag, like CI
 
 `go.work` is never committed and CI always runs with `GOWORK=off`.
 
-### CI access to the private module
+## Before pushing
 
-Workflows that build pint use `.github/actions/private-go-modules`, which sets
-`GOPRIVATE=github.com/AnatoliiVolchkov/*` and configures git to authenticate requests for
-`https://github.com/AnatoliiVolchkov/metricsql` with one of two read-only credentials, both limited
-to that single repository:
+These repositories are public, and anything pushed to a fork stays reachable by SHA through
+the upstream fork network, even after it is deleted. Before every push:
 
-- `METRICSQL_READ_TOKEN` (used when set): fine-grained PAT. Create it in GitHub, Settings,
-  Developer settings, Fine-grained personal access tokens, Generate new token: resource
-  owner `AnatoliiVolchkov`, repository access "Only select repositories" with `AnatoliiVolchkov/metricsql`,
-  repository permission Contents: Read-only, an expiry. Then
-  `gh secret set METRICSQL_READ_TOKEN -R AnatoliiVolchkov/pint`.
-- `METRICSQL_DEPLOY_KEY` (configured): private key of the read-only deploy key
-  "AnatoliiVolchkov/pint CI (read-only)" of `AnatoliiVolchkov/metricsql`. Rotate it with:
+- Read the commits you are about to push. Real host names, addresses, cluster, tenant, team
+  and account names must not be in them.
+- Scan them for secrets:
 
   ```sh
-  d=$(mktemp -d)
-  ssh-keygen -q -t ed25519 -N "" -C "AnatoliiVolchkov/pint CI read-only" -f "$d/key"
-  gh repo deploy-key add "$d/key.pub" -R AnatoliiVolchkov/metricsql --title "AnatoliiVolchkov/pint CI (read-only)"
-  gh secret set METRICSQL_DEPLOY_KEY -R AnatoliiVolchkov/pint < "$d/key"
-  rm -rf "$d"
-  gh repo deploy-key list -R AnatoliiVolchkov/metricsql   # delete the old key with gh repo deploy-key delete <id>
+  gitleaks git --redact --log-opts="origin/main..HEAD"
   ```
 
-The credential only appears in the job's git configuration, it is never printed.
+gitleaks finds tokens and keys, not host names, so only reading the commits catches those.
 
 ## Sync workflow
 
@@ -257,9 +243,6 @@ What it does:
 
 Tokens:
 
-- `METRICSQL_READ_TOKEN` or `METRICSQL_DEPLOY_KEY` (one is required): read-only access to
-  `AnatoliiVolchkov/metricsql`, see "CI access to the private module". Used by every workflow that
-  builds pint.
 - `SYNC_TOKEN` (optional): fine-grained PAT on `AnatoliiVolchkov/pint` with Contents, Pull requests,
   Issues and Workflows read/write. Without it the job uses `GITHUB_TOKEN`, which cannot push
   merges that modify `.github/workflows/*` (the job then opens an issue saying so), and pull
@@ -279,8 +262,7 @@ Upstream's `.github/dependabot.yml` is deleted in this fork, which turns off Dep
 version updates; GitHub has no setting for that. Its pull requests bumped upstream's
 `Dockerfile` (unused here), Go modules that upstream bumps itself (they arrive with
 upstream syncs and would conflict in `go.mod`/`go.sum`), and actions in upstream workflows
-that must stay byte-for-byte unchanged. Dependabot runs also get no repository secrets, so
-every job failed fetching the private MetricsQL module.
+that must stay byte-for-byte unchanged.
 
 Dependabot alerts (vulnerability notifications, no pull requests) are enabled in the
 repository settings, Dependabot security updates are not:
@@ -293,8 +275,8 @@ gh api repos/AnatoliiVolchkov/pint/automated-security-fixes         # {"enabled"
 ## Disabled upstream workflows
 
 Upstream workflows are kept byte-for-byte unchanged so they never conflict during
-syncs. Workflows that cannot work in this private repository are disabled through
-GitHub workflow state, not by editing them:
+syncs. Workflows that duplicate `pint-ci.yml` or publish for cloudflare are disabled
+through GitHub workflow state, not by editing them:
 
 ```sh
 for f in benchmark.yml ci.yml compile.yml deps.yml docker.yml docs.yml examples.yml \
@@ -306,10 +288,10 @@ gh workflow list -R AnatoliiVolchkov/pint --all
 
 | Workflow           | Why it is disabled                                                                       |
 |--------------------|------------------------------------------------------------------------------------------|
-| `test.yml`         | Cannot fetch the private MetricsQL module; `make test` runs in `pint-ci.yml` instead.     |
-| `lint.yml`         | Same; `make lint` and `make format` run in `pint-ci.yml`.                                 |
-| `go-mod-tidy.yml`  | Same; `go mod tidy` check runs in `pint-ci.yml`.                                          |
-| `examples.yml`     | Same; example validation runs in `pint-ci.yml`.                                           |
+| `test.yml`         | `make test` runs in `pint-ci.yml` instead.                                                |
+| `lint.yml`         | `make lint` and `make format` run in `pint-ci.yml`.                                       |
+| `go-mod-tidy.yml`  | `go mod tidy` check runs in `pint-ci.yml`.                                                |
+| `examples.yml`     | Example validation runs in `pint-ci.yml`.                                                 |
 | `compile.yml`      | Publishes release binaries and ghcr.io images for cloudflare; `pint-ci.yml` builds the binary artifact. |
 | `docker.yml`       | Builds upstream Docker images.                                                            |
 | `goreleaser.yml`   | Upstream release configuration check.                                                     |
@@ -317,7 +299,7 @@ gh workflow list -R AnatoliiVolchkov/pint --all
 | `docs.yml`         | Upstream docs spellcheck/markdown lint, needs Pages permissions.                          |
 | `ci.yml`           | Self-gated to `cloudflare/pint`, never runs here.                                         |
 | `benchmark.yml`    | Downloads upstream benchmark data on pull requests.                                       |
-| `deps.yml`         | GitHub dependency review needs GitHub Advanced Security on private repositories.         |
+| `deps.yml`         | Upstream dependency review; Dependabot alerts report vulnerable dependencies here.       |
 | `semgrep.yml`      | Upstream Semgrep scan on a schedule.                                                      |
 
 After every sync, check for **new upstream workflows** and decide whether to disable them:

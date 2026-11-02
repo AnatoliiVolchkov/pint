@@ -154,7 +154,6 @@ Only single-node tests: unset `PINT_VM_CLUSTER_URL` and `PINT_VM_CLUSTER_INSERT_
 ## Full suite locally
 
 ```sh
-export GOPRIVATE='github.com/AnatoliiVolchkov/*'
 GOWORK=off make test          # everything, -race -count=3, Docker tests included
 GOWORK=off make lint
 GOWORK=off go test -count=1 ./...
