@@ -353,9 +353,10 @@ so the upstream projects stay their fork parents.
   `b7f794fa`. Findings on every local rule set stayed the same; only the corpus error text
   for `0x` changed from `ParseInt` to `ParseFloat`. `upstream_verdicts.txt` still comes
   from upstream v0.87.5: none of its queries changed verdict, so it wasn't regenerated.
-- **Releases (2026-11-05):** `release.yml` builds no Windows binaries (`f61500a3`) and pins
-  Go 1.27.3 itself instead of reading upstream's `go.ver` (`dc761f82`). The first release
-  here, `v0.89.2-95-gf61500a3`, was built from `f61500a3`, with metricsql `v0.87.5-pint.3`.
+- **Releases (2026-11-05):** `release.yml` builds no Windows binaries (`f61500a3`). A Go
+  pin in `release.yml` (`dc761f82`) was reverted the same day at the user's request: releases
+  use upstream's `go.ver` like CI, with no extra logic. The first release here,
+  `v0.89.2-95-gf61500a3`, was built from `f61500a3`, with metricsql `v0.87.5-pint.3`.
 
 ## Recurring decisions
 
