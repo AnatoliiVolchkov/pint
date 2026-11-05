@@ -347,6 +347,15 @@ so the upstream projects stay their fork parents.
 - **metricsql is public,** so the `private-go-modules` action and its secrets are gone.
 - Releases and pull request numbers before this point belong to the predecessor. They were
   not carried over, see "Releases in the predecessor repository" below.
+- **metricsql v0.87.6 (2026-11-05).** The metricsql fork merged upstream v0.87.6 (its PR #1,
+  no conflicts), which parses numeric literals with a leading zero like `08` as decimal
+  numbers instead of rejecting them as invalid octal. Tag `v0.87.6-pint.1`, pinned in
+  `b7f794fa`. Findings on every local rule set stayed the same; only the corpus error text
+  for `0x` changed from `ParseInt` to `ParseFloat`. `upstream_verdicts.txt` still comes
+  from upstream v0.87.5: none of its queries changed verdict, so it wasn't regenerated.
+- **Releases (2026-11-05):** `release.yml` builds no Windows binaries (`f61500a3`) and pins
+  Go 1.27.3 itself instead of reading upstream's `go.ver` (`dc761f82`). The first release
+  here, `v0.89.2-95-gf61500a3`, was built from `f61500a3`, with metricsql `v0.87.5-pint.3`.
 
 ## Recurring decisions
 

@@ -6,7 +6,7 @@ MetricsQL rules, as evaluated by vmalert, while PromQL mode stays identical to u
 
 The MetricsQL parser comes from the companion fork **AnatoliiVolchkov/metricsql**, which adds
 source positions. It is pinned in `go.mod`:
-`replace github.com/VictoriaMetrics/metricsql => github.com/AnatoliiVolchkov/metricsql v0.87.5-pint.3`.
+`replace github.com/VictoriaMetrics/metricsql => github.com/AnatoliiVolchkov/metricsql v0.87.6-pint.1`.
 That repository has its own `.claude/CLAUDE.md`.
 
 Clone both repositories side by side. `go.work.example` builds pint against `../metricsql`.
@@ -99,17 +99,17 @@ Repository docs written for humans (paths from the repository root):
 - `docs/configuration.md`: `query_language`, `backend`, `scrapeInterval`, `externalLabels`.
 - `.github/metricsql-test/README.md`: the alert standard and real-server commands.
 
-## Current state (2026-11-02)
+## Current state (2026-11-05)
 
 - **Base:** upstream cloudflare/pint **v0.89.2** plus the fork's commits, with metricsql
-  `v0.87.5-pint.3`. PromQL mode output was byte-identical to upstream v0.89.2 on the local
-  rule sets at the last release.
+  `v0.87.6-pint.1` (upstream metricsql v0.87.6, since 2026-11-05). PromQL mode output was
+  byte-identical to upstream v0.89.2 on the local rule sets at the last release.
 - **Next upstream sync:** v0.89.3 and v0.89.4 are out and not merged yet. A test merge on
   2026-10-30 conflicted only in `docs/changelog.md`, but it also touches
   `internal/checks/alerts_count.go` and `internal/promapi/range.go`, so run the full tests.
 - **Public move (2026-11):** this repository replaced a private predecessor, with rewritten
-  history, see `docs/history.md`. No release has been cut here yet, and the release names in
-  these docs refer to the predecessor.
+  history, see `docs/history.md`. The first release here is `v0.89.2-95-gf61500a3`
+  (2026-11-05). Older release names in these docs refer to the predecessor.
 - **CI skips docs-only commits.** Before a release check CI on the last commit that ran it,
   see `docs/release-and-sync.md`.
 - **Don't re-offer rejected ideas,** see backlog "Rejected ideas".

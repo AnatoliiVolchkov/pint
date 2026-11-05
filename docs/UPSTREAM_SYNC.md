@@ -154,7 +154,7 @@ pint imports `github.com/VictoriaMetrics/metricsql` unchanged and pins our fork
 to an exact tag with a `replace` directive in `go.mod`:
 
 ```
-replace github.com/VictoriaMetrics/metricsql => github.com/AnatoliiVolchkov/metricsql v0.87.5-pint.3
+replace github.com/VictoriaMetrics/metricsql => github.com/AnatoliiVolchkov/metricsql v0.87.6-pint.1
 ```
 
 `go.sum` records its checksum, so builds are reproducible. The module is public, the go
@@ -167,14 +167,14 @@ GOWORK=off go build ./cmd/pint
 Updating the pin after a new metricsql release (see metricsql `docs/UPSTREAM_SYNC.md`):
 
 ```sh
-go mod edit -replace github.com/VictoriaMetrics/metricsql=github.com/AnatoliiVolchkov/metricsql@v0.87.5-pint.N
+go mod edit -replace github.com/VictoriaMetrics/metricsql=github.com/AnatoliiVolchkov/metricsql@v<upstream>-pint.N
 go mod tidy
 GOWORK=off go test ./...
-git commit -am "Update metricsql to v0.87.5-pint.N"
+git commit -am "go: update metricsql to v<upstream>-pint.N"
 ```
 
 If upstream metricsql has a newer release than the one our fork is based on, sync the fork
-first, release a new `-pint.N` tag from its `main`, then bump the `require` line too:
+first, release a new `-pint.N` tag from its `master`, then bump the `require` line too:
 
 ```sh
 go mod edit -require github.com/VictoriaMetrics/metricsql@vX.Y.Z

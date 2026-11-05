@@ -270,14 +270,15 @@ In general:
 ## Updating the metricsql pin
 
 The metricsql fork is released as `v<upstream>-pint.N` tags. The current tag is
-`v0.87.5-pint.3`, the first in this repository. Don't reuse lower numbers. The tags are
+`v0.87.6-pint.1` (2026-11-05, upstream v0.87.6); the first in this repository was
+`v0.87.5-pint.3`. N restarts at 1 for a new upstream base; never reuse a number. The tags are
 public and cached forever by `proxy.golang.org`, so never move or delete a pushed tag.
 
-1. Make the change in metricsql and merge it to its `main`. Tag it:
-   `git tag -a v0.87.5-pint.N -m ...`, then `git push origin v0.87.5-pint.N`.
+1. Make the change in metricsql and merge it to its `master`. Tag it:
+   `git tag -a v<upstream>-pint.N -m ...`, then `git push origin v<upstream>-pint.N`.
 2. Update the pin in pint:
    ```sh
-   go mod edit -replace github.com/VictoriaMetrics/metricsql=github.com/AnatoliiVolchkov/metricsql@v0.87.5-pint.N
+   go mod edit -replace github.com/VictoriaMetrics/metricsql=github.com/AnatoliiVolchkov/metricsql@v<upstream>-pint.N
    GOWORK=off go mod tidy
    GOWORK=off go test ./...
    ```

@@ -194,7 +194,7 @@ RuleScope, RuleProbe, promlint and others). Don't offer them again unless the us
   pass and fail only online, as "unable to run checks". Porting VictoriaMetrics' arity rules
   for about 250 functions was judged not worth it.
 - **Subquery ranges aren't checked against retention.** This is upstream behaviour.
-- **Parser version skew.** pint pins metricsql v0.87.5, while a real server may run an older one.
+- **Parser version skew.** pint pins metricsql v0.87.6, while a real server may run an older one.
   The test Docker images are v1.153.0 (metricsql v0.87.4).
 
 ## Cosmetic (seen 2026-10-02, recheck before fixing)

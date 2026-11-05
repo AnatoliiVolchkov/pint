@@ -186,7 +186,7 @@ texts; testscripts show the rewritten ones.
   - logs "Using external labels from the command line", and a warning when no VictoriaMetrics
     server exists.
 - **`pint version`** (`cmd/pint/version.go`) prints a second line from `debug.ReadBuildInfo`,
-  for example `metricsql:  v0.87.5-pint.3 (replaces VictoriaMetrics/metricsql v0.87.5)`.
+  for example `metricsql:  v0.87.6-pint.1 (replaces VictoriaMetrics/metricsql v0.87.6)`.
   A `go.work` build shows `(devel)`.
 - **`pint parse --query-language metricsql '<query>'`** prints the pint AST, including the
   MetricsQL-only fields. Use it when debugging the converter.

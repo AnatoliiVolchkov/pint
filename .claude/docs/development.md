@@ -26,7 +26,7 @@ go build ./...                                    # with a local go.work: builds
 - **Reproducing a release binary.**
   - Build with `GOWORK=off`, from a clean tree, at the release commit.
   - `go version -m ./pint` must show `vcs.modified=false` and
-    `=> github.com/AnatoliiVolchkov/metricsql v0.87.5-pint.N`.
+    `=> github.com/AnatoliiVolchkov/metricsql v<upstream>-pint.N`, the tag pinned in `go.mod`.
 
 ## Test
 
