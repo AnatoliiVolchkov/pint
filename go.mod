@@ -3,7 +3,7 @@ module github.com/cloudflare/pint
 go 1.27.0
 
 require (
-	github.com/VictoriaMetrics/metricsql v0.87.5
+	github.com/VictoriaMetrics/metricsql v0.87.6
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/gkampitakis/go-snaps v0.5.23
 	github.com/google/go-cmp v0.7.0
@@ -98,4 +98,4 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/VictoriaMetrics/metricsql => github.com/AnatoliiVolchkov/metricsql v0.87.5-pint.3
+replace github.com/VictoriaMetrics/metricsql => github.com/AnatoliiVolchkov/metricsql v0.87.6-pint.1
