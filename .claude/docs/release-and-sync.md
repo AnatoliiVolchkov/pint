@@ -60,6 +60,8 @@ What the workflow does:
    name already exists, meaning the commit was already released.
 2. **Build.** Builds linux amd64/arm64 and darwin amd64/arm64 (no Windows build) with
    `GOWORK=off -trimpath`, in `$RUNNER_TEMP` (see the pitfalls below). Writes `checksums.txt`.
+   Go is pinned in the workflow (`go-version`, 1.27.3 since 2026-11-05), not read from
+   upstream's `go.ver`, which CI uses. Bump it when a new Go patch release is out.
 3. **Verify.** Runs `pint version` on the linux binary. The first line must equal
    `<version> (revision: <sha>)`, the second must match the `metricsql:` format, and
    `vcs.modified` must be false.
