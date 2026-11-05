@@ -357,6 +357,13 @@ so the upstream projects stay their fork parents.
   pin in `release.yml` (`dc761f82`) was reverted the same day at the user's request: releases
   use upstream's `go.ver` like CI, with no extra logic. The first release here,
   `v0.89.2-95-gf61500a3`, was built from `f61500a3`, with metricsql `v0.87.5-pint.3`.
+- **Upstream v0.89.4 (2026-11-05),** PR #1, see `release-and-sync.md`. Its fuzz run found a
+  `promql/nan` panic on divisors without a selector, like `0 / sum(vector(1))`, also in
+  upstream: fixed in `f8a0d9bf`, such divisors are skipped.
+- **Gaps from a list pasted from another session (2026-11-06),** checked by running pint and
+  by reading the code, see `backlog.md`. Fixed: MetricsQL-only selectors, like metric names
+  with dots, in `promql/series` settings and comments (`7bd37ea7`), and `rollup_*()`
+  windows in `promql/rate`, measured in Docker first (`02077992`).
 
 ## Recurring decisions
 

@@ -206,13 +206,19 @@ RuleScope, RuleProbe, promlint and others). Don't offer them again unless the us
 
 ## From code reading only, not confirmed as bugs
 
-- `keep_metric_names` is ignored by label analysis.
-- `rollup_rate()` and similar rollups aren't window-checked by `promql/rate`.
-- `metricsql.Language.ParseMetricSelector` rejects `or` filters. Production code only calls
-  `parser.PromQL.ParseMetricSelector`, in `promql/series` for its settings and for
-  `# pint disable promql/series(...)` selectors. So selectors in those places must use
-  PromQL syntax, even in MetricsQL mode.
 - The VictoriaMetrics `cluster` flag is unused outside tests.
+- `or` filters in `promql/series` settings and `# pint disable promql/series(...)` selectors
+  are rejected, `metricsql.Language.ParseMetricSelector` returns only one group of matchers.
+  Other MetricsQL-only selectors work there since `7bd37ea7`.
+
+Checked on 2026-11-06 and removed from this list:
+
+- `rollup_rate()` and similar rollups weren't window-checked by `promql/rate`: fixed in
+  `02077992` after measuring them in Docker.
+- `keep_metric_names` isn't a gap in `labels/conflict`: it reports
+  `rate({__name__=~"a|b"}[5m]) keep_metric_names` like the same query without it, and that's
+  right, vmalert fails on series that differ only by the metric name either way (see
+  `vmalert-and-victoriametrics.md`, "same labelset").
 
 ## Repository and CI chores
 
@@ -226,9 +232,8 @@ RuleScope, RuleProbe, promlint and others). Don't offer them again unless the us
   `.github/workflows/*` can't be pushed by the sync job: it opens an issue instead. In the
   180 days before 2026-10, 69 of 501 upstream pint commits touched workflows. Less relevant
   since `41d2e53d`: the pint job only runs on demand, syncs are done by hand.
-- **Squash and rebase merges are still allowed** in both repositories, although sync PRs
-  must use merge commits. Disabling them is recommended, the owner does that in the
-  repository settings.
+- **Merge settings (checked 2026-11-06):** both repositories allow only merge commits and
+  delete head branches after a merge.
 - **Helm.** Templates must be rendered before pint can lint them. Relaxed Kubernetes
   parsing needs `parser { relaxed = ["(.*/)?k8s/.*"] }`, and `pint ci` needs
   `ci { baseBranch = "main" }`.
