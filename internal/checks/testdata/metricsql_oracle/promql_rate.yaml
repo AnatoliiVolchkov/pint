@@ -213,6 +213,50 @@ cases:
             start: 0
             end: 28
             line: 2
+  - name: rollup_rate window shorter than two scrape intervals minus 5m
+    kind: positive
+    comment: >-
+      With a 10m scrape interval a 12m window can have a single sample and the sample before
+      it is more than 5m before the window, rollup_rate() then returns 0 (Docker v1.153.0:
+      wrong on 30 of 120 instant queries, never for 15m, whatever the step up to 10m).
+    settings:
+      scrapeInterval: 10m
+    rules: |
+      - record: x
+        expr: 'rollup_rate(rollup_rate_short_total[12m])'
+    data:
+      step: 10m
+      series:
+        - metric: rollup_rate_short_total{job="a"}
+          values: 0+100x30
+    expect:
+      - rule: x
+        reporter: promql/rate
+        severity: warning
+        summary: duration too small
+        lines: "2"
+        diagnostics:
+          - message: '`rollup_rate()` needs a window of at least 15m with the `10m` scrape_interval of `vm` VictoriaMetrics server at $URI: VictoriaMetrics uses the sample before the window only if it''s at most 5m before the window. A `[12m]` window can miss the samples `rollup_rate()` needs, so it can return `0` or nothing instead of the real value.'
+            fragment: rollup_rate(rollup_rate_short_total[12m])
+            start: 0
+            end: 41
+            line: 2
+  - name: rollup_rate window of two scrape intervals minus 5m
+    kind: boundary
+    settings:
+      scrapeInterval: 10m
+    rules: |
+      - record: x
+        expr: 'rollup_rate(rollup_rate_ok_total[15m])'
+    data:
+      step: 10m
+      series:
+        - metric: rollup_rate_ok_total{job="a"}
+          values: 0+100x30
+    vm:
+      - query: rollup_rate(rollup_rate_ok_total[15m], "min") > bool 0
+        result: '{job="a"} 1'
+    expect: []
   - name: interval between samples longer than the configured scrape interval
     kind: positive
     comment: >-

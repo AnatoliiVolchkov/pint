@@ -174,3 +174,112 @@
 []
 
 ---
+
+[TestRateVMRollupWindow/rollup_rate_needs_2x_scrape_interval_minus_5m - 1]
+- description: rollup_rate needs 2x scrape interval minus 5m
+  content: |
+    - record: foo:rollup
+      expr: rollup_rate(foo[12m])
+  output: |
+    2 |   expr: rollup_rate(foo[12m])
+                ^^^^^^^^^^^^^^^^^^^^^
+                `rollup_rate()` needs a window of at least 15m with the `10m` scrape_interval of `prom`
+                VictoriaMetrics server at https://simple.example.com: VictoriaMetrics uses the sample before
+                the window only if it's at most 5m before the window. A `[12m]` window can miss the samples
+                `rollup_rate()` needs, so it can return `0` or nothing instead of the real value.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: '`rollup_rate()`, `rollup_deriv()`, `rollup_increase()` and `rollup_delta()` calculate changes between adjacent samples. When the window has a single sample, VictoriaMetrics pairs it with the sample before the window only if that one is at most 5m before the window, or `-search.minStalenessInterval` when it''s longer. Otherwise these functions return `0` instead of the real change, so the window must be at least two scrape intervals minus that limit, and at least one scrape interval.'
+    diagnostics:
+        - message: '`rollup_rate()` needs a window of at least 15m with the `10m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com: VictoriaMetrics uses the sample before the window only if it''s at most 5m before the window. A `[12m]` window can miss the samples `rollup_rate()` needs, so it can return `0` or nothing instead of the real value.'
+          firstcolumn: 1
+          lastcolumn: 21
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRateVMRollupWindow/rollup_rate_with_a_window_of_2x_scrape_interval_minus_5m - 1]
+[]
+
+---
+
+[TestRateVMRollupWindow/-search.minStalenessInterval_lets_rollup_delta_use_an_older_sample - 1]
+[]
+
+---
+
+[TestRateVMRollupWindow/rollup_deriv_with_a_window_of_one_1m_scrape_interval - 1]
+[]
+
+---
+
+[TestRateVMRollupWindow/rollup_rate_with_a_window_shorter_than_the_scrape_interval - 1]
+- description: rollup_rate with a window shorter than the scrape interval
+  content: |
+    - record: foo:rollup
+      expr: rollup_rate(foo[30s])
+  output: |
+    2 |   expr: rollup_rate(foo[30s])
+                ^^^^^^^^^^^^^^^^^^^^^
+                `rollup_rate()` needs a window of at least 1m with the `1m` scrape_interval of `prom`
+                VictoriaMetrics server at https://simple.example.com: VictoriaMetrics uses the sample before
+                the window only if it's at most 5m before the window. A `[30s]` window can miss the samples
+                `rollup_rate()` needs, so it can return `0` or nothing instead of the real value.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: '`rollup_rate()`, `rollup_deriv()`, `rollup_increase()` and `rollup_delta()` calculate changes between adjacent samples. When the window has a single sample, VictoriaMetrics pairs it with the sample before the window only if that one is at most 5m before the window, or `-search.minStalenessInterval` when it''s longer. Otherwise these functions return `0` instead of the real change, so the window must be at least two scrape intervals minus that limit, and at least one scrape interval.'
+    diagnostics:
+        - message: '`rollup_rate()` needs a window of at least 1m with the `1m` scrape_interval of `prom` VictoriaMetrics server at https://simple.example.com: VictoriaMetrics uses the sample before the window only if it''s at most 5m before the window. A `[30s]` window can miss the samples `rollup_rate()` needs, so it can return `0` or nothing instead of the real value.'
+          firstcolumn: 1
+          lastcolumn: 21
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRateVMRollupWindow/rollup_rate_on_a_metric_written_less_often_than_the_scrape_interval - 1]
+- description: rollup_rate on a metric written less often than the scrape interval
+  content: |
+    - record: foo:rollup
+      expr: rollup_rate(foo[5m])
+  output: |
+    2 |   expr: rollup_rate(foo[5m])
+                ^^^^^^^^^^^^^^^^^^^^
+                `rollup_rate()` needs a window of at least 15m with samples of `foo` every 10m on `prom`
+                VictoriaMetrics server at https://simple.example.com (its slowest series in the last 15m,
+                measured with `scrape_interval()`; `scrapeInterval` in pint config is 1m): VictoriaMetrics
+                uses the sample before the window only if it's at most 5m before the window. A `[5m]` window
+                can miss the samples `rollup_rate()` needs, so it can return `0` or nothing instead of the
+                real value.
+  problem:
+    reporter: promql/rate
+    summary: duration too small
+    details: '`rollup_rate()`, `rollup_deriv()`, `rollup_increase()` and `rollup_delta()` calculate changes between adjacent samples. When the window has a single sample, VictoriaMetrics pairs it with the sample before the window only if that one is at most 5m before the window, or `-search.minStalenessInterval` when it''s longer. Otherwise these functions return `0` instead of the real change, so the window must be at least two scrape intervals minus that limit, and at least one scrape interval.'
+    diagnostics:
+        - message: '`rollup_rate()` needs a window of at least 15m with samples of `foo` every 10m on `prom` VictoriaMetrics server at https://simple.example.com (its slowest series in the last 15m, measured with `scrape_interval()`; `scrapeInterval` in pint config is 1m): VictoriaMetrics uses the sample before the window only if it''s at most 5m before the window. A `[5m]` window can miss the samples `rollup_rate()` needs, so it can return `0` or nothing instead of the real value.'
+          firstcolumn: 1
+          lastcolumn: 20
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRateVMRollupWindow/rollup()_over_raw_values_is_not_checked - 1]
+[]
+
+---

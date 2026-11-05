@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -174,13 +175,15 @@ func (c RateCheck) measureInterval(ctx context.Context, selector string) vmInter
 }
 
 // measureIntervals returns intervals between samples of selectors of rate(), irate(),
-// increase() and deriv() calls that are longer than the configured scrape interval.
+// increase(), deriv() and rollup_*() calls that are longer than the configured scrape interval.
 func (c RateCheck) measureIntervals(ctx context.Context, expr *parser.PromQLExpr, scrape time.Duration) map[string]vmInterval {
 	intervals := map[string]vmInterval{}
 	done := map[string]struct{}{}
 	for _, src := range expr.Source() {
 		src.WalkSources(func(s *source.Source, _ *source.Join, _ *source.Unless) {
-			if _, ok := findRateCall(s, true); !ok {
+			_, isRate := findRateCall(s, true)
+			_, isRollup := findRollupCall(s)
+			if !isRate && !isRollup {
 				return
 			}
 			if _, ok := source.MostOuterOperation[*ast.MatrixSelector](s); !ok {
@@ -242,7 +245,7 @@ func (c RateCheck) withVMWindow(ctx context.Context, entry *discovery.Entry, scr
 		return c
 	}
 	intervals := c.measureIntervals(ctx, entry.Rule.Expr(), scrape)
-	if node := entry.Rule.Expr().Query().Expr; !hasRuntimeWindow(node) && !hasShortWindow(node, scrape) && len(intervals) == 0 {
+	if node := entry.Rule.Expr().Query().Expr; !hasRuntimeWindow(node) && !hasShortWindow(node, scrape) && !hasRollupCall(node) && len(intervals) == 0 {
 		return c
 	}
 	settings, ok := vmLookbackSettingsFor(ctx, c.prom, true)
@@ -369,6 +372,103 @@ func (c RateCheck) shortWindowProblems(
 					"`%s()` needs a window of at least %s %s: %s. "+
 						"A `[%s]` window can have a single sample, so it can return no results or wrong ones.",
 					call.Func.Name, output.HumanizeDuration(need), scrapeText, why, output.HumanizeDuration(m.Range),
+				),
+				Pos:         expr.Value.Pos,
+				Expr:        expr.Query().Expr,
+				FirstColumn: int(call.PosRange.Start) + 1,
+				LastColumn:  int(call.PosRange.End),
+				Kind:        diags.Issue,
+			},
+		},
+	}}
+}
+
+// rollup_rate(), rollup_deriv(), rollup_increase() and rollup_delta() work on the changes
+// between adjacent samples. Checked with v1.153.0 on 2026-11-06, counters growing 1/s and
+// 120 instant queries 30s apart: when the window has a single sample VictoriaMetrics pairs it
+// with the sample before the window only if that one is at most 5m before the window, or
+// -search.minStalenessInterval when it's longer, otherwise these functions return 0 (min, max
+// and avg), not nothing. Samples every 10m: [10m] wrong on 54, [12m] on 30, [14m] on 6,
+// [15m] never, the same with steps 1m to 10m; with -search.minStalenessInterval=10m [10m] was
+// always right. A 15m step made [10m] right too, but a 5m step didn't help a [30s] window on
+// samples every 1m, so the step isn't taken into account. Every 5m: [4m] wrong on 24,
+// [5m] never; every 1m: [30s] on 60, [1m] never. -search.maxStalenessInterval and
+// -search.maxLookback set to 10m changed nothing.
+var vmRollupFuncs = []string{"rollup_rate", "rollup_deriv", "rollup_increase", "rollup_delta"}
+
+const vmRollupPrevLimit = 5 * time.Minute
+
+const RateCheckRollupWindowDetails = "`rollup_rate()`, `rollup_deriv()`, `rollup_increase()` and `rollup_delta()` " +
+	"calculate changes between adjacent samples. When the window has a single sample, VictoriaMetrics " +
+	"pairs it with the sample before the window only if that one is at most 5m before the window, " +
+	"or `-search.minStalenessInterval` when it's longer. Otherwise these functions return `0` instead of " +
+	"the real change, so the window must be at least two scrape intervals minus that limit, and at least one scrape interval."
+
+// findRollupCall returns the rollup_*() call of a source that works on changes between samples.
+func findRollupCall(s *source.Source) (*ast.Call, bool) {
+	for _, op := range s.Operations {
+		if call, ok := op.Node.(*ast.Call); ok && slices.Contains(vmRollupFuncs, call.Func.Name) {
+			return call, true
+		}
+	}
+	return nil, false
+}
+
+// hasRollupCall returns true if the query calls one of vmRollupFuncs.
+func hasRollupCall(node ast.Node) (found bool) {
+	ast.Inspect(node, func(n ast.Node) bool {
+		if call, ok := n.(*ast.Call); ok && slices.Contains(vmRollupFuncs, call.Func.Name) {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+// vmRollupWindowNeed returns the shortest window that always has the samples vmRollupFuncs
+// need, for a scrape interval and the server's -search.minStalenessInterval.
+func vmRollupWindowNeed(scrape, minStaleness time.Duration) time.Duration {
+	return max(scrape, 2*scrape-max(vmRollupPrevLimit, minStaleness))
+}
+
+// rollupWindowProblems reports explicit windows of vmRollupFuncs that can have a single
+// sample without the sample before the window, for MetricsQL rules checked against
+// VictoriaMetrics.
+func (c RateCheck) rollupWindowProblems(expr *parser.PromQLExpr, s *source.Source, cfg *promapi.ConfigResult) []Problem {
+	if c.vm == nil {
+		return nil
+	}
+	call, ok := findRollupCall(s)
+	if !ok {
+		return nil
+	}
+	m, ok := source.MostOuterOperation[*ast.MatrixSelector](s)
+	if !ok || m.Implicit || m.StepRelative {
+		return nil
+	}
+	scrape, scrapeText := c.scrapeFor(m, cfg)
+	if scrape <= 0 {
+		return nil
+	}
+	need := vmRollupWindowNeed(scrape, c.vm.settings.minStaleness)
+	if m.Range >= need {
+		return nil
+	}
+	return []Problem{{
+		Anchor:   AnchorAfter,
+		Lines:    expr.Value.Pos.Lines(),
+		Reporter: c.Reporter(),
+		Summary:  "duration too small",
+		Details:  RateCheckRollupWindowDetails,
+		Severity: Warning,
+		Diagnostics: []diags.Diagnostic{
+			{
+				Message: fmt.Sprintf(
+					"`%s()` needs a window of at least %s %s: VictoriaMetrics uses the sample before the window "+
+						"only if it's at most %s before the window. A `[%s]` window can miss the samples `%s()` needs, so it can return `0` or nothing instead of the real value.",
+					call.Func.Name, output.HumanizeDuration(need), scrapeText,
+					output.HumanizeDuration(max(vmRollupPrevLimit, c.vm.settings.minStaleness)),
+					output.HumanizeDuration(m.Range), call.Func.Name,
 				),
 				Pos:         expr.Value.Pos,
 				Expr:        expr.Query().Expr,

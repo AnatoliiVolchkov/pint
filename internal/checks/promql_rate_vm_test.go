@@ -93,3 +93,74 @@ func TestRateVMShortWindow(t *testing.T) {
 		},
 	})
 }
+
+// rollup_rate(), rollup_deriv(), rollup_increase() and rollup_delta() return 0 when the
+// window has a single sample and the sample before it is more than 5m before the window.
+func TestRateVMRollupWindow(t *testing.T) {
+	scrape10m := newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute * 10, Retention: 0, QueryStep: 0})
+	scrape1m := newVMWithOptions(promapi.VictoriaMetricsOptions{ExternalLabels: nil, ScrapeInterval: time.Minute, Retention: 0, QueryStep: 0})
+	record := func(expr string) string {
+		return "- record: foo:rollup\n  expr: " + expr + "\n"
+	}
+
+	runTests(t, []checkTest{
+		{
+			description: "rollup_rate needs 2x scrape interval minus 5m",
+			content:     record("rollup_rate(foo[12m])"),
+			language:    parser.MetricsQL,
+			checker:     newRateCheck,
+			prometheus:  scrape10m,
+			mocks:       []*prometheusMock{vmIntervals(nil), vmFlags(nil)},
+			problems:    true,
+		},
+		{
+			description: "rollup_rate with a window of 2x scrape interval minus 5m",
+			content:     record("rollup_rate(foo[15m])"),
+			language:    parser.MetricsQL,
+			checker:     newRateCheck,
+			prometheus:  scrape10m,
+			mocks:       []*prometheusMock{vmIntervals(nil), vmFlags(nil)},
+		},
+		{
+			description: "-search.minStalenessInterval lets rollup_delta use an older sample",
+			content:     record("rollup_delta(foo[10m])"),
+			language:    parser.MetricsQL,
+			checker:     newRateCheck,
+			prometheus:  scrape10m,
+			mocks:       []*prometheusMock{vmIntervals(nil), vmFlags(map[string]string{"search.minStalenessInterval": "10m0s"})},
+		},
+		{
+			description: "rollup_deriv with a window of one 1m scrape interval",
+			content:     record("rollup_deriv(foo[1m])"),
+			language:    parser.MetricsQL,
+			checker:     newRateCheck,
+			prometheus:  scrape1m,
+			mocks:       []*prometheusMock{vmIntervals(nil), vmFlags(nil)},
+		},
+		{
+			description: "rollup_rate with a window shorter than the scrape interval",
+			content:     record("rollup_rate(foo[30s])"),
+			language:    parser.MetricsQL,
+			checker:     newRateCheck,
+			prometheus:  scrape1m,
+			mocks:       []*prometheusMock{vmIntervals(nil), vmFlags(nil)},
+			problems:    true,
+		},
+		{
+			description: "rollup_rate on a metric written less often than the scrape interval",
+			content:     record("rollup_rate(foo[5m])"),
+			language:    parser.MetricsQL,
+			checker:     newRateCheck,
+			prometheus:  scrape1m,
+			mocks:       []*prometheusMock{vmIntervals(map[string]float64{"foo": 600}), vmFlags(nil)},
+			problems:    true,
+		},
+		{
+			description: "rollup() over raw values is not checked",
+			content:     record("rollup(foo[1m])"),
+			language:    parser.MetricsQL,
+			checker:     newRateCheck,
+			prometheus:  scrape10m,
+		},
+	})
+}

@@ -4,6 +4,10 @@
 
 ### Added
 
+- [promql/rate](checks/promql/rate.md) check reports `rollup_rate()`, `rollup_deriv()`,
+  `rollup_increase()` and `rollup_delta()` windows shorter than `2 x scrape_interval - 5m` or
+  one scrape interval when using MetricsQL with a VictoriaMetrics server, these functions
+  return `0` when the window misses the samples they need.
 - Added support for [VictoriaMetrics](https://docs.victoriametrics.com/) and
   [MetricsQL](https://docs.victoriametrics.com/victoriametrics/metricsql/):
   - New `query_language` option in the `parser` config block, set it to `metricsql`

@@ -186,6 +186,9 @@ func (c RateCheck) checkSources(
 
 	for _, src := range expr.Source() {
 		src.WalkSources(func(s *source.Source, _ *source.Join, _ *source.Unless) {
+			if metricsQL {
+				problems = append(problems, c.rollupWindowProblems(expr, s, cfg)...)
+			}
 			call, ok := findRateCall(s, metricsQL)
 			if !ok {
 				return

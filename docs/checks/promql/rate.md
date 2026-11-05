@@ -100,6 +100,23 @@ This was checked with VictoriaMetrics v1.153.0 and a counter scraped every 10m:
   15m both were correct. `rate(foo[2i])` with step 5m returned nothing for half of every
   scrape interval.
 
+### Rollup functions
+
+`rollup_rate()`, `rollup_deriv()`, `rollup_increase()` and `rollup_delta()` calculate changes
+between adjacent samples. When the window has a single sample, VictoriaMetrics pairs it with
+the sample before the window only if that one is at most 5m before the window, or
+`-search.minStalenessInterval` when the server sets a longer one, and these functions return
+`0` otherwise. So for MetricsQL rules checked against a server with
+`backend = "victoriametrics"` their window must be at least `2 x scrape_interval - 5m`, and
+at least `scrape_interval`, whatever the query step. Shorter windows are reported as a
+Warning, with the measured interval between samples when it's longer than the configured one.
+`rollup()`, `rollup_candlestick()` and `rollup_scrape_interval()` aren't checked.
+
+This was checked with VictoriaMetrics v1.153.0 and counters with 120 instant queries 30s
+apart: with samples every 10m `rollup_rate(foo[12m])` returned 0 on 30 queries,
+`rollup_rate(foo[15m])` never, with steps from 1m to 10m; with samples every 5m `[4m]`
+returned 0 on 24 queries, `[5m]` never.
+
 ### VictoriaMetrics metadata
 
 VictoriaMetrics returns one metadata entry per metric name, and the type can come from any
