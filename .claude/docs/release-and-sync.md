@@ -58,7 +58,7 @@ What the workflow does:
 
 1. **Version.** Computes the version with the filter above. It fails if a release with that
    name already exists, meaning the commit was already released.
-2. **Build.** Builds linux amd64/arm64, darwin amd64/arm64 and windows amd64 with
+2. **Build.** Builds linux amd64/arm64 and darwin amd64/arm64 (no Windows build) with
    `GOWORK=off -trimpath`, in `$RUNNER_TEMP` (see the pitfalls below). Writes `checksums.txt`.
 3. **Verify.** Runs `pint version` on the linux binary. The first line must equal
    `<version> (revision: <sha>)`, the second must match the `metricsql:` format, and
