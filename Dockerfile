@@ -1,10 +1,10 @@
-FROM golang:1.27.1-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125
+FROM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd
 COPY . /src
 WORKDIR /src
 RUN apk add make git
 RUN make
 
-FROM debian:stable-20260918@sha256:2bf225230f05881b6a36d20f484088f408c9a1309edc730c0bf01f15e635d411
+FROM debian:stable-20261005@sha256:f7c6c9e4aba843dc41bac68bbf104773f71fabf53f74f8441049aaa56e50c4e2
 RUN apt-get update --yes && \
     apt-get install --no-install-recommends --yes git ca-certificates && \
     rm -rf /var/lib/apt/lists/*

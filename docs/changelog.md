@@ -159,6 +159,19 @@
   VictoriaMetrics uses the last sample before the time range. `rate_prometheus()` and
   `increase_prometheus()` are checked too and still require 2x `scrape_interval`.
 
+## v0.89.4
+
+### Fixed
+
+- Fixed `alerts/count` check undercounting alerts for rules with
+  `keep_firing_for` - [#2004](https://github.com/cloudflare/pint/issues/2004).
+
+## v0.89.3
+
+### Fixed
+
+- Fixed premature cache expiry for range queries.
+
 ## v0.89.2
 
 ### Fixed
