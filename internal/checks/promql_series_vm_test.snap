@@ -106,3 +106,8 @@
     anchor: 0
 
 ---
+
+[TestSeriesCheckMetricsQLDisableComment/disable_comment_with_a_metric_name_with_dots - 1]
+[]
+
+---

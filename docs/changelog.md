@@ -126,6 +126,11 @@
 
 ### Fixed
 
+- [promql/series](checks/promql/series.md) check accepts selectors that only MetricsQL can
+  parse, such as metric names with dots, in `ignoreLabelsValue`, `ignoreMatchingElsewhere`
+  and in `# pint disable promql/series(...)` and `# pint rule/set promql/series(...)`
+  comments. Such selectors made the config fail to load or the comment be reported as
+  invalid. Selectors PromQL accepts work as before, `or` filters are still not supported there.
 - [promql/nan](checks/promql/nan.md) check no longer panics on a division by an aggregation
   without a metric selector, like `0 / sum(vector(1))`. Upstream pint v0.89.4 panics on it too.
 - [alerts/count](checks/alerts/count.md) check no longer fails with `duplicate time series`

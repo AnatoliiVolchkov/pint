@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
 
+	"github.com/cloudflare/pint/internal/checks"
 	"github.com/cloudflare/pint/internal/parser"
 )
 
@@ -135,6 +137,37 @@ func TestSeriesVMCheck(t *testing.T) {
 			checker:     newSeriesCheck,
 			prometheus:  newSimpleProm,
 			mocks:       []*prometheusMock{found(`foo`)},
+		},
+	})
+}
+
+// Selectors in promql/series settings and comments can use MetricsQL-only syntax, such as
+// metric names with dots. PromQL selectors are parsed and reported as before.
+func TestSeriesSettingsMetricsQLSelectors(t *testing.T) {
+	valid := checks.PromqlSeriesSettings{
+		IgnoreLabelsValue:       map[string][]string{`app.example.requests{env="dev"}`: {"code"}},
+		IgnoreMatchingElsewhere: []string{`app.example.requests{env="dev"}`, `foo{job="a"}`},
+	}
+	require.NoError(t, valid.Validate())
+
+	invalid := checks.PromqlSeriesSettings{IgnoreMatchingElsewhere: []string{`foo{`}}
+	err := invalid.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `"foo{" is not a valid PromQL metric selector`)
+}
+
+func TestSeriesCheckMetricsQLDisableComment(t *testing.T) {
+	runTests(t, []checkTest{
+		{
+			description: "disable comment with a metric name with dots",
+			content: `
+# pint disable promql/series(app.example.requests{env="dev"})
+- record: foo
+  expr: sum(app.example.requests{env="dev", code="500"})
+`,
+			language:   parser.MetricsQL,
+			checker:    newSeriesCheck,
+			prometheus: newSimpleVM,
 		},
 	})
 }

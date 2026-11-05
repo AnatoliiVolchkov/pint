@@ -11,8 +11,11 @@ import (
 	"github.com/cloudflare/pint/internal/diags"
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/output"
+	"github.com/cloudflare/pint/internal/parser"
 	"github.com/cloudflare/pint/internal/parser/ast"
 	"github.com/cloudflare/pint/internal/promapi"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // promql/series asks if a selector returns anything now, and for missing metrics looks at
@@ -192,4 +195,20 @@ func (c SeriesCheck) vmSparseSelectors(
 		})
 	}
 	return problems
+}
+
+// parseSeriesSelector parses a selector from promql/series settings and from
+// `# pint disable promql/series(...)` and `# pint rule/set promql/series(...)` comments.
+// PromQL comes first, so every selector PromQL accepts behaves like upstream. Selectors only
+// MetricsQL accepts, such as metric names with dots, are parsed with MetricsQL. When both
+// fail the PromQL error is returned. MetricsQL `or` filters stay unsupported here.
+func parseSeriesSelector(selector string) ([]*labels.Matcher, error) {
+	m, err := parser.PromQL.ParseMetricSelector(selector)
+	if err == nil {
+		return m, nil
+	}
+	if mm, merr := parser.MetricsQL.ParseMetricSelector(selector); merr == nil {
+		return mm, nil
+	}
+	return nil, err
 }

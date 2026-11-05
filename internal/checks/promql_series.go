@@ -73,13 +73,13 @@ func (c *PromqlSeriesSettings) Validate() error {
 	}
 
 	for selector := range c.IgnoreLabelsValue {
-		if _, err := parser.PromQL.ParseMetricSelector(selector); err != nil {
+		if _, err := parseSeriesSelector(selector); err != nil {
 			return fmt.Errorf("%q is not a valid PromQL metric selector: %w", selector, err)
 		}
 	}
 
 	for _, selector := range c.IgnoreMatchingElsewhere {
-		if _, err := parser.PromQL.ParseMetricSelector(selector); err != nil {
+		if _, err := parseSeriesSelector(selector); err != nil {
 			return fmt.Errorf("%q is not a valid PromQL metric selector: %w", selector, err)
 		}
 	}
@@ -846,7 +846,7 @@ func (c SeriesCheck) checkOtherServer(ctx context.Context, query string, setting
 
 		if series > 0 {
 			for _, selector := range settings.IgnoreMatchingElsewhere {
-				m, _ := parser.PromQL.ParseMetricSelector(selector)
+				m, _ := parseSeriesSelector(selector)
 				if c.hasSeriesWithSelector(ctx, pq.prom, query, m) {
 					return "", false
 				}
@@ -1185,7 +1185,7 @@ func matchSelectorToMetric(selector *ast.VectorSelector, metric string) (bool, b
 		return true, true
 	}
 	// Then try matchers.
-	m, err := parser.PromQL.ParseMetricSelector(metric)
+	m, err := parseSeriesSelector(metric)
 	if err != nil {
 		// Ignore errors
 		return false, false
