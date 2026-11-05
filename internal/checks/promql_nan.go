@@ -238,7 +238,11 @@ func (c NaNCheck) findUnsafeDivisor(s *source.Source, skipTopLevelJoin bool) (as
 			if c.safeDivisorSource(s) {
 				continue
 			}
-			vs, _ := source.MostOuterOperation[*ast.VectorSelector](s)
+			vs, ok := source.MostOuterOperation[*ast.VectorSelector](s)
+			if !ok {
+				// No series to be zero, like 0 / sum(vector(1)).
+				continue
+			}
 			return vs.PosRange, true
 		}
 		if c.safeDivisorSource(ind.Src) {

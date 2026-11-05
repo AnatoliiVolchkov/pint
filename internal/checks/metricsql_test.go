@@ -670,7 +670,32 @@ func TestMetricsQLNaNCheck(t *testing.T) {
 			checker:     newNaNCheck,
 			prometheus:  noProm,
 		},
+		{
+			// Found by FuzzMetricsQLChecks, used to panic.
+			description: "division by an aggregation without arguments",
+			content:     "- record: foo\n  expr: (0/sum())\n",
+			checker:     newNaNCheck,
+			prometheus:  noProm,
+		},
+		{
+			description: "division by an aggregation without a selector",
+			content:     "- record: foo\n  expr: 0 / sum(vector(1))\n",
+			checker:     newNaNCheck,
+			prometheus:  noProm,
+		},
 	}))
+}
+
+// Upstream pint panics on the same query in PromQL, the fix covers both.
+func TestNaNCheckDivisorWithoutSelector(t *testing.T) {
+	runTests(t, []checkTest{
+		{
+			description: "division by an aggregation without a selector",
+			content:     "- record: foo\n  expr: 0 / sum(vector(1))\n",
+			checker:     newNaNCheck,
+			prometheus:  noProm,
+		},
+	})
 }
 
 // groupIntervalWriter is a group with a recording and an alerting rule, evaluated every 10m.

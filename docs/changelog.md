@@ -126,6 +126,8 @@
 
 ### Fixed
 
+- [promql/nan](checks/promql/nan.md) check no longer panics on a division by an aggregation
+  without a metric selector, like `0 / sum(vector(1))`. Upstream pint v0.89.4 panics on it too.
 - [alerts/count](checks/alerts/count.md) check no longer fails with `duplicate time series`
   or counts alerts vmalert never fires when a series was replaced by another one, for
   example after a pod was recreated. Selectors without a lookbehind window are now counted

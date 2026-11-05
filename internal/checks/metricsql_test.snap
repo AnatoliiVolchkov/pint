@@ -1439,6 +1439,21 @@
 
 ---
 
+[TestMetricsQLNaNCheck/division_by_an_aggregation_without_arguments - 1]
+[]
+
+---
+
+[TestMetricsQLNaNCheck/division_by_an_aggregation_without_a_selector - 1]
+[]
+
+---
+
+[TestNaNCheckDivisorWithoutSelector/division_by_an_aggregation_without_a_selector - 1]
+[]
+
+---
+
 [TestMetricsQLAggregationCheck/job_removed_inside_WITH - 1]
 - description: job removed inside WITH
   content: |
