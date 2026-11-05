@@ -101,12 +101,10 @@ Repository docs written for humans (paths from the repository root):
 
 ## Current state (2026-11-05)
 
-- **Base:** upstream cloudflare/pint **v0.89.2** plus the fork's commits, with metricsql
-  `v0.87.6-pint.1` (upstream metricsql v0.87.6, since 2026-11-05). PromQL mode output was
-  byte-identical to upstream v0.89.2 on the local rule sets at the last release.
-- **Next upstream sync:** v0.89.3 and v0.89.4 are out and not merged yet. A test merge on
-  2026-10-30 conflicted only in `docs/changelog.md`, but it also touches
-  `internal/checks/alerts_count.go` and `internal/promapi/range.go`, so run the full tests.
+- **Base:** upstream cloudflare/pint **v0.89.4** (synced 2026-11-05) plus the fork's commits,
+  with metricsql `v0.87.6-pint.1` (upstream metricsql v0.87.6). PromQL mode output was
+  byte-identical to upstream v0.89.4 on the local rule sets at the sync.
+- **Next upstream sync:** none pending after v0.89.4.
 - **Public move (2026-11):** this repository replaced a private predecessor, with rewritten
   history, see `docs/history.md`. The first release here is `v0.89.2-95-gf61500a3`
   (2026-11-05). Older release names in these docs refer to the predecessor.

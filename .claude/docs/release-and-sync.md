@@ -257,6 +257,25 @@ slice plus one step, `sampleRateLimit` waits after a query for at most the limit
 - Both console panics fixed by the fork (`980d40db`, `6cd41dfa`) are still in upstream
   v0.89.2; the changelog says so.
 
+### The v0.89.4 sync (2026-11-05)
+
+Done with the same steps, by hand, for v0.89.3 and v0.89.4 together (26 upstream commits,
+mostly dependency bumps). Upstream fixed range query cache expiry (`internal/promapi/range.go`,
+v0.89.3), `alerts/count` undercounting rules with `keep_firing_for` (v0.89.4) and moved
+`go.ver` to Go 1.27.3.
+
+- **Conflicts:** only `docs/changelog.md`.
+- **Fork changes:** the fork's diff against upstream identical before and after the merge in
+  `alerts_count.go`, `range.go` and `go.mod`. The fork's VictoriaMetrics `alerts/count`
+  only rewrites the query and counts with upstream's loop, so the `keep_firing_for` fix
+  applies to MetricsQL too.
+- **Follow-ups:** none for the sync. `FuzzMetricsQLChecks` found a `promql/nan` panic on
+  `0 / sum(vector(1))`, also in upstream v0.89.4 and in the fork before the sync; it is
+  fixed in its own commit.
+- **Checks:** full `-race -count=1` suite with Docker VictoriaMetrics (only the macOS
+  failures), lint, `compare-binaries.sh` identical, PromQL parity with v0.89.4 identical on
+  6 rule sets, fuzz smoke.
+
 In general:
 
 - Port upstream logic in files the fork migrated to `internal/parser/ast` (checks, parser,
