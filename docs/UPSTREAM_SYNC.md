@@ -10,7 +10,7 @@ which tracks `github.com/VictoriaMetrics/metricsql`.
 | Repository                    | Visibility | Product branch | Upstream                                      | Upstream branch |
 |-------------------------------|------------|----------------|-----------------------------------------------|-----------------|
 | `github.com/AnatoliiVolchkov/pint`      | public     | `main`         | `https://github.com/cloudflare/pint.git`       | `main`          |
-| `github.com/AnatoliiVolchkov/metricsql` | public     | `main`         | `https://github.com/VictoriaMetrics/metricsql.git` | `master`    |
+| `github.com/AnatoliiVolchkov/metricsql` | public     | `master`       | `https://github.com/VictoriaMetrics/metricsql.git` | `master`    |
 
 Remotes in a local checkout:
 
