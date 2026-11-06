@@ -275,6 +275,19 @@ const VMAlertDefaultQueryStep = 5 * time.Minute
 
 // VMAlertQueryStep returns the -datasource.queryStep of vmalert evaluating rules against
 // VictoriaMetrics servers in this group. ok is false for Prometheus servers.
+// VMAlertResultsLimit returns -rule.resultsLimit of vmalert read with vmalertURI, and the
+// vmalert URI it comes from. It returns 0 when vmalert doesn't limit rule results or its
+// settings weren't read.
+func (fg *FailoverGroup) VMAlertResultsLimit() (int, string) {
+	if len(fg.servers) == 0 || fg.servers[0].vm == nil {
+		return 0, ""
+	}
+	if va := fg.servers[0].vm.vmalert.Load(); va != nil {
+		return va.ResultsLimit, va.URI
+	}
+	return 0, ""
+}
+
 func (fg *FailoverGroup) VMAlertQueryStep() (step time.Duration, ok bool) {
 	if len(fg.servers) == 0 || fg.servers[0].vm == nil {
 		return 0, false

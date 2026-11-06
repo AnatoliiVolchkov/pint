@@ -236,5 +236,5 @@ Regenerate with `UPDATE_ORACLE_MATRIX=1 go test ./internal/checks -run TestMetri
 | `rule/name` | language agnostic | 1 | 1 | 0 | 0 |  |
 | `rule/reject` | language agnostic | 2 | 1 | 0 | 0 |  |
 | `rule/report` | language agnostic | 1 | 0 | 0 | 0 |  |
-| `rule/vmalert` | query, offline | 3 | 2 | 0 | 0 |  |
+| `rule/vmalert` | query, offline | 4 | 2 | 1 | 2 |  |
 <!-- oracle-matrix:end -->

@@ -8,7 +8,8 @@ grand_parent: Documentation
 
 This check reports vmalert group and rule settings that are likely mistakes.
 It only runs for rules parsed as [MetricsQL](https://docs.victoriametrics.com/victoriametrics/metricsql/),
-which are evaluated by vmalert, and doesn't query any server, so it also runs with `--offline`.
+which are evaluated by vmalert. Most of it only reads rule files and also runs with `--offline`;
+the group limit check below queries VictoriaMetrics servers and is skipped with `--offline`.
 
 It reports:
 
@@ -24,6 +25,13 @@ It reports:
   behind by the difference. vmalert docs recommend setting `eval_delay` equal to
   `latency_offset`. Groups with `eval_offset` aren't checked, vmalert ignores `eval_delay`
   there. If vmalert runs with a longer `-rule.evalDelay`, set `eval_delay` in the group.
+- rules returning more results than vmalert allows: `limit` of their group, or
+  `-rule.resultsLimit` of vmalert when the group doesn't set one and the server has
+  `vmalertURI` in pint config. vmalert fails such a rule with
+  `exec exceeded limit of N with M series` (or `alerts`) and drops all its results, so a
+  recording rule writes nothing and an alerting rule fires nothing. pint sends `count(expr)`
+  to the VictoriaMetrics servers of the rule file, one instant query per rule, only for rules
+  with such a limit, and reports rules returning more results now. `limit: 0` means no limit.
 
 All problems are reported as warnings.
 

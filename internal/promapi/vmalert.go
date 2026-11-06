@@ -34,6 +34,7 @@ const (
 	vmalertPathRules         = "/api/v1/rules"
 	vmalertFlagQueryStep     = "datasource.queryStep"
 	vmalertFlagExternalLabel = "external.label"
+	vmalertFlagResultsLimit  = "rule.resultsLimit"
 )
 
 // VMAlertResult holds settings of vmalert evaluating rules against a VictoriaMetrics server.
@@ -43,6 +44,8 @@ type VMAlertResult struct {
 	RuleFiles      []string
 	// QueryStep is -datasource.queryStep, 0 if vmalert uses the default.
 	QueryStep time.Duration
+	// ResultsLimit is -rule.resultsLimit, 0 if vmalert doesn't limit rule results.
+	ResultsLimit int
 }
 
 type vmalertQuery struct {
@@ -63,6 +66,7 @@ func (q vmalertQuery) Run() queryResult {
 		URI:            q.prom.vm.safeVMAlertURI,
 		RuleFiles:      nil,
 		QueryStep:      0,
+		ResultsLimit:   0,
 	}
 
 	flags, err := q.flags(ctx)
@@ -81,6 +85,18 @@ func (q vmalertQuery) Run() queryResult {
 			return qr
 		}
 		result.QueryStep = d
+	}
+	if v, ok := flags[vmalertFlagResultsLimit]; ok {
+		n, perr := strconv.Atoi(v)
+		if perr != nil || n < 0 {
+			qr.err = APIError{
+				Status:    "error",
+				ErrorType: v1.ErrBadResponse,
+				Err:       fmt.Errorf("invalid vmalert -%s flag value %q", vmalertFlagResultsLimit, v),
+			}
+			return qr
+		}
+		result.ResultsLimit = n
 	}
 	if v, ok := flags[vmalertFlagExternalLabel]; ok {
 		if result.ExternalLabels, err = parseVMAlertExternalLabels(v); err != nil {

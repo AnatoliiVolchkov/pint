@@ -3,6 +3,8 @@ package checks_test
 import (
 	"testing"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/cloudflare/pint/internal/checks"
 	"github.com/cloudflare/pint/internal/parser"
 	"github.com/cloudflare/pint/internal/promapi"
@@ -103,6 +105,86 @@ func TestRuleVMAlertCheck(t *testing.T) {
 			content:     "- alert: Down\n  expr: up == 0\n",
 			checker:     newRuleVMAlertCheck,
 			prometheus:  noProm,
+		},
+	})
+}
+
+func newRuleVMAlertCheckWithServer(prom *promapi.FailoverGroup) checks.RuleChecker {
+	return checks.NewRuleVMAlertCheck().WithServers([]*promapi.FailoverGroup{prom})
+}
+
+func newRuleVMAlertCheckOffline(prom *promapi.FailoverGroup) checks.RuleChecker {
+	return checks.NewRuleVMAlertCheck().WithServers([]*promapi.FailoverGroup{prom}).Offline()
+}
+
+// vmalert fails rules returning more results than the group limit.
+func TestRuleVMAlertLimit(t *testing.T) {
+	count := func(expr string, n float64) *prometheusMock {
+		return &prometheusMock{
+			conds: []requestCondition{requireQueryPath, formCond{key: "query", value: "count(\n" + expr + "\n)"}},
+			resp:  vectorResponse{samples: []*model.Sample{generateSampleWithValue(map[string]string{}, n)}},
+		}
+	}
+	group := func(limit, rule string) string {
+		return "- name: g\n" + limit + "  rules:\n" + rule
+	}
+	recording := "  - record: foo:sum\n    expr: sum(foo) by (instance)\n"
+	alerting := "  - alert: FooHigh\n    expr: foo > 1\n"
+
+	runTests(t, []checkTest{
+		{
+			description: "recording rule returning more series than the group limit",
+			content:     group("  limit: 2\n", recording),
+			language:    parser.MetricsQL,
+			checker:     newRuleVMAlertCheckWithServer,
+			prometheus:  newSimpleVM,
+			mocks:       []*prometheusMock{count("sum(foo) by (instance)", 10)},
+			problems:    true,
+		},
+		{
+			description: "alerting rule returning more alerts than the group limit",
+			content:     group("  limit: 2\n", alerting),
+			language:    parser.MetricsQL,
+			checker:     newRuleVMAlertCheckWithServer,
+			prometheus:  newSimpleVM,
+			mocks:       []*prometheusMock{count("foo > 1", 3)},
+			problems:    true,
+		},
+		{
+			description: "rule returning as many results as the group limit",
+			content:     group("  limit: 2\n", recording),
+			language:    parser.MetricsQL,
+			checker:     newRuleVMAlertCheckWithServer,
+			prometheus:  newSimpleVM,
+			mocks:       []*prometheusMock{count("sum(foo) by (instance)", 2)},
+		},
+		{
+			description: "group without a limit is not queried",
+			content:     group("", recording),
+			language:    parser.MetricsQL,
+			checker:     newRuleVMAlertCheckWithServer,
+			prometheus:  newSimpleVM,
+		},
+		{
+			description: "limit 0 means no limit",
+			content:     group("  limit: 0\n", recording),
+			language:    parser.MetricsQL,
+			checker:     newRuleVMAlertCheckWithServer,
+			prometheus:  newSimpleVM,
+		},
+		{
+			description: "Prometheus servers are not queried",
+			content:     group("  limit: 2\n", recording),
+			language:    parser.MetricsQL,
+			checker:     newRuleVMAlertCheckWithServer,
+			prometheus:  newSimpleProm,
+		},
+		{
+			description: "offline",
+			content:     group("  limit: 2\n", recording),
+			language:    parser.MetricsQL,
+			checker:     newRuleVMAlertCheckOffline,
+			prometheus:  newSimpleVM,
 		},
 	})
 }

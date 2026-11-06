@@ -411,6 +411,8 @@ prometheus "$name" {
   - `-datasource.queryStep` as `queryStep`, unless `queryStep` is set,
   - `-external.label` flags as external labels, labels set in `externalLabels` or with
     `--external-label` take precedence,
+  - `-rule.resultsLimit` as the limit of results of rules in groups without `limit`, see
+    [rule/vmalert](checks/rule/vmalert.md),
   - files of loaded rule groups for `pint watch rule_files`.
 
   If vmalert can't be queried pint logs a warning and uses settings from this block,

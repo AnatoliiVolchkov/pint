@@ -80,3 +80,58 @@ cases:
         - alert: Down
           expr: 'up{job="a" or job="b"} == 0'
     expect: []
+  - name: rule returning more results than the group limit
+    kind: positive
+    comment: >-
+      vmalert v1.153.0 fails such a rule with "exec exceeded limit of 2 with 3 series" and drops
+      its results (Docker, 2026-11-06).
+    rules: |
+      groups:
+      - name: g
+        limit: 2
+        rules:
+        - record: rv:sum
+          expr: 'sum(rv_limit) by (inst)'
+    data:
+      step: 15s
+      series:
+        - metric: rv_limit{inst="a"}
+          values: 1x30
+        - metric: rv_limit{inst="b"}
+          values: 1x30
+        - metric: rv_limit{inst="c"}
+          values: 1x30
+    expect:
+      - rule: rv:sum
+        reporter: rule/vmalert
+        severity: warning
+        summary: rule returns more results than vmalert allows
+        lines: "6"
+        diagnostics:
+          - message: '`vm` VictoriaMetrics server at $URI returned 3 result(s) for this query, more than `limit: 2` of the group: vmalert would fail this rule with `exec exceeded limit of 2 with 3 series` and drop all its results.'
+            fragment: 'sum(rv_limit) by (inst)'
+            start: 0
+            end: 23
+            line: 6
+  - name: rule returning as many results as the group limit
+    kind: boundary
+    rules: |
+      groups:
+      - name: g
+        limit: 3
+        rules:
+        - record: rv:ok
+          expr: 'sum(rv_limit_ok) by (inst)'
+    data:
+      step: 15s
+      series:
+        - metric: rv_limit_ok{inst="a"}
+          values: 1x30
+        - metric: rv_limit_ok{inst="b"}
+          values: 1x30
+        - metric: rv_limit_ok{inst="c"}
+          values: 1x30
+    vm:
+      - query: count(sum(rv_limit_ok) by (inst))
+        result: '{} 3'
+    expect: []

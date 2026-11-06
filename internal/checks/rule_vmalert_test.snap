@@ -184,3 +184,90 @@
 []
 
 ---
+
+[TestRuleVMAlertLimit/recording_rule_returning_more_series_than_the_group_limit - 1]
+- description: recording rule returning more series than the group limit
+  content: |
+    - name: g
+      limit: 2
+      rules:
+      - record: foo:sum
+        expr: sum(foo) by (instance)
+  output: |
+    5 |     expr: sum(foo) by (instance)
+                  ^^^^^^^^^^^^^^^^^^^^^^
+                  `prom` VictoriaMetrics server at https://simple.example.com returned 10 result(s) for this
+                  query, more than `limit: 2` of the group: vmalert would fail this rule with `exec exceeded
+                  limit of 2 with 10 series` and drop all its results.
+  problem:
+    reporter: rule/vmalert
+    summary: rule returns more results than vmalert allows
+    details: 'vmalert fails a rule that returns more results than `limit` of its group, or `-rule.resultsLimit` when the group doesn''t set one: the rule is marked with an error and all its results are dropped, so a recording rule writes nothing and an alerting rule fires nothing. Make the query return fewer series, or raise the limit. See [vmalert groups](https://docs.victoriametrics.com/victoriametrics/vmalert/#groups).'
+    diagnostics:
+        - message: '`prom` VictoriaMetrics server at https://simple.example.com returned 10 result(s) for this query, more than `limit: 2` of the group: vmalert would fail this rule with `exec exceeded limit of 2 with 10 series` and drop all its results.'
+          firstcolumn: 1
+          lastcolumn: 22
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRuleVMAlertLimit/alerting_rule_returning_more_alerts_than_the_group_limit - 1]
+- description: alerting rule returning more alerts than the group limit
+  content: |
+    - name: g
+      limit: 2
+      rules:
+      - alert: FooHigh
+        expr: foo > 1
+  output: |
+    5 |     expr: foo > 1
+                  ^^^^^^^
+                  `prom` VictoriaMetrics server at https://simple.example.com returned 3 result(s) for this
+                  query, more than `limit: 2` of the group: vmalert would fail this rule with `exec exceeded
+                  limit of 2 with 3 alerts` and drop all its results.
+  problem:
+    reporter: rule/vmalert
+    summary: rule returns more results than vmalert allows
+    details: 'vmalert fails a rule that returns more results than `limit` of its group, or `-rule.resultsLimit` when the group doesn''t set one: the rule is marked with an error and all its results are dropped, so a recording rule writes nothing and an alerting rule fires nothing. Make the query return fewer series, or raise the limit. See [vmalert groups](https://docs.victoriametrics.com/victoriametrics/vmalert/#groups).'
+    diagnostics:
+        - message: '`prom` VictoriaMetrics server at https://simple.example.com returned 3 result(s) for this query, more than `limit: 2` of the group: vmalert would fail this rule with `exec exceeded limit of 2 with 3 alerts` and drop all its results.'
+          firstcolumn: 1
+          lastcolumn: 7
+          kind: 0
+    lines:
+        first: 5
+        last: 5
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRuleVMAlertLimit/rule_returning_as_many_results_as_the_group_limit - 1]
+[]
+
+---
+
+[TestRuleVMAlertLimit/group_without_a_limit_is_not_queried - 1]
+[]
+
+---
+
+[TestRuleVMAlertLimit/limit_0_means_no_limit - 1]
+[]
+
+---
+
+[TestRuleVMAlertLimit/Prometheus_servers_are_not_queried - 1]
+[]
+
+---
+
+[TestRuleVMAlertLimit/offline - 1]
+[]
+
+---

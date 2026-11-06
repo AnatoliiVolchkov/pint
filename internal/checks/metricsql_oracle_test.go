@@ -388,8 +388,8 @@ var oracleCheckers = map[string]func(*promapi.FailoverGroup, oracleSettings) che
 	checks.ReportCheckName: func(_ *promapi.FailoverGroup, s oracleSettings) checks.RuleChecker {
 		return checks.NewReportCheck(s.str("comment", "reported"), s.severity(checks.Bug))
 	},
-	checks.RuleVMAlertCheckName: func(_ *promapi.FailoverGroup, _ oracleSettings) checks.RuleChecker {
-		return checks.NewRuleVMAlertCheck()
+	checks.RuleVMAlertCheckName: func(p *promapi.FailoverGroup, _ oracleSettings) checks.RuleChecker {
+		return checks.NewRuleVMAlertCheck().WithServers([]*promapi.FailoverGroup{p})
 	},
 }
 

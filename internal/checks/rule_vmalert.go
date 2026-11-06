@@ -9,10 +9,12 @@ import (
 	"github.com/cloudflare/pint/internal/discovery"
 	"github.com/cloudflare/pint/internal/output"
 	"github.com/cloudflare/pint/internal/parser"
+	"github.com/cloudflare/pint/internal/promapi"
 )
 
-// rule/vmalert reports vmalert group and rule settings that are likely mistakes. It only
-// looks at rule files, so it runs offline and for MetricsQL rules only.
+// rule/vmalert reports vmalert group and rule settings that are likely mistakes, for MetricsQL
+// rules only. Most of it only looks at rule files and runs offline; the group limit check
+// (rule_vmalert_limit.go) asks the servers of the rule file how many results a rule returns.
 //
 // `debug: true` on a rule or a group makes vmalert log every datasource request of the rule
 // and every alert state change at INFO level (app/vmalert/rule/alerting.go and
@@ -52,10 +54,15 @@ const (
 )
 
 func NewRuleVMAlertCheck() RuleVMAlertCheck {
-	return RuleVMAlertCheck{}
+	return RuleVMAlertCheck{servers: nil, offline: false}
 }
 
-type RuleVMAlertCheck struct{}
+type RuleVMAlertCheck struct {
+	// servers are checked for rules producing more results than vmalert allows, see
+	// rule_vmalert_limit.go.
+	servers []*promapi.FailoverGroup
+	offline bool
+}
 
 func (c RuleVMAlertCheck) Meta() CheckMeta {
 	return CheckMeta{
@@ -78,7 +85,7 @@ func (c RuleVMAlertCheck) Reporter() string {
 	return RuleVMAlertCheckName
 }
 
-func (c RuleVMAlertCheck) Check(_ context.Context, entry *discovery.Entry, _ []*discovery.Entry) (problems []Problem) {
+func (c RuleVMAlertCheck) Check(ctx context.Context, entry *discovery.Entry, _ []*discovery.Entry) (problems []Problem) {
 	if !isVMAlertRule(entry) {
 		return nil
 	}
@@ -96,6 +103,7 @@ func (c RuleVMAlertCheck) Check(_ context.Context, entry *discovery.Entry, _ []*
 	if entry.Group != nil {
 		problems = append(problems, c.latencyOffsetProblems(entry.Group.VMAlert)...)
 	}
+	problems = append(problems, c.limitProblems(ctx, entry)...)
 	return problems
 }
 

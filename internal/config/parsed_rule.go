@@ -156,6 +156,9 @@ func baseRules(staticRules []staticRule, proms []*promapi.FailoverGroup, match [
 		if gc, ok := checker.(checks.GroupIntervalCheck); ok {
 			checker = gc.WithServers(proms)
 		}
+		if vc, ok := checker.(checks.RuleVMAlertCheck); ok {
+			checker = vc.WithServers(proms)
+		}
 		rules = append(rules, baseParsedRule(match, sr.name, checker, nil))
 	}
 

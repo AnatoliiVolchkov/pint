@@ -4,6 +4,9 @@
 
 ### Added
 
+- [rule/vmalert](checks/rule/vmalert.md) check reports rules returning more results than
+  `limit` of their group, or `-rule.resultsLimit` of vmalert read with `vmalertURI`.
+  vmalert fails such rules and drops all their results.
 - [promql/rate](checks/promql/rate.md) check reports `rollup_rate()`, `rollup_deriv()`,
   `rollup_increase()` and `rollup_delta()` windows shorter than `2 x scrape_interval - 5m` or
   one scrape interval when using MetricsQL with a VictoriaMetrics server, these functions

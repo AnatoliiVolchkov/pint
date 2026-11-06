@@ -156,3 +156,28 @@ func TestVMAlertNotConfigured(t *testing.T) {
 	require.Empty(t, prom.VMAlertURI())
 	require.NoError(t, prom.LoadVMAlert(t.Context()))
 }
+
+// -rule.resultsLimit limits the number of results of every rule, a group's limit overrides it.
+func TestVMAlertResultsLimit(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		srv := httpmock.New(func(s *httpmock.Server) {
+			s.ExpectGet("/flags").Return(`-rule.resultsLimit="5"` + "\n").Once()
+			s.ExpectGet("/api/v1/rules").Return(`{"status":"success","data":{"groups":[]}}`).Once()
+		})(t)
+		fg := newVictoriaMetricsGroup(t, "http://127.0.0.1:1", promapi.VictoriaMetricsOptions{VMAlertURI: srv.URL() + "/"})
+		limit, uri := fg.VMAlertResultsLimit()
+		require.Zero(t, limit, "not read before LoadVMAlert")
+		require.Empty(t, uri)
+		require.NoError(t, fg.LoadVMAlert(t.Context()))
+		limit, uri = fg.VMAlertResultsLimit()
+		require.Equal(t, 5, limit)
+		require.Equal(t, srv.URL(), uri)
+	})
+	t.Run("invalid", func(t *testing.T) {
+		srv := httpmock.New(func(s *httpmock.Server) {
+			s.ExpectGet("/flags").Return(`-rule.resultsLimit="x"` + "\n").Once()
+		})(t)
+		fg := newVictoriaMetricsGroup(t, "http://127.0.0.1:1", promapi.VictoriaMetricsOptions{VMAlertURI: srv.URL() + "/"})
+		require.EqualError(t, fg.LoadVMAlert(t.Context()), "vmalert at "+srv.URL()+`: bad_response: invalid vmalert -rule.resultsLimit flag value "x"`)
+	})
+}
