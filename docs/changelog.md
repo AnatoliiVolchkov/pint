@@ -133,6 +133,9 @@
 
 ### Fixed
 
+- [promql/impossible](checks/promql/impossible.md) check describes a MetricsQL `default`
+  fallback as `default 0` in dead code messages, instead of repeating itself:
+  "`default 0 > 0` always evaluates to `0 > 0`" instead of "`0 > 0` always evaluates to `0 > 0`".
 - [promql/series](checks/promql/series.md) check accepts selectors that only MetricsQL can
   parse, such as metric names with dots, in `ignoreLabelsValue`, `ignoreMatchingElsewhere`
   and in `# pint disable promql/series(...)` and `# pint rule/set promql/series(...)`

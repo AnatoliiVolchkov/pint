@@ -651,6 +651,14 @@ func TestMetricsQLImpossibleCheck(t *testing.T) {
 			checker:     newImpossibleCheck,
 			prometheus:  noProm,
 		},
+		{
+			// The fallback is described as `default 0`, like `vector(0)` for `or vector(0)`.
+			description: "default fallback never matching the comparison",
+			content:     "- record: foo\n  expr: '(sum(foo) default 0) > 0'\n",
+			checker:     newImpossibleCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
 	}))
 }
 

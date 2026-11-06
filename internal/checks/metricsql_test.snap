@@ -1402,6 +1402,33 @@
 
 ---
 
+[TestMetricsQLImpossibleCheck/default_fallback_never_matching_the_comparison - 1]
+- description: default fallback never matching the comparison
+  content: |
+    - record: foo
+      expr: '(sum(foo) default 0) > 0'
+  output: |
+    2 |   expr: '(sum(foo) default 0) > 0'
+                                   ^
+                                   `default 0 > 0` always evaluates to `0 > 0` which is not possible, so it
+                                   will never return anything.
+  problem:
+    reporter: promql/impossible
+    summary: dead code in query
+    details: ""
+    diagnostics:
+        - message: '`default 0 > 0` always evaluates to `0 > 0` which is not possible, so it will never return anything.'
+          firstcolumn: 19
+          lastcolumn: 19
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
 [TestMetricsQLNaNCheck/division - 1]
 - description: division
   content: |

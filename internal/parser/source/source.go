@@ -1691,6 +1691,11 @@ func parseBinOps(expr string, n *ast.BinaryExpr) (src []*Source) {
 		}
 		if setOp == ast.OpOr {
 			for _, rs := range rhs {
+				// MetricsQL `default 0`: describe the fallback as `default 0`, not `0`, so dead
+				// code messages read like the ones for `or vector(0)`.
+				if n.Op == ast.OpDefault && rs.Type == NumberSource && rs.ReturnInfo.LogicalExpr == "" {
+					rs.ReturnInfo.LogicalExpr = "default " + GetQueryFragment(expr, rs.ReturnInfo.ValuePosition)
+				}
 				// If LHS can NOT be empty then RHS is dead code.
 				if !lhsCanBeEmpty {
 					rs.DeadInfo = &DeadInfo{
