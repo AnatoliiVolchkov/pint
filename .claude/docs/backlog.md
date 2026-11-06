@@ -94,48 +94,33 @@ sparse metric fires all the time (verified in Docker first, see
   and warns when they are longer than the `absent()` or `absent_over_time()` window and `for`
   doesn't cover them (`6147897d`).
 
-## Waiting for a user decision
+## Approved on 2026-11-06, in progress
 
-- **Check duplicate group names per ConfigMap data key in relaxed mode.** Offered, not
-  chosen.
-  - vmalert rejects duplicate group names within one file; pint checks them in strict mode
-    only, which is upstream behaviour.
-  - A whole-file check would be wrong, because the same group name in different ConfigMaps
-    is valid.
-- **The improvement list offered on 2026-10-08.** New findings must be Warning at most, never
-  Bug (the user's rule). Done: 1.1, 1.3 (2026-10-08), 1.2, 2.1, 2.2, 2.4 (reworked), 3.2,
-  3.1 (2026-10-09), 2.3, 2.6 (2026-10-10). Still open:
-  - 2.5: negative `offset` in rules. Unverified, and the fork AST prints `Offset: 0s` for
-    `foo offset 5m` too, so check how offsets are stored first;
-  - 2.7: subqueries over `-search.maxPointsSubqueryPerTimeseries`;
-  - 2.8: severity of implicit conversions from the server flag (the idea below, conflicts
-    with the "Warning at most" rule, ask first);
-  - 4.x: optional policies: window as a multiple of the scrape interval, `for` not shorter
-    than the `increase()` window, group `interval` not shorter than the scrape interval.
-- **SARIF output** (`--sarif` for `lint` and `ci`), offered on 2026-10-10. Cheap: one new
-  reporter next to `internal/reporter/checkstyle.go` plus a flag, no upstream conflicts. Only
-  useful with a SARIF consumer, such as GitHub Code Scanning, and pint already comments on
-  PR lines through
-  `repository { github {} }`. Asked whether the user has one, no answer yet.
-- **`query/cost` limit severity.** Exceeding a configured limit uses the cost block
-  `severity`, Bug when not set (upstream code), while the upstream docs say Warning. With
-  `maxTotalSamples` now working on VictoriaMetrics such Bugs can appear; set
-  `severity = "warning"` in the cost block to follow the user's rule.
+- **Duplicate group names per ConfigMap data key in relaxed mode.** vmalert rejects a rule file
+  with two groups of the same name, and in relaxed mode each ConfigMap data key is such a file.
+  pint checks duplicate group names in strict mode only, which is upstream behaviour. A
+  whole-file check would be wrong, the same group name in different ConfigMaps is valid.
+- **Template error offsets.** Template execution errors include an internal column, such as
+  `304: executing ...`, which counts pint's hidden header (also in upstream, for PromQL). For
+  MetricsQL rules the number is dropped, the diagnostic already points at the error.
+- **`delta()` on counters without metadata.** Only `promql/counter` catches it, and it needs
+  reliable metadata. A Warning for `delta()` on a metric whose name ends with `_total`.
+- **The dead-code message repeats itself** for `default`: "`0 > 0` always evaluates to `0 > 0`"
+  for `(sum(foo) default 0) > 0`, while `or vector(0)` gives "`vector(0) > 0` ...".
+- **An alert whose `expr` is just a string is reported as always firing.** vmalert v1.155.0
+  accepts such a rule, VictoriaMetrics returns nothing for `"down"`, so the alert never
+  fires and a recording rule writes nothing (Docker, 2026-11-06). Upstream reports the same
+  for PromQL, where Prometheus refuses to load the rule.
 
-- **Custom vmalert templates (`-rule.templates`).** Found 2026-11-06: an annotation using a
-  template defined in a `-rule.templates` file, like `{{ template "app.summary" . }}`, is a
-  Fatal "template not defined" in `alerts/template`, while vmalert loads it. Fix: a config
-  option listing the template files, read like vmalert does. The user doesn't use
-  `-rule.templates` (2026-11-06), so it's parked.
-- **Warn before a rule hits VictoriaMetrics query limits.** Checked 2026-11-06 in Docker,
-  v1.153.0: a rule over `-search.maxSamplesPerQuery` already gets VictoriaMetrics' error
-  ("cannot select more than -search.maxSamplesPerQuery") through `promql/series` and other
-  online checks, by default. The limit counts samples fetched per selector ("fetch unique
-  series=N, blocks=B, samples=S" in the query trace), not `samplesScanned`; two selectors
-  under the limit each pass together. `-search.maxUniqueTimeseries` wasn't enforced for
-  `/api/v1/query` on single-node (trace `maxMetrics=2000000000`), cluster not checked.
-  `/flags` lists only flags set explicitly. What's left is a warning before the limit, for
-  example at 80% of it per selector, which needs a made-up threshold: not started.
+## Parked (the user's decision, 2026-11-06)
+
+- **Custom vmalert templates (`-rule.templates`).** An annotation using a template defined in
+  a `-rule.templates` file, like `{{ template "app.summary" . }}`, is a Fatal "template not
+  defined" in `alerts/template`, while vmalert loads it. Fix: a config option listing the
+  template files, read like vmalert does. The user doesn't use `-rule.templates`.
+- **`group/interval` with several servers per file** uses the longest lookback of all of them,
+  and readers are evaluated with the servers of the writer's file. Fine for one vmalert per
+  repository; revisit if the user lints rules for several vmalerts at once.
 
 ## Rejected ideas
 
@@ -161,80 +146,25 @@ RuleScope, RuleProbe, promlint and others). Don't offer them again unless the us
   the Go module path `github.com/cloudflare/pint`, which every file imports; changing it
   turns every upstream merge into a conflict in every file.
 
+Removed by the user on 2026-11-06 after a review of the whole backlog, don't offer again
+unless asked: negative `offset` (2.5), subqueries over
+`-search.maxPointsSubqueryPerTimeseries` (2.7), Bug severity for implicit conversions from the
+server flag (2.8), optional policies (4.x), SARIF output, `query/cost` limit severity (set
+`severity = "warning"` in the cost block instead), warnings before VictoriaMetrics query limits
+(the server's own error already reaches pint), real metadata in the oracle, `promql/series`
+nondeterminism on sparse metrics, `alerts/count` for step-derived windows, windowless `rate(x)`
+and `delta(x)`, `index $labels "x"` in templates, offline function arity, subquery ranges
+against retention, the parser version note, and `or` filters in `promql/series` selectors.
+The "unused VictoriaMetrics `cluster` flag" was a wrong note: `cluster` is derived from the
+`/select/<tenant>/prometheus` URI and used in `withRetention`, vmselect doesn't know the
+retention, so pint doesn't assume the default there.
+`keep_metric_names` isn't a gap in `labels/conflict` (checked 2026-11-06): vmalert fails on
+series that differ only by the metric name with or without it, and pint reports both.
+
 ## Known bugs
 
 - **VictoriaMetrics metadata** keeps one type per metric name. Since `772f09aa` a wrong type
   gives a Warning (Information for `_total` names), not a Bug, for `rate()` and `increase()`.
-## Ideas (not offered to the user yet)
-
-- **Real metadata in the oracle.** Low value. Since `8cfc01df` the test images are v1.153.0,
-  which store metadata from `# TYPE` lines. A `type` field for oracle series would replace the
-  mocks in `promql/counter` and `promql/rate` positive cases. The end-to-end behaviour, single
-  and cluster, was already checked by hand on 2026-10-08, and it can't catch the real problem,
-  wrong types in production data.
-- **`group/interval` with several servers per file** uses the longest lookback of all of them,
-  and readers are evaluated with the servers of the writer's file. Fine for one vmalert per
-  repository; revisit if the user lints rules for several vmalerts at once.
-
-- **Severity from the server.** "implicit subquery conversion" is a Warning, because
-  VictoriaMetrics runs these queries by default. When a server has
-  `-search.disableImplicitConversion=true`, they fail outright and should be a Bug. An
-  online check could read the flag from `/flags`. prom.example.com has it off.
-- **Template error offsets.** Template execution errors include an internal column, such as
-  `300: executing ...`, which counts pint's hidden header. Upstream pint shows it too, for
-  PromQL. It moves whenever the vmalert header changes, as it did by 26 bytes when
-  `$interval` was added.
-
-## Gaps (real rule problems pint doesn't report)
-
-- **`promql/series` on a sparse metric is nondeterministic upstream-side.** Its first query is
-  an instant `count(selector)` without `step`, so VictoriaMetrics looks back 5m: a metric
-  written every 10m is "missing" on half of the runs and then goes through the "sometimes
-  present" path. The new pause warning is deterministic, the old path isn't.
-- **`alerts/count` keeps range semantics for step-derived windows.** `rate(x)` and `x[2i]`
-  are not rewritten, their window is the step in vmalert but `max(step, interval)` in a range
-  query. `promql/rate` reports them when the scrape interval is longer than the step.
-- **Rollup functions without a window.**
-  - Example: `delta(nginx_vts_upstream_requests_total{...})` gets its window from the query
-    step (vmalert: 5m by default).
-  - `rate(x)[d]` (`43f024af`) and implicit subqueries like `rate(sum(x))` (`fed6e413`) are
-    reported, but a plain windowless `rate(x)` or `delta(x)` is not. Upstream
-    `IsLikelyInvalid()` calls `rate(foo)` valid, since it usually returns the expected
-    results.
-- **`delta()` on counters.** Only `promql/counter` catches it, and that check needs reliable
-  metadata.
-- **`index $labels "x"`** in templates isn't checked. `$labels.x`, `.Labels.x` and
-  `$l := $labels` aliases are. This is upstream behaviour.
-- **Function arity isn't checked offline.** `abs()`, `topk(x)` and `histogram_quantile(0.9)`
-  pass and fail only online, as "unable to run checks". Porting VictoriaMetrics' arity rules
-  for about 250 functions was judged not worth it.
-- **Subquery ranges aren't checked against retention.** This is upstream behaviour.
-- **Parser version skew.** pint pins metricsql v0.87.6, while a real server may run an older one.
-  The test Docker images are v1.153.0 (metricsql v0.87.4).
-
-## Cosmetic (seen 2026-10-02, recheck before fixing)
-
-- Template errors include an internal offset, such as `300: executing ...` (see Ideas).
-- The dead-code message repeats itself: "`0 > 0` always evaluates to `0 > 0`" for
-  `default 0`.
-- An alert whose `expr` is just a string is reported as always firing.
-
-## From code reading only, not confirmed as bugs
-
-- The VictoriaMetrics `cluster` flag is unused outside tests.
-- `or` filters in `promql/series` settings and `# pint disable promql/series(...)` selectors
-  are rejected, `metricsql.Language.ParseMetricSelector` returns only one group of matchers.
-  Other MetricsQL-only selectors work there since `7bd37ea7`.
-
-Checked on 2026-11-06 and removed from this list:
-
-- `rollup_rate()` and similar rollups weren't window-checked by `promql/rate`: fixed in
-  `02077992` after measuring them in Docker.
-- `keep_metric_names` isn't a gap in `labels/conflict`: it reports
-  `rate({__name__=~"a|b"}[5m]) keep_metric_names` like the same query without it, and that's
-  right, vmalert fails on series that differ only by the metric name either way (see
-  `vmalert-and-victoriametrics.md`, "same labelset").
-
 ## Repository and CI chores
 
 - **Upstream timing flake** `TestSeriesCheck/series_present_on_other_servers_/_timeout`
