@@ -364,6 +364,11 @@ so the upstream projects stay their fork parents.
   by reading the code, see `backlog.md`. Fixed: MetricsQL-only selectors, like metric names
   with dots, in `promql/series` settings and comments (`7bd37ea7`), and `rollup_*()`
   windows in `promql/rate`, measured in Docker first (`02077992`).
+- **Ideas from similar tools (2026-11-06):** `rule/vmalert` reports rules returning more
+  results than the group `limit` or vmalert `-rule.resultsLimit` (`f136b1c6`, checked with
+  vmalert in Docker). Warning about VictoriaMetrics query limits turned out to be covered
+  already by the server's own errors, and custom `-rule.templates` aren't used by the user:
+  both are in `backlog.md`.
 
 ## Recurring decisions
 

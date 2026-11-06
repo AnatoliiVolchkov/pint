@@ -122,6 +122,21 @@ sparse metric fires all the time (verified in Docker first, see
   `maxTotalSamples` now working on VictoriaMetrics such Bugs can appear; set
   `severity = "warning"` in the cost block to follow the user's rule.
 
+- **Custom vmalert templates (`-rule.templates`).** Found 2026-11-06: an annotation using a
+  template defined in a `-rule.templates` file, like `{{ template "app.summary" . }}`, is a
+  Fatal "template not defined" in `alerts/template`, while vmalert loads it. Fix: a config
+  option listing the template files, read like vmalert does. The user doesn't use
+  `-rule.templates` (2026-11-06), so it's parked.
+- **Warn before a rule hits VictoriaMetrics query limits.** Checked 2026-11-06 in Docker,
+  v1.153.0: a rule over `-search.maxSamplesPerQuery` already gets VictoriaMetrics' error
+  ("cannot select more than -search.maxSamplesPerQuery") through `promql/series` and other
+  online checks, by default. The limit counts samples fetched per selector ("fetch unique
+  series=N, blocks=B, samples=S" in the query trace), not `samplesScanned`; two selectors
+  under the limit each pass together. `-search.maxUniqueTimeseries` wasn't enforced for
+  `/api/v1/query` on single-node (trace `maxMetrics=2000000000`), cluster not checked.
+  `/flags` lists only flags set explicitly. What's left is a warning before the limit, for
+  example at 80% of it per selector, which needs a made-up threshold: not started.
+
 ## Rejected ideas
 
 Evaluated on 2026-10-10 from a list pasted from another session ("metrule", ideas from
