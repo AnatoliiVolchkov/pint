@@ -944,7 +944,7 @@
   output: |
     5 |     summary: '{{ with query "sum(foo" }}{{ . | first | value }}{{ end }}'
                               ^^^^^^^^^^^^^^^
-                              Template failed to parse with this error: `300: executing "summary" at <query
+                              Template failed to parse with this error: `executing "summary" at <query
                               "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")";
                               unparsed data: ""`.
   problem:
@@ -952,7 +952,7 @@
     summary: template syntax error
     details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
     diagnostics:
-        - message: 'Template failed to parse with this error: `300: executing "summary" at <query "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")"; unparsed data: ""`.'
+        - message: 'Template failed to parse with this error: `executing "summary" at <query "sum(foo">: error calling query: argList: unexpected token ""; want ",", ")"; unparsed data: ""`.'
           firstcolumn: 9
           lastcolumn: 23
           kind: 0
@@ -1174,14 +1174,14 @@
   output: |
     5 |     summary: 'x {{ $activeAt.Foo }}'
                                     ^
-                                    Template failed to parse with this error: `306: executing "summary" at
+                                    Template failed to parse with this error: `executing "summary" at
                                     <$activeAt.Foo>: can't evaluate field Foo in type time.Time`.
   problem:
     reporter: alerts/template
     summary: template syntax error
     details: Supported template syntax is documented [here](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/#templating).
     diagnostics:
-        - message: 'Template failed to parse with this error: `306: executing "summary" at <$activeAt.Foo>: can''t evaluate field Foo in type time.Time`.'
+        - message: 'Template failed to parse with this error: `executing "summary" at <$activeAt.Foo>: can''t evaluate field Foo in type time.Time`.'
           firstcolumn: 15
           lastcolumn: 15
           kind: 0

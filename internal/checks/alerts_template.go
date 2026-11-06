@@ -501,6 +501,9 @@ func newTemplateError(rawErr error, name, text string, defsLen int) templateErro
 	if m == nil || m[1] != name {
 		return te
 	}
+	if defsLen != templateDefsLen {
+		te.msg = vmalertTemplateErrorMessage(te.msg)
+	}
 
 	lineNum, _ := strconv.Atoi(m[2])
 	offset, _ := strconv.Atoi(m[3])

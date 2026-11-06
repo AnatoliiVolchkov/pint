@@ -133,6 +133,9 @@
 
 ### Fixed
 
+- [alerts/template](checks/alerts/template.md) check no longer starts template execution errors
+  of MetricsQL rules with an internal offset like `304:`, which counted pint's hidden template
+  header. The diagnostic points at the error.
 - A MetricsQL rule whose `expr` is just a string, like `'"down"'`, is reported by
   [promql/impossible](checks/promql/impossible.md) as never returning anything instead of an
   always firing alert: VictoriaMetrics returns no series for a string, so such an alert never
