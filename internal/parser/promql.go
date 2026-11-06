@@ -58,7 +58,7 @@ func (pn *PromQLExpr) Source() []*source.Source {
 	defer pn.mu.Unlock()
 	pn.parse()
 	if !pn.hasSource {
-		pn.source = source.LabelsSource(pn.Value.Value, pn.query.Expr)
+		pn.source = markMetricsQLStrings(pn.Language(), source.LabelsSource(pn.Value.Value, pn.query.Expr))
 		pn.hasSource = true
 	}
 	return pn.source

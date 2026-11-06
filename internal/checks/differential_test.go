@@ -106,6 +106,20 @@ var languageDifferences = []struct {
 			return isConstantExpr(expr)
 		},
 	},
+	{
+		onlyIn: "both",
+		reason: "VictoriaMetrics returns no series for a string, so a string query is dead code in MetricsQL " +
+			"(promql/impossible), while PromQL treats it as always returning a result (alerts/comparison, " +
+			"alerts/template), checked with vmalert and VictoriaMetrics v1.155.0",
+		match: func(_, expr string, _ finding) bool {
+			node, err := parser.MetricsQL.ParseExpr(expr)
+			if err != nil {
+				return false
+			}
+			_, ok := node.(*ast.StringLiteral)
+			return ok
+		},
+	},
 }
 
 // isConstantExpr returns true if expr only has numbers, operators and parentheses.

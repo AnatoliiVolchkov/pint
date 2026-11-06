@@ -261,6 +261,13 @@ func TestMetricsQLAlertsForCheck(t *testing.T) {
 func TestMetricsQLComparisonCheck(t *testing.T) {
 	runTests(t, withMetricsQL([]checkTest{
 		{
+			// VictoriaMetrics returns nothing for a string, promql/impossible reports it.
+			description: "string never fires",
+			content:     "- alert: foo\n  expr: '\"down\"'\n",
+			checker:     newComparisonCheck,
+			prometheus:  noProm,
+		},
+		{
 			description: "comparison inside WITH",
 			content:     "- alert: foo\n  expr: 'WITH (x = rate(foo)) x > 0'\n",
 			checker:     newComparisonCheck,
@@ -650,6 +657,20 @@ func TestMetricsQLImpossibleCheck(t *testing.T) {
 			content:     "- alert: foo\n  expr: 'rate(foo) > 0'\n",
 			checker:     newImpossibleCheck,
 			prometheus:  noProm,
+		},
+		{
+			description: "string alert never fires",
+			content:     "- alert: foo\n  expr: '\"down\"'\n",
+			checker:     newImpossibleCheck,
+			prometheus:  noProm,
+			problems:    true,
+		},
+		{
+			description: "string recording rule writes nothing",
+			content:     "- record: foo\n  expr: '\"down\"'\n",
+			checker:     newImpossibleCheck,
+			prometheus:  noProm,
+			problems:    true,
 		},
 		{
 			// The fallback is described as `default 0`, like `vector(0)` for `or vector(0)`.

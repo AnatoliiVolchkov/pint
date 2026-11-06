@@ -133,6 +133,10 @@
 
 ### Fixed
 
+- A MetricsQL rule whose `expr` is just a string, like `'"down"'`, is reported by
+  [promql/impossible](checks/promql/impossible.md) as never returning anything instead of an
+  always firing alert: VictoriaMetrics returns no series for a string, so such an alert never
+  fires and a recording rule writes nothing.
 - [promql/impossible](checks/promql/impossible.md) check describes a MetricsQL `default`
   fallback as `default 0` in dead code messages, instead of repeating itself:
   "`default 0 > 0` always evaluates to `0 > 0`" instead of "`0 > 0` always evaluates to `0 > 0`".

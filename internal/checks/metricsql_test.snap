@@ -726,6 +726,11 @@
 
 ---
 
+[TestMetricsQLComparisonCheck/string_never_fires - 1]
+[]
+
+---
+
 [TestMetricsQLTemplateCheck/label_removed_by_aggregation - 1]
 - description: label removed by aggregation
   content: |4
@@ -3439,6 +3444,60 @@
         - message: '`FooHigh` reads `job:foo:sum` with a 5m lookback, shorter than this 10m interval, so it gets empty results between evaluations of this group.'
           firstcolumn: 1
           lastcolumn: 3
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLImpossibleCheck/string_alert_never_fires - 1]
+- description: string alert never fires
+  content: |
+    - alert: foo
+      expr: '"down"'
+  output: |
+    2 |   expr: '"down"'
+                 ^^^^^^
+                 VictoriaMetrics returns no series for a string, so this query never returns anything: an
+                 alerting rule never fires and a recording rule writes nothing.
+  problem:
+    reporter: promql/impossible
+    summary: dead code in query
+    details: ""
+    diagnostics:
+        - message: 'VictoriaMetrics returns no series for a string, so this query never returns anything: an alerting rule never fires and a recording rule writes nothing.'
+          firstcolumn: 1
+          lastcolumn: 6
+          kind: 0
+    lines:
+        first: 2
+        last: 2
+    severity: 1
+    anchor: 0
+
+---
+
+[TestMetricsQLImpossibleCheck/string_recording_rule_writes_nothing - 1]
+- description: string recording rule writes nothing
+  content: |
+    - record: foo
+      expr: '"down"'
+  output: |
+    2 |   expr: '"down"'
+                 ^^^^^^
+                 VictoriaMetrics returns no series for a string, so this query never returns anything: an
+                 alerting rule never fires and a recording rule writes nothing.
+  problem:
+    reporter: promql/impossible
+    summary: dead code in query
+    details: ""
+    diagnostics:
+        - message: 'VictoriaMetrics returns no series for a string, so this query never returns anything: an alerting rule never fires and a recording rule writes nothing.'
+          firstcolumn: 1
+          lastcolumn: 6
           kind: 0
     lines:
         first: 2
