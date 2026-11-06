@@ -1,6 +1,7 @@
 name: Release
 
-# Builds pint binaries from a commit and publishes them as a GitHub release.
+# Builds pint binaries from a commit and publishes them as a GitHub release, and linux
+# container images to ghcr.io/<owner>/pint, tagged with the version and latest.
 #
 # The version is `git describe` against upstream release tags only, for example
 # v0.88.0-59-ge54a7983: upstream release v0.88.0, 59 commits on top, commit e54a7983.
@@ -15,12 +16,13 @@ on:
         type: string
         default: main
       publish:
-        description: Publish a GitHub release. When off, binaries are only uploaded as workflow artifacts.
+        description: Publish a GitHub release and push container images. When off, binaries are only uploaded as workflow artifacts.
         type: boolean
         default: true
 
 permissions:
   contents: write
+  packages: write
 
 concurrency:
   group: release
@@ -108,11 +110,47 @@ jobs:
           fi
           echo "$OUT" > "$RUNNER_TEMP/build/version.txt"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Build container images
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Upstream's Dockerfile.amd64 and Dockerfile.arm64 copy pint-linux-<arch> from the context.
+          CTX="$RUNNER_TEMP/image"
+          mkdir -p "$CTX"
+          for arch in amd64 arm64; do
+            cp "$RUNNER_TEMP/build/pint-${VERSION}-linux-${arch}/pint" "$CTX/pint-linux-${arch}"
+            docker build --platform "linux/${arch}" -f "Dockerfile.${arch}" \
+              --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+              --label "org.opencontainers.image.version=${VERSION}" \
+              -t "pint:${arch}" "$CTX"
+            docker run --rm --platform "linux/${arch}" "pint:${arch}" pint version |
+              diff - "$RUNNER_TEMP/build/version.txt"
+          done
+
       - name: Upload binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pint-${{ steps.version.outputs.version }}
           path: ${{ runner.temp }}/dist/
+
+      - name: Push container images
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for arch in amd64 arm64; do
+            docker tag "pint:${arch}" "${IMAGE}:${VERSION}-${arch}"
+            docker push "${IMAGE}:${VERSION}-${arch}"
+          done
+          docker buildx imagetools create -t "${IMAGE}:${VERSION}" -t "${IMAGE}:latest" \
+            "${IMAGE}:${VERSION}-amd64" "${IMAGE}:${VERSION}-arm64"
+          docker logout ghcr.io
 
       - name: Publish release
         if: ${{ inputs.publish }}
