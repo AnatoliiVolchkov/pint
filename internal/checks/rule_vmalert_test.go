@@ -1,6 +1,8 @@
 package checks_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -185,6 +187,54 @@ func TestRuleVMAlertLimit(t *testing.T) {
 			language:    parser.MetricsQL,
 			checker:     newRuleVMAlertCheckOffline,
 			prometheus:  newSimpleVM,
+		},
+	})
+}
+
+// vmalert refuses to load a rule file with two groups of the same name, in relaxed mode every
+// groups list is such a file.
+func TestRuleVMAlertDuplicateGroupName(t *testing.T) {
+	configMap := func(keys ...string) string {
+		return "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: rules\ndata:\n" + strings.Join(keys, "")
+	}
+	key := func(name string, groups ...string) string {
+		s := "  " + name + ": |\n    groups:\n"
+		for i, g := range groups {
+			s += fmt.Sprintf("      - name: %s\n        rules:\n          - record: r%d:sum\n            expr: sum(up)\n", g, i)
+		}
+		return s
+	}
+
+	runTests(t, []checkTest{
+		{
+			// Every rule entry must have a problem, so the first group has no rules.
+			description: "the same group name twice in one data key",
+			content: configMap("  a.yaml: |\n    groups:\n      - name: same\n        rules: []\n" +
+				"      - name: same\n        rules:\n          - record: r:sum\n            expr: sum(up)\n"),
+			language:   parser.MetricsQL,
+			checker:    newRuleVMAlertCheck,
+			prometheus: noProm,
+			problems:   true,
+		},
+		{
+			description: "the same group name in two data keys",
+			content:     configMap(key("a.yaml", "same"), key("b.yaml", "same")),
+			language:    parser.MetricsQL,
+			checker:     newRuleVMAlertCheck,
+			prometheus:  noProm,
+		},
+		{
+			description: "different group names in one data key",
+			content:     configMap(key("a.yaml", "first", "second")),
+			language:    parser.MetricsQL,
+			checker:     newRuleVMAlertCheck,
+			prometheus:  noProm,
+		},
+		{
+			description: "PromQL rules are not checked",
+			content:     configMap(key("a.yaml", "same", "same")),
+			checker:     newRuleVMAlertCheck,
+			prometheus:  noProm,
 		},
 	})
 }

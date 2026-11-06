@@ -32,6 +32,10 @@ It reports:
   recording rule writes nothing and an alerting rule fires nothing. pint sends `count(expr)`
   to the VictoriaMetrics servers of the rule file, one instant query per rule, only for rules
   with such a limit, and reports rules returning more results now. `limit: 0` means no limit.
+- two groups with the same name in one `groups` list in relaxed mode: one ConfigMap data key,
+  or the spec of a VMRule, is one rule file for vmalert, and vmalert refuses to load a file with
+  `group name "..." duplicate in file`, so none of its rules run. The same name in different
+  data keys is fine. Strict mode rejects such files as a parse error, like upstream pint.
 
 All problems are reported as warnings.
 

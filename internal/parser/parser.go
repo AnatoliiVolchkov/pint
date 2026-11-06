@@ -123,10 +123,12 @@ func (p *Parser) parseNode(node, parent *yaml.Node, group *Group, offsetLine, of
 	switch node.Kind { // nolint: exhaustive
 	case yaml.SequenceNode:
 		// First check for group list
+		seen := map[string]struct{}{}
 		for _, n := range unpackNodes(node) {
 			if g, rulesMap, ok := tryParseGroup(n, offsetLine, offsetColumn, contentLines); ok {
 				if p.isVMAlert() {
 					g.VMAlert = vmalertGroupSettings(n, offsetLine, offsetColumn, contentLines)
+					markDuplicateGroupName(&g, n, seen, offsetLine, offsetColumn, contentLines)
 				}
 				groups = append(groups, p.parseNode(rulesMap.val, rulesMap.key, &g, offsetLine, offsetColumn, contentLines)...)
 			}

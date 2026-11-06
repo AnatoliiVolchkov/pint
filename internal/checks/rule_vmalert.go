@@ -103,6 +103,9 @@ func (c RuleVMAlertCheck) Check(ctx context.Context, entry *discovery.Entry, _ [
 	if entry.Group != nil {
 		problems = append(problems, c.latencyOffsetProblems(entry.Group.VMAlert)...)
 	}
+	if entry.Group != nil && entry.Group.VMAlert != nil && entry.Group.VMAlert.DuplicateName != nil {
+		problems = append(problems, c.duplicateGroupProblem(entry.Group.VMAlert.DuplicateName))
+	}
 	problems = append(problems, c.limitProblems(ctx, entry)...)
 	return problems
 }
@@ -163,6 +166,33 @@ func (c RuleVMAlertCheck) debugProblem(debug *parser.YamlNode, msg string) Probl
 				Expr:        nil,
 				FirstColumn: 1,
 				LastColumn:  len(debug.Value),
+				Kind:        diags.Issue,
+			},
+		},
+	}
+}
+
+const RuleVMAlertDuplicateGroupDetails = "vmalert refuses to load a rule file with two groups of the same name, " +
+	"so none of the rules in that file are evaluated. Group names must be unique within a file. " +
+	"In a ConfigMap every data key is a separate file, and so is the spec of a VMRule."
+
+// duplicateGroupProblem reports a group whose name is already used in the same groups list.
+func (c RuleVMAlertCheck) duplicateGroupProblem(name *parser.YamlNode) Problem {
+	return Problem{
+		Anchor:   AnchorAfter,
+		Lines:    name.Pos.Lines(),
+		Reporter: c.Reporter(),
+		Summary:  "duplicated group name",
+		Details:  RuleVMAlertDuplicateGroupDetails,
+		Severity: Warning,
+		Diagnostics: []diags.Diagnostic{
+			{
+				Message: fmt.Sprintf("Another group in this file is also named `%s`: vmalert fails to load the whole file "+
+					"with `group name %q duplicate in file`.", name.Value, name.Value),
+				Pos:         name.Pos,
+				Expr:        nil,
+				FirstColumn: 1,
+				LastColumn:  len(name.Value),
 				Kind:        diags.Issue,
 			},
 		},

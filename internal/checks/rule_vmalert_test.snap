@@ -271,3 +271,71 @@
 []
 
 ---
+
+[TestRuleVMAlertDuplicateGroupName/the_same_group_name_twice_in_one_data_key - 1]
+- description: the same group name twice in one data key
+  content: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: rules
+    data:
+      a.yaml: |
+        groups:
+          - name: same
+            rules: []
+          - name: same
+            rules:
+              - record: r:sum
+                expr: sum(up)
+  output: |
+    10 |       - name: same
+                       ^^^^
+                       Another group in this file is also named `same`: vmalert fails to load the whole file
+                       with `group name "same" duplicate in file`.
+  problem:
+    reporter: rule/vmalert
+    summary: duplicated group name
+    details: vmalert refuses to load a rule file with two groups of the same name, so none of the rules in that file are evaluated. Group names must be unique within a file. In a ConfigMap every data key is a separate file, and so is the spec of a VMRule.
+    diagnostics:
+        - message: 'Another group in this file is also named `same`: vmalert fails to load the whole file with `group name "same" duplicate in file`.'
+          firstcolumn: 1
+          lastcolumn: 4
+          kind: 0
+    lines:
+        first: 10
+        last: 10
+    severity: 1
+    anchor: 0
+
+---
+
+[TestRuleVMAlertDuplicateGroupName/the_same_group_name_in_two_data_keys - 1]
+[]
+
+---
+
+[TestRuleVMAlertDuplicateGroupName/the_same_group_name_in_two_data_keys - 2]
+[]
+
+---
+
+[TestRuleVMAlertDuplicateGroupName/different_group_names_in_one_data_key - 1]
+[]
+
+---
+
+[TestRuleVMAlertDuplicateGroupName/different_group_names_in_one_data_key - 2]
+[]
+
+---
+
+[TestRuleVMAlertDuplicateGroupName/PromQL_rules_are_not_checked - 1]
+[]
+
+---
+
+[TestRuleVMAlertDuplicateGroupName/PromQL_rules_are_not_checked - 2]
+[]
+
+---

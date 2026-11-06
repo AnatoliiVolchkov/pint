@@ -4,6 +4,9 @@
 
 ### Added
 
+- [rule/vmalert](checks/rule/vmalert.md) check reports two groups with the same name in one
+  `groups` list in relaxed mode, like one ConfigMap data key. vmalert refuses to load such a
+  file. Strict mode already rejects it.
 - [rule/vmalert](checks/rule/vmalert.md) check reports rules returning more results than
   `limit` of their group, or `-rule.resultsLimit` of vmalert read with `vmalertURI`.
   vmalert fails such rules and drops all their results.

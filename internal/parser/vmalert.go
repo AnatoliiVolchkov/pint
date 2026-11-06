@@ -225,6 +225,10 @@ type VMAlertGroup struct {
 	LatencyOffset *YamlNode
 	// EvalDelay is set when eval_delay is set.
 	EvalDelay *time.Duration
+	// DuplicateName is the name of this group when an earlier group in the same `groups`
+	// list, one vmalert rule file, has the same name. Only set in relaxed mode, strict mode
+	// rejects such files.
+	DuplicateName *YamlNode
 }
 
 // VMAlertRule holds vmalert-only rule fields used by checks.
@@ -302,4 +306,44 @@ func vmalertGroupSettings(node *yaml.Node, offsetLine, offsetColumn int, content
 		return nil
 	}
 	return &vg
+}
+
+// vmalert refuses to load a rule file with two groups of the same name: vmalert v1.155.0
+// -dryRun failed with `group name "same" duplicate in file "/rules/dup.yml"`, while the same
+// name in two files loaded (Docker, 2026-11-06). In relaxed mode every `groups` list, a
+// ConfigMap data key or the spec of a VMRule, is one such file.
+
+// markDuplicateGroupName records a group whose name was already used in the same groups list.
+// node is the group's YAML node, the name position is taken from it with the offsets of
+// YAML embedded in a ConfigMap value.
+func markDuplicateGroupName(g *Group, node *yaml.Node, seen map[string]struct{}, offsetLine, offsetColumn int, contentLines []string) {
+	if g.Name.Value == "" {
+		return
+	}
+	if _, ok := seen[g.Name.Value]; !ok {
+		seen[g.Name.Value] = struct{}{}
+		return
+	}
+	var name *YamlNode
+	for _, entry := range mappingNodes(node) {
+		if nodeValue(entry.key) == "name" {
+			val := resolveNode(entry.val)
+			name = newYamlNode(val, offsetLine, offsetColumn, contentLines, val.Column)
+		}
+	}
+	if name == nil {
+		return
+	}
+	if g.VMAlert == nil {
+		g.VMAlert = &VMAlertGroup{
+			Params:        nil,
+			EvalOffset:    nil,
+			EvalAlignment: nil,
+			Debug:         nil,
+			LatencyOffset: nil,
+			EvalDelay:     nil,
+			DuplicateName: nil,
+		}
+	}
+	g.VMAlert.DuplicateName = name
 }
