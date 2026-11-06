@@ -39,7 +39,7 @@ gh release view -R AnatoliiVolchkov/pint                       # tag, assets, no
 ```
 
 To build without publishing, use `-f publish=false`: the binaries are only uploaded as a
-workflow artifact.
+workflow artifact, container images are built and checked but not pushed.
 
 To check a published release yourself, download its assets. That is a file download, so ask
 the user first.
@@ -63,7 +63,16 @@ What the workflow does:
 3. **Verify.** Runs `pint version` on the linux binary. The first line must equal
    `<version> (revision: <sha>)`, the second must match the `metricsql:` format, and
    `vcs.modified` must be false.
-4. **Publish.** Runs `gh release create <version>` with `--latest`. The notes list the
+4. **Container images** (2026-11-07). Builds linux amd64 and arm64 images from the same
+   binaries with upstream's `Dockerfile.amd64` and `Dockerfile.arm64` (unchanged, they copy
+   `pint-linux-<arch>` from the context), with QEMU for arm64, and checks that `pint version`
+   in each image prints the same as the binary. With `publish` it pushes
+   `ghcr.io/anatoliivolchkov/pint:<version>-<arch>` with the workflow token (`packages:
+   write`), then `docker buildx imagetools create` makes `:<version>` and `:latest` for both
+   architectures. Upstream's goreleaser publishes to `ghcr.io/cloudflare`, so it isn't used.
+   A new package is private: the owner makes it public once in the package settings
+   (browser steps for the user). Public packages are free on GitHub.
+5. **Publish.** Runs `gh release create <version>` with `--latest`. The notes list the
    commits since the previous fork release, or since the upstream release for the first one.
 
 Pitfalls already fixed:
