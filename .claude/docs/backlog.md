@@ -94,23 +94,14 @@ sparse metric fires all the time (verified in Docker first, see
   and warns when they are longer than the `absent()` or `absent_over_time()` window and `for`
   doesn't cover them (`6147897d`).
 
-## Approved on 2026-11-06, in progress
+## Done on 2026-11-06 (approved in the backlog review)
 
-- **Duplicate group names per ConfigMap data key in relaxed mode.** vmalert rejects a rule file
-  with two groups of the same name, and in relaxed mode each ConfigMap data key is such a file.
-  pint checks duplicate group names in strict mode only, which is upstream behaviour. A
-  whole-file check would be wrong, the same group name in different ConfigMaps is valid.
-- **Template error offsets.** Template execution errors include an internal column, such as
-  `304: executing ...`, which counts pint's hidden header (also in upstream, for PromQL). For
-  MetricsQL rules the number is dropped, the diagnostic already points at the error.
-- **`delta()` on counters without metadata.** Only `promql/counter` catches it, and it needs
-  reliable metadata. A Warning for `delta()` on a metric whose name ends with `_total`.
-- **The dead-code message repeats itself** for `default`: "`0 > 0` always evaluates to `0 > 0`"
-  for `(sum(foo) default 0) > 0`, while `or vector(0)` gives "`vector(0) > 0` ...".
-- **An alert whose `expr` is just a string is reported as always firing.** vmalert v1.155.0
-  accepts such a rule, VictoriaMetrics returns nothing for `"down"`, so the alert never
-  fires and a recording rule writes nothing (Docker, 2026-11-06). Upstream reports the same
-  for PromQL, where Prometheus refuses to load the rule.
+- Duplicate group names in one `groups` list in relaxed mode, like a ConfigMap data key, are
+  reported by `rule/vmalert` (`d2aebc54`); the canary's planted duplicate is now caught.
+- vmalert template execution errors no longer start with pint's internal offset (`fac165d5`).
+- The `default` fallback is described as `default 0` in dead code messages (`98ec6870`).
+- A MetricsQL rule whose `expr` is a string is dead code, not an always firing alert
+  (`d9051673`), checked with vmalert and VictoriaMetrics v1.155.0.
 
 ## Parked (the user's decision, 2026-11-06)
 
@@ -155,6 +146,9 @@ server flag (2.8), optional policies (4.x), SARIF output, `query/cost` limit sev
 nondeterminism on sparse metrics, `alerts/count` for step-derived windows, windowless `rate(x)`
 and `delta(x)`, `index $labels "x"` in templates, offline function arity, subquery ranges
 against retention, the parser version note, and `or` filters in `promql/series` selectors.
+A Warning for `delta()` on `_total` metrics in MetricsQL rules was built and then dropped by
+the user on 2026-11-07 before pushing: restart counter alerts using `delta()` would all get
+it, while a new pod is a new series, so resets inside one series are rare there.
 The "unused VictoriaMetrics `cluster` flag" was a wrong note: `cluster` is derived from the
 `/select/<tenant>/prometheus` URI and used in `withRetention`, vmselect doesn't know the
 retention, so pint doesn't assume the default there.
@@ -187,5 +181,10 @@ series that differ only by the metric name with or without it, and pint reports 
 - **`ORACLE_WRITE` loses data.** Rewriting the oracle files drops YAML comments,
   `message_re` and empty `expect_cluster: []`. After using it, restore unrelated files with
   `git checkout` and re-add what it dropped. Better: edit the expectations by hand.
+- **`TestSeriesVMCheck` depends on the time of day** (found 2026-11-06, not fixed): at
+  18:01 CET `metric with regular pauses longer than the lookback` counted 15 pauses instead of
+  14 and `step from group params` failed too, on `main` and on the published base
+  `2ea5c470`; it passed earlier that day. The mocked series are aligned to the current hour,
+  so CI can fail at some hours. Waiting for the user's decision to fix it.
 - **Watch testscripts flake under load** on macOS. `0275_watch_symlink_owner` timed out
   after 540s in a full run on 2026-10-06 and passed alone. `0282` and `0228` behave the same.

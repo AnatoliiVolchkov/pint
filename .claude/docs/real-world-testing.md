@@ -99,8 +99,8 @@ relaxed mode, `relaxed = ["(.*/)?k8s/.*"]`):
 - **Real rule problems pint has no check for:**
   - `delta(counter)` without a window;
   - `delta()` on counters in general. `promql/counter` needs metadata, see above.
-- **Canary rules.** Of 11 planted problems, 10 were caught. The missed one is duplicate group
-  names inside one ConfigMap data key, which upstream checks in strict mode only.
+- **Canary rules.** Of 11 planted problems, 10 were caught. The missed one, duplicate group
+  names inside one ConfigMap data key, is reported by `rule/vmalert` since `d2aebc54`.
 
 ### How to judge a finding
 

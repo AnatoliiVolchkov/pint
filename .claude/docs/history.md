@@ -369,6 +369,14 @@ so the upstream projects stay their fork parents.
   vmalert in Docker). Warning about VictoriaMetrics query limits turned out to be covered
   already by the server's own errors, and custom `-rule.templates` aren't used by the user:
   both are in `backlog.md`.
+- **Backlog review (2026-11-06):** the user decided on every item. Test images moved to
+  VictoriaMetrics v1.155.0, the version the user runs (`d61d394b`). Done, each in its own
+  commit with PromQL parity, a comparison on all local rule sets and the full suite:
+  duplicate group names in relaxed files (`d2aebc54`), vmalert template error offsets
+  (`fac165d5`), the `default` dead code message (`98ec6870`) and string queries as dead
+  code (`d9051673`). A `delta()` on `_total` Warning was built and dropped before pushing,
+  see backlog. The "unused `cluster` flag" note was wrong. Removed items are listed under
+  "Rejected ideas" in `backlog.md`.
 
 ## Recurring decisions
 
