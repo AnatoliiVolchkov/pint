@@ -198,11 +198,12 @@ func TestRuleVMAlertDuplicateGroupName(t *testing.T) {
 		return "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: rules\ndata:\n" + strings.Join(keys, "")
 	}
 	key := func(name string, groups ...string) string {
-		s := "  " + name + ": |\n    groups:\n"
+		var b strings.Builder
+		b.WriteString("  " + name + ": |\n    groups:\n")
 		for i, g := range groups {
-			s += fmt.Sprintf("      - name: %s\n        rules:\n          - record: r%d:sum\n            expr: sum(up)\n", g, i)
+			fmt.Fprintf(&b, "      - name: %s\n        rules:\n          - record: r%d:sum\n            expr: sum(up)\n", g, i)
 		}
-		return s
+		return b.String()
 	}
 
 	runTests(t, []checkTest{
