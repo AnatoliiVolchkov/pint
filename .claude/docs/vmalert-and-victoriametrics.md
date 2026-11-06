@@ -8,7 +8,8 @@ Servers and versions used:
 
 - prom.example.com: a real single-node VictoriaMetrics.
 - vmalert.example.com: a real vmalert.
-- Docker test images: v1.153.0 and v1.153.0-cluster (pinned in `internal/promapi/vmtest`,
+- Docker test images: v1.155.0 and v1.155.0-cluster since 2026-11-06, the version the user runs (pinned in `internal/promapi/vmtest`;
+  v1.153.0 before, facts below marked v1.153.0 were measured there,
   `8cfc01df`; v1.115.0 before). Every oracle case passed unchanged on the switch.
 - Docker experiment images: also `victoriametrics/vmalert:v1.153.0`. The user allows pulling
   and running the latest VictoriaMetrics images for experiments (2026-10-07).

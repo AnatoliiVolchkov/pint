@@ -11,7 +11,7 @@ x-healthcheck: &healthcheck
 
 services:
   vmsingle:
-    image: quay.io/victoriametrics/victoria-metrics:v1.153.0@sha256:5eff7af5341e401471002f58d106d399e614a62f3d240f2dbc21901e49eed5dd
+    image: quay.io/victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
     command:
       - -retentionPeriod=2
       - -inmemoryDataFlushInterval=1s
@@ -24,7 +24,7 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
 
   vmstorage:
-    image: quay.io/victoriametrics/vmstorage:v1.153.0-cluster@sha256:83e67bde1b2aa23b8393b0165c427cbd413696c9398cbdd75a709422786747f4
+    image: quay.io/victoriametrics/vmstorage:v1.155.0-cluster@sha256:c681e527bbd58d636e2055a23218370c9a5e154eec72177aec459f4da47f6204
     command:
       - -retentionPeriod=2
       - -inmemoryDataFlushInterval=1s
@@ -35,7 +35,7 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8482/health"]
 
   vminsert:
-    image: quay.io/victoriametrics/vminsert:v1.153.0-cluster@sha256:629d128af12ff951ad3bb2c3b2d45edb77fb561ce6b29ed644b8039e2bf218a7
+    image: quay.io/victoriametrics/vminsert:v1.155.0-cluster@sha256:08f65ead1cf8e3a88f2eafdbcdd75b50aeee3b6520659bb51e0f450ff4948021
     command:
       - -storageNode=vmstorage:8400
     depends_on:
@@ -48,7 +48,7 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8480/health"]
 
   vmselect:
-    image: quay.io/victoriametrics/vmselect:v1.153.0-cluster@sha256:3a593a1d02f765f366f50712c68d0e9418ab04f07a61517882bdb7ff620b0f38
+    image: quay.io/victoriametrics/vmselect:v1.155.0-cluster@sha256:2db2f418a4e2a6bbb245ae9b2aa7854bc02b6146757d209f91bd1b87b0d4e96e
     command:
       - -storageNode=vmstorage:8401
       - -search.latencyOffset=1s

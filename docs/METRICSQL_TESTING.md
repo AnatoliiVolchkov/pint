@@ -118,7 +118,7 @@ them together with the fix.
    optionally `PINT_VM_CLUSTER_STORAGE_URL` (vmstorage) when `PINT_VM_URL` is set;
 2. otherwise starts `internal/promapi/vmtest/docker-compose.yml` with Docker Compose:
    single-node VictoriaMetrics and a vmstorage/vminsert/vmselect cluster, images pinned to
-   `v1.153.0` / `v1.153.0-cluster` by tag and digest, random localhost ports. The project is
+   `v1.155.0` / `v1.155.0-cluster` by tag and digest, random localhost ports. The project is
    shared by all tests of one test binary and removed by a reaper process when the binary
    exits;
 3. skips the test if Docker isn't available, unless `PINT_VM_REQUIRED` is set, in which case

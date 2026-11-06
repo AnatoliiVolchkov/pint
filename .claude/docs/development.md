@@ -98,7 +98,7 @@ All are documented in `docs/METRICSQL_TESTING.md`:
   and the upstream parser's verdicts.
 - **Fuzz targets:** `FuzzMetricsQLParse`, `FuzzMetricsQLPositions` and `FuzzMetricsQLChecks`.
 - **Real VictoriaMetrics:** `internal/promapi/vmtest` starts Docker Compose with
-  `victoriametrics` `v1.153.0` and `v1.153.0-cluster` (since `8cfc01df`), pinned by tag
+  `victoriametrics` `v1.155.0` and `v1.155.0-cluster` (since 2026-11-06; v1.153.0 since `8cfc01df` before that), pinned by tag
   and multi-arch index digest (`docker buildx imagetools inspect <image>` prints it).
   - Without Docker these tests skip. `PINT_VM_REQUIRED=1` turns the skip into a failure.
   - Docker Desktop is often not running on the dev Mac. In that case you can check behaviour
