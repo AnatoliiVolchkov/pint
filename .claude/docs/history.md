@@ -377,6 +377,12 @@ so the upstream projects stay their fork parents.
   code (`d9051673`). A `delta()` on `_total` Warning was built and dropped before pushing,
   see backlog. The "unused `cluster` flag" note was wrong. Removed items are listed under
   "Rejected ideas" in `backlog.md`.
+- **False pause in `promql/series` (2026-11-06):** `TestSeriesVMCheck` failed in the first
+  minutes of every other hour. Cause: the 1h recent window and the 2h slice of the 1w range
+  starting at the same even hour shared a range query cache key (start and end rounded to the
+  step, upstream since v0.89.2), so the slice lost its first sample and pint measured a pause
+  that wasn't there, also on real servers. The recent window now starts on its step. Checked
+  with an injected clock over two hours of start times.
 
 ## Recurring decisions
 

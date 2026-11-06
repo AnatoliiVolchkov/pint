@@ -148,7 +148,7 @@ func (c SeriesCheck) vmSparseSelectors(
 		}
 		done[query] = struct{}{}
 
-		recent, err := c.prom.RangeQuery(ctx, query, promapi.NewRelativeRange(max(vmRecentWindow, 4*window), window)).Wait()
+		recent, err := c.prom.RangeQuery(ctx, query, newStepAlignedRange(max(vmRecentWindow, 4*window), window)).Wait()
 		if err != nil {
 			slog.LogAttrs(ctx, slog.LevelDebug, "Cannot check recent pauses", slog.String("query", query), slog.Any("err", err))
 			continue
@@ -211,4 +211,26 @@ func parseSeriesSelector(selector string) ([]*labels.Matcher, error) {
 		return mm, nil
 	}
 	return nil, err
+}
+
+// stepAlignedRange is a relative range whose start is a multiple of its step. RangeQuery
+// caches results under the start and end rounded to the step, and splits ranges longer than
+// 2h into 2h slices starting at even hours. The recent window and the slice of the lookback
+// range starting at the same even hour then share a cache key: when the recent window
+// started at 16:01:30 the 16:00 slice got its result, without the 16:00 sample, and pint
+// measured a pause at 16:00 that wasn't there. It happened in the first minutes of every
+// other hour (found 2026-11-06 through a test failing at those times). Starting the recent
+// window on the step makes both queries return the same samples.
+type stepAlignedRange struct {
+	start time.Time
+	promapi.RelativeRange
+}
+
+func (r stepAlignedRange) Start() time.Time {
+	return r.start
+}
+
+func newStepAlignedRange(lookback, step time.Duration) stepAlignedRange {
+	rr := promapi.NewRelativeRange(lookback, step)
+	return stepAlignedRange{RelativeRange: rr, start: rr.Start().Truncate(step)}
 }

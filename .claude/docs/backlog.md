@@ -181,10 +181,5 @@ series that differ only by the metric name with or without it, and pint reports 
 - **`ORACLE_WRITE` loses data.** Rewriting the oracle files drops YAML comments,
   `message_re` and empty `expect_cluster: []`. After using it, restore unrelated files with
   `git checkout` and re-add what it dropped. Better: edit the expectations by hand.
-- **`TestSeriesVMCheck` depends on the time of day** (found 2026-11-06, not fixed): at
-  18:01 CET `metric with regular pauses longer than the lookback` counted 15 pauses instead of
-  14 and `step from group params` failed too, on `main` and on the published base
-  `2ea5c470`; it passed earlier that day. The mocked series are aligned to the current hour,
-  so CI can fail at some hours. Waiting for the user's decision to fix it.
 - **Watch testscripts flake under load** on macOS. `0275_watch_symlink_owner` timed out
   after 540s in a full run on 2026-10-06 and passed alone. `0282` and `0228` behave the same.
