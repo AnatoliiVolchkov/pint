@@ -73,7 +73,9 @@ What the workflow does:
    A new package is private: the owner makes it public once in the package settings
    (browser steps for the user). Public packages are free on GitHub.
 5. **Publish.** Runs `gh release create <version>` with `--latest`. The notes list the
-   commits since the previous fork release, or since the upstream release for the first one.
+   commits since the previous fork release, or since the upstream release for the first one,
+   after the `docker pull` command and a link to the image page (since 2026-11-07; the
+   images are listed on the repository page under "Packages", not in the release assets).
 
 Pitfalls already fixed:
 
