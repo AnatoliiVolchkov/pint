@@ -179,6 +179,12 @@ jobs:
             cat "$RUNNER_TEMP/build/version.txt"
             echo '```'
             echo
+            echo "Container image for linux/amd64 and linux/arm64, [ghcr.io/${GITHUB_REPOSITORY,,}](https://github.com/${GITHUB_REPOSITORY}/pkgs/container/pint):"
+            echo
+            echo '```'
+            echo "docker pull ghcr.io/${GITHUB_REPOSITORY,,}:${VERSION}"
+            echo '```'
+            echo
             echo "Changes since ${SINCE}:"
             echo
             git log --no-merges --format='- %s (%h)' -n 100 "${SINCE}..${COMMIT}"
