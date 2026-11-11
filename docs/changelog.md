@@ -185,6 +185,18 @@
   `deriv()` time ranges to be at least 1x `scrape_interval` when using MetricsQL,
   VictoriaMetrics uses the last sample before the time range. `rate_prometheus()` and
   `increase_prometheus()` are checked too and still require 2x `scrape_interval`.
+## v0.90.0
+
+### Added
+
+- Added support for Prometheus v3.16.0, which adds the new experimental PromQL
+  function `integral()` and makes the `anchored` and `smoothed` range selector
+  modifiers stable, so they no longer require
+  `--enable-feature=promql-extended-range-selectors`.
+
+### Fixed
+
+- Improved `pint ci` detection of git changes.
 
 ## v0.89.4
 
