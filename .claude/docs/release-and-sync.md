@@ -287,6 +287,30 @@ v0.89.3), `alerts/count` undercounting rules with `keep_firing_for` (v0.89.4) an
   failures), lint, `compare-binaries.sh` identical, PromQL parity with v0.89.4 identical on
   6 rule sets, fuzz smoke.
 
+### The v0.90.0 sync (2026-11-11)
+
+Done with the same steps, by hand (26 upstream commits). Upstream moved to Prometheus 3.16:
+`integral()`, `anchored` and `smoothed` stable since 3.16, `promql-unquoted-utf8-names`
+detection in `internal/parser/source`, the parser enables `EnableUnquotedUTF8Names`, and
+`pint ci` finds changes with `git merge-base`. `go.ver` moved to Go 1.27.4.
+
+- **Conflicts:** `docs/changelog.md`, `go.mod`, `go.sum`, `internal/parser/promql.go`, and
+  `features.go`, `position.go`, `source.go` in `internal/parser/source`, all resolved in the
+  merge commit. Prometheus 3.16 dropped the `ExperimentalDurationExpr` and
+  `EnableExtendedRangeSelectors` parser options, so `internal/parser/promql/promql.go` (and
+  its test) take upstream's option set. The new unquoted name lookups were ported to `ast`
+  types and return nothing for empty names, which MetricsQL accepts.
+- **Snapshots:** `source_test.snap` regenerated, only node type names differ.
+- **Fork changes:** testscript 0302 expects the new parse error (`226820cf`): `ტტ` is now
+  a valid unquoted name. Upstream still panics on that rule.
+- **Testscript numbers:** upstream added 0278-0290 with other names than the fork's
+  0278-0302. Different names never conflict, the duplicate numbers are harmless.
+- **MetricsQL:** `integral()` and `anchored` are reported as MetricsQL syntax errors, as
+  before; VictoriaMetrics has `integrate()`. Dotted names were already valid MetricsQL.
+- **Checks:** full `-race -count=1` suite with Docker VictoriaMetrics (only the macOS
+  failures), lint, `compare-binaries.sh` identical on all 6 sets, PromQL parity with v0.90.0
+  identical on 5 rule sets plus a file with the new syntax, fuzz smoke.
+
 In general:
 
 - Port upstream logic in files the fork migrated to `internal/parser/ast` (checks, parser,

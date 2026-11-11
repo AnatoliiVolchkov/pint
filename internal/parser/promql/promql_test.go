@@ -11,10 +11,9 @@ import (
 )
 
 var promqlParser = promParser.NewParser(promParser.Options{
-	EnableExperimentalFunctions:  true,
-	ExperimentalDurationExpr:     true,
-	EnableExtendedRangeSelectors: true,
-	EnableBinopFillModifiers:     true,
+	EnableExperimentalFunctions: true,
+	EnableBinopFillModifiers:    true,
+	EnableUnquotedUTF8Names:     true,
 })
 
 var corpus = []string{

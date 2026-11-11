@@ -40,6 +40,7 @@ const (
 	FeatureDurationExpr           = "promql-duration-expr"
 	FeatureExtendedRangeSelectors = "promql-extended-range-selectors"
 	FeatureBinopFillModifiers     = "promql-binop-fill-modifiers"
+	FeatureUnquotedUTF8Names      = "promql-unquoted-utf8-names"
 )
 
 // Used for test snapshots.
@@ -308,6 +309,20 @@ func (s *Source) requireFeature(name string, pos ast.PositionRange) {
 		Name:      name,
 		Fragments: []ast.PositionRange{pos},
 	})
+}
+
+// requireUnquotedNames records the promql-unquoted-utf8-names feature for
+// each name in names that needs that flag. It locates each name inside the
+// clause that within selects.
+func (s *Source) requireUnquotedNames(expr string, within ast.PositionRange, names ...string) {
+	for _, name := range names {
+		if model.LegacyValidation.IsValidLabelName(name) {
+			continue
+		}
+		if pos, ok := findUnquotedArgumentPosition(expr, within, name); ok {
+			s.requireFeature(unquotedUTF8Names, pos)
+		}
+	}
 }
 
 func (s *Source) clone() *Source {
@@ -717,6 +732,20 @@ func walkNode(expr string, node ast.Node) (src []*Source) {
 			s.RangeSelectorMode = RangeSelectorSmoothed
 			s.requireFeature(ast.OpSmoothed.String(), n.PosRange)
 		}
+		if n.Name != "" && !model.LegacyValidation.IsValidMetricName(n.Name) {
+			s.requireFeature(unquotedUTF8Names, ast.PositionRange{
+				Start: n.PosRange.Start,
+				End:   n.PosRange.Start + ast.Pos(len(n.Name)),
+			})
+		}
+		for _, lm := range n.LabelMatchers {
+			if model.LegacyValidation.IsValidLabelName(lm.Name) {
+				continue
+			}
+			if p, ok := findUnquotedMatcherName(expr, n.PosRange, lm); ok {
+				s.requireFeature(unquotedUTF8Names, p)
+			}
+		}
 		s.requireDurationExprFeatures(n.OriginalOffsetExpr)
 		s.requireStartOrEndFeature(expr, n.StartOrEnd, n.PosRange)
 		s.Operations = append(s.Operations, Operation{
@@ -926,6 +955,11 @@ func parseAggregation(expr string, n *ast.AggregateExpr) (src []*Source) {
 		}
 
 		s.checkAggregationLabels(expr, n)
+		grouping := ast.OpBy.String()
+		if n.Without {
+			grouping = ast.OpWithout.String()
+		}
+		s.requireUnquotedNames(expr, FindFuncPosition(expr, n.PosRange, grouping, nil), n.Grouping...)
 		if n.Without {
 			for _, name := range n.Grouping {
 				s.excludeLabel(
@@ -1071,7 +1105,7 @@ If you're hoping to get instance specific labels this way and alert when some ta
 			return parseMetricsQLFunc(s, expr, n)
 		}
 
-	case "double_exponential_smoothing", "holt_winters", "predict_linear":
+	case "double_exponential_smoothing", "holt_winters", "integral", "predict_linear":
 		// No change to labels.
 		s.Returns = ast.ValueTypeVector
 
@@ -1306,6 +1340,22 @@ func walkDurationExprFeatures(s *Source, de *ast.DurationExpr) {
 	}
 }
 
+func (s *Source) requireVectorMatchingFeatures(expr string, n *ast.BinaryExpr) {
+	sides := []ast.PositionRange{n.LHS.PositionRange(), n.RHS.PositionRange()}
+	matching := ast.OpIgnoring.String()
+	if n.VectorMatching.On {
+		matching = ast.OpOn.String()
+	}
+	s.requireUnquotedNames(expr, FindFuncPosition(expr, n.PositionRange(), matching, sides), n.VectorMatching.MatchingLabels...)
+	if len(n.VectorMatching.Include) > 0 {
+		included := ast.OpGroupLeft.String()
+		if n.VectorMatching.Card == ast.CardOneToMany {
+			included = ast.OpGroupRight.String()
+		}
+		s.requireUnquotedNames(expr, FindFuncPosition(expr, n.PositionRange(), included, sides), n.VectorMatching.Include...)
+	}
+}
+
 func parseBinOps(expr string, n *ast.BinaryExpr) (src []*Source) {
 	pos := n.PositionRange()
 	src = make([]*Source, 0, 2)
@@ -1367,6 +1417,7 @@ func parseBinOps(expr string, n *ast.BinaryExpr) (src []*Source) {
 	case n.VectorMatching.Card == ast.CardOneToOne:
 		rhs := walkNode(expr, n.RHS)
 		for _, ls := range walkNode(expr, n.LHS) {
+			ls.requireVectorMatchingFeatures(expr, n)
 			if n.VectorMatching.On {
 				ls.UsedLabels = appendToSlice(ls.UsedLabels, n.VectorMatching.MatchingLabels...)
 				ls.checkIncludedLabels(expr, pos, n.VectorMatching.MatchingLabels)
@@ -1445,6 +1496,7 @@ func parseBinOps(expr string, n *ast.BinaryExpr) (src []*Source) {
 	case n.VectorMatching.Card == ast.CardOneToMany:
 		lhs := walkNode(expr, n.LHS)
 		for _, rs := range walkNode(expr, n.RHS) {
+			rs.requireVectorMatchingFeatures(expr, n)
 			rs.joinLabels(expr, pos, ast.OpGroupRight, n.VectorMatching.Include, []ast.PositionRange{
 				n.LHS.PositionRange(), n.RHS.PositionRange(),
 			})
@@ -1519,6 +1571,7 @@ func parseBinOps(expr string, n *ast.BinaryExpr) (src []*Source) {
 	case n.VectorMatching.Card == ast.CardManyToOne:
 		rhs := walkNode(expr, n.RHS)
 		for _, ls := range walkNode(expr, n.LHS) {
+			ls.requireVectorMatchingFeatures(expr, n)
 			ls.joinLabels(expr, pos, ast.OpGroupLeft, n.VectorMatching.Include, []ast.PositionRange{
 				n.LHS.PositionRange(), n.RHS.PositionRange(),
 			})
@@ -1609,6 +1662,7 @@ func parseBinOps(expr string, n *ast.BinaryExpr) (src []*Source) {
 		var lhsCanBeEmpty bool // true if any of the LHS query can produce empty results.
 		rhs := walkNode(expr, n.RHS)
 		for _, ls := range walkNode(expr, n.LHS) {
+			ls.requireVectorMatchingFeatures(expr, n)
 			var rhsConditional bool
 			// With many-to-many on/ignore is only used for matching series, it doesn't impact
 			// returned labels.

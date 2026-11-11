@@ -8,6 +8,8 @@ import (
 	"github.com/cloudflare/pint/internal/parser/ast"
 )
 
+const unquotedUTF8Names = "unquoted_utf8_names"
+
 type PrometheusVersion struct {
 	Major int
 	Minor int
@@ -205,6 +207,11 @@ func newDefaultFeatures() *Features {
 		MinVersion:    ver(3, 13, 0),
 		StableVersion: ver(0, 0, 0),
 	})
+	f.Register("integral", FeatureVersion{
+		Flag:          FeatureExperimentalFunctions,
+		MinVersion:    ver(3, 16, 0),
+		StableVersion: ver(0, 0, 0),
+	})
 
 	// Experimental aggregation operators behind promql-experimental-functions.
 	f.Register(ast.OpLimitK.String(), FeatureVersion{
@@ -226,21 +233,29 @@ func newDefaultFeatures() *Features {
 	})
 
 	// Extended range selectors behind promql-extended-range-selectors.
+	// Stable and always-on since Prometheus 3.16.0.
 	f.Register(ast.OpAnchored.String(), FeatureVersion{
 		Flag:          FeatureExtendedRangeSelectors,
 		MinVersion:    ver(3, 7, 0),
-		StableVersion: ver(0, 0, 0),
+		StableVersion: ver(3, 16, 0),
 	})
 	f.Register(ast.OpSmoothed.String(), FeatureVersion{
 		Flag:          FeatureExtendedRangeSelectors,
 		MinVersion:    ver(3, 7, 0),
-		StableVersion: ver(0, 0, 0),
+		StableVersion: ver(3, 16, 0),
 	})
 
 	// Fill modifiers behind promql-binop-fill-modifiers.
 	f.Register(ast.OpFill.String(), FeatureVersion{
 		Flag:          FeatureBinopFillModifiers,
 		MinVersion:    ver(3, 10, 0),
+		StableVersion: ver(0, 0, 0),
+	})
+
+	// Unquoted UTF-8 names behind promql-unquoted-utf8-names.
+	f.Register(unquotedUTF8Names, FeatureVersion{
+		Flag:          FeatureUnquotedUTF8Names,
+		MinVersion:    ver(3, 16, 0),
 		StableVersion: ver(0, 0, 0),
 	})
 

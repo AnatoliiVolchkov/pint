@@ -1,7 +1,13 @@
+# We run git inside a dir that's not a git repo, so git tries to walk
+# up looking for .git folder. As it walks up it might end up on a different
+# filesystem (if /tmp is on tmpfs) and then it throws a different error
+# to what we expect. Setting GIT_DISCOVERY_ACROSS_FILESYSTEM=1 makes it
+# cross filesystems and always error the same way.
+env GIT_DISCOVERY_ACROSS_FILESYSTEM=1
 ! exec pint -l debug --no-color ci
 ! stdout .
 cmp stderr stderr.txt
 
 -- stderr.txt --
-level=DEBUG msg="Running git command" args=["rev-parse","--verify","HEAD"]
+level=DEBUG msg="Running git command" args=["rev-list","--parents","-n","1","HEAD"]
 level=ERROR msg="Execution completed with error(s)" err="failed to get git info: fatal: not a git repository (or any of the parent directories): .git\n"

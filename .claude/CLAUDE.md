@@ -99,12 +99,12 @@ Repository docs written for humans (paths from the repository root):
 - `docs/configuration.md`: `query_language`, `backend`, `scrapeInterval`, `externalLabels`.
 - `.github/metricsql-test/README.md`: the alert standard and real-server commands.
 
-## Current state (2026-11-05)
+## Current state (2026-11-11)
 
-- **Base:** upstream cloudflare/pint **v0.89.4** (synced 2026-11-05) plus the fork's commits,
+- **Base:** upstream cloudflare/pint **v0.90.0** (synced 2026-11-11) plus the fork's commits,
   with metricsql `v0.87.6-pint.1` (upstream metricsql v0.87.6). PromQL mode output was
-  byte-identical to upstream v0.89.4 on the local rule sets at the sync.
-- **Next upstream sync:** none pending after v0.89.4.
+  byte-identical to upstream v0.90.0 on the local rule sets at the sync.
+- **Next upstream sync:** none pending after v0.90.0.
 - **Public move (2026-11):** this repository replaced a private predecessor, with rewritten
   history, see `docs/history.md`. The first release here is `v0.89.2-95-gf61500a3`
   (2026-11-05). Older release names in these docs refer to the predecessor.
